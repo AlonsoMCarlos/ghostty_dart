@@ -9,7 +9,9 @@ set -euo pipefail
 
 target="${1:?usage: build.sh <zig-target> [args...]}"; shift
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-version="$(jq -r .version "$root/native/upstream.json")"
+# shellcheck source=tool/native/lib.sh
+source "$root/tool/native/lib.sh"
+version="$(jq_raw .version "$root/native/upstream.json")"
 cache="$root/.native-cache"
 
 "$root/tool/native/fetch_upstream.sh" >/dev/null
@@ -28,12 +30,13 @@ trap 'rm -rf "$zig_cache"' EXIT
 rm -rf "$out"
 
 # Run without network when the platform allows it, to prove the build is hermetic.
+# Linux only; unprivileged user namespaces may still be disabled (Ubuntu 24.04+).
 run=()
-if unshare -rn true 2>/dev/null; then run=(unshare -rn); fi
+if [[ "$(uname -s)" == Linux ]] && unshare -rn true 2>/dev/null; then run=(unshare -rn); fi
 
-(cd "$src" && ZIG_GLOBAL_CACHE_DIR="$zig_cache" "${run[@]}" zig build \
-  --prefix "$out" \
-  --system "$deps" \
+(cd "$src" && ZIG_GLOBAL_CACHE_DIR="$(native_path "$zig_cache")" ${run[@]+"${run[@]}"} zig build \
+  --prefix "$(native_path "$out")" \
+  --system "$(native_path "$deps")" \
   -Dtarget="$target" \
   -Doptimize=ReleaseFast \
   -Dcpu=baseline \

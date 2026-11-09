@@ -6,7 +6,11 @@
 // - `prebuilt` (default): download the binary for the target from the
 //   project's GitHub release and verify it against the sha256 pinned in this
 //   package. Fails closed on mismatch.
-// - `path`: use a local binary given by the `path` user-define.
+// - `path`: use a local binary given by the `path` user-define. It may be the
+//   library file, or a directory holding it under its bundled name
+//   (`libghostty-vt.so`, `libghostty-vt.dylib` or `ghostty-vt.dll`, see
+//   `bundledLibraryName`). The repo's root pubspec points at the directory
+//   `.native-cache/host/`, filled by `mise run native:host` on any OS.
 // - `system`: load an installed `libghostty-vt` 1.x from the system.
 //
 // The hook never runs downloaded code and never fetches anything unpinned.
@@ -27,12 +31,17 @@ void main(List<String> args) async {
     final CodeAsset asset;
     switch (source) {
       case 'path':
-        final path = input.userDefines.path('path');
-        if (path == null) {
+        final define = input.userDefines.path('path');
+        if (define == null) {
           throw const FormatException(
             'ghostty_dart: source "path" requires the "path" user-define.',
           );
         }
+        final path = localLibraryUri(
+          define,
+          code.targetOS,
+          isDirectory: FileSystemEntity.isDirectorySync(define.toFilePath()),
+        );
         output.dependencies.add(path);
         final copy = await _copyInto(
           File.fromUri(path),

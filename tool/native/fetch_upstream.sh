@@ -10,10 +10,12 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 manifest="$root/native/upstream.json"
 cache="$root/.native-cache"
 mkdir -p "$cache"
+# shellcheck source=tool/native/lib.sh
+source "$root/tool/native/lib.sh"
 
-base_url="$(jq -r .base_url "$manifest")"
-pubkey="$(jq -r .minisign_public_key "$manifest")"
-version="$(jq -r .version "$manifest")"
+base_url="$(jq_raw .base_url "$manifest")"
+pubkey="$(jq_raw .minisign_public_key "$manifest")"
+version="$(jq_raw .version "$manifest")"
 
 if [[ $# -eq 0 ]]; then
   set -- "libghostty-vt-$version.tar.gz" "libghostty-vt-$version-deps.tar.gz"
@@ -25,14 +27,19 @@ curl -sSfL --proto '=https' "$base_url/SHA256SUMS.minisig" -o SHA256SUMS.minisig
 minisign -Vq -P "$pubkey" -m SHA256SUMS
 
 for file in "$@"; do
-  pinned="$(jq -r --arg f "$file" '.files[$f] // empty' "$manifest")"
+  pinned="$(jq_raw '.files[$f] // empty' "$manifest" --arg f "$file")"
   [[ -n "$pinned" ]] || { echo "error: $file is not pinned in upstream.json" >&2; exit 1; }
-  signed="$(awk -v f="$file" '$2 == f { print $1 }' SHA256SUMS)"
+  signed="$(tr -d '\r' <SHA256SUMS | awk -v f="$file" '$2 == f { print $1 }')"
   [[ "$signed" == "$pinned" ]] || { echo "error: $file: signed sum differs from pinned sum" >&2; exit 1; }
 
-  if [[ ! -f "$file" ]] || ! echo "$pinned  $file" | sha256sum -c --quiet - 2>/dev/null; then
+  if [[ ! -f "$file" ]] || [[ "$(sha256_of "$file")" != "$pinned" ]]; then
     curl -sSfL --proto '=https' "$base_url/$file" -o "$file.part"
-    echo "$pinned  $file.part" | sha256sum -c --quiet -
+    actual="$(sha256_of "$file.part")"
+    if [[ "$actual" != "$pinned" ]]; then
+      rm -f "$file.part"
+      echo "error: $file: sha256 $actual differs from pinned $pinned" >&2
+      exit 1
+    fi
     mv "$file.part" "$file"
   fi
   echo "verified $file"

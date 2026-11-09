@@ -10,6 +10,7 @@ lockfile = true
 flutter = "3.47.9"   # bundles Dart 3.13.x
 zig = "0.17.1"       # libghostty-vt 1.x requires Zig 0.17.x exactly
 minisign = "0.12"    # verifies upstream libghostty-vt release signatures
+jq = "1.8.2"         # reads native/upstream.json in tool/native/*.sh
 
 [env]
 # Zig's global cache can break libghostty-vt builds when reused; keep it in-repo.
@@ -18,19 +19,31 @@ ZIG_GLOBAL_CACHE_DIR = "{{config_root}}/.zig-cache-global"
 LIBCLANG_PATH = "/usr/lib/llvm-19/lib/libclang.so"
 
 # Standard entry points: `mise run <task>` (alias `mise <task>`).
+# Native tasks are bash scripts; `shell` makes them run under Git Bash on Windows.
 [tasks."native:fetch"]
 description = "Download and verify the pinned libghostty-vt release files"
-run = "tool/native/fetch_upstream.sh"
+shell = "bash -c"
+run = "bash tool/native/fetch_upstream.sh"
 
 [tasks."native:build"]
 description = "Build libghostty-vt offline for a Zig target (default: host Linux x64)"
 usage = 'arg "[target]" default="x86_64-linux-gnu"'
-run = "tool/native/build.sh ${usage_target?}"
+shell = "bash -c"
+run = "bash tool/native/build.sh ${usage_target?}"
+
+[tasks."native:host"]
+description = "Build libghostty-vt for this machine and stage it in .native-cache/host/ (used by the root pubspec)"
+shell = "bash -c"
+run = "bash tool/native/build_host.sh"
 
 [tasks.ffigen]
 description = "Regenerate the FFI bindings from the libghostty-vt headers (needs libclang)"
-depends = ["native:build"]
+depends = ["native:host"]
 run = "dart run packages/ghostty_dart/tool/ffigen.dart"
+
+[tasks.deps]
+description = "Resolve workspace dependencies exactly as locked in pubspec.lock"
+run = "dart pub get --enforce-lockfile"
 
 [tasks.format]
 description = "Format all Dart code"
