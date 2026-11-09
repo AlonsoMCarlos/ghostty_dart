@@ -53,7 +53,13 @@ void main() {
     () async {
       final owners = <Element, List<String>>{};
       for (final module in _modules) {
-        final path = '$lib/src/$module/$module.dart';
+        // Analyzer paths must be normalized (Windows: no mixed separators).
+        final path = session.resourceProvider.pathContext.join(
+          lib,
+          'src',
+          module,
+          '$module.dart',
+        );
         final library = await _library(session, path);
         for (final element in library.exportNamespace.definedNames2.values) {
           (owners[element] ??= []).add(module);
@@ -105,13 +111,16 @@ void main() {
     () async {
       final exportedElements = exported.values.toSet();
       final unexported = <String>[];
-      final files = Directory('$lib/src')
+      final pathContext = session.resourceProvider.pathContext;
+      final files = Directory(pathContext.join(lib, 'src'))
           .listSync(recursive: true)
           .whereType<File>()
           .where((f) => f.path.endsWith('.dart'))
           .where((f) => !f.path.endsWith('bindings.g.dart'));
       for (final file in files) {
-        final result = await session.getResolvedLibrary(file.absolute.path);
+        final result = await session.getResolvedLibrary(
+          pathContext.normalize(file.absolute.path),
+        );
         // Part files are reached through their library.
         if (result is! ResolvedLibraryResult) continue;
         final library = result.element;

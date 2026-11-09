@@ -1,8 +1,12 @@
 // The Dart sys callbacks, checked in a separate process (see sys_probe.dart
 // for why they cannot run inside the shared `dart test` process).
 //
-// setUpAll runs the probe once with `dart run` (about a second) and parses
-// the one JSON object it prints; each test then only asserts on its keys.
+// setUpAll runs the probe once (about a second) and parses the one JSON
+// object it prints; each test then only asserts on its keys. The probe runs
+// on the test's own VM executable, not `dart run`: the VM finds the native
+// asset mapping `dart test` already wrote in .dart_tool/, while `dart run`
+// would re-bundle the library, which fails on Windows because this process
+// holds the DLL open.
 // To debug a failure, run `dart run test/sys/sys_probe.dart` from the
 // package root and read the JSON.
 
@@ -22,12 +26,11 @@ void main() {
     )!;
     final packageRoot = library.resolve('..').toFilePath();
     final result = await Process.run(Platform.resolvedExecutable, [
-      'run',
       'test/sys/sys_probe.dart',
     ], workingDirectory: packageRoot);
     expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
     probeStderr = result.stderr as String;
-    // `dart run` may print build-hook output before the probe's JSON.
+    // A `dart` launcher may print build-hook output before the probe's JSON.
     final stdout = result.stdout as String;
     probe =
         jsonDecode(stdout.substring(stdout.indexOf('{')))
