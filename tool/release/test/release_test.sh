@@ -90,7 +90,10 @@ pkg() { env "$@" bash "$root/tool/release/package.sh" "$tmp/out/a.tar.gz"; }
 check "package: no argument fails" 1 "usage: package.sh" bash "$root/tool/release/package.sh"
 check "package: a missing dart fails" 1 "dart not found" pkg CI= DART="$tmp/none/dart"
 check "package: writes the archive and prints its sha256" 0 "^sha256=$(printf archive | sha256sum | cut -d' ' -f1)$" pkg CI= DART="$bin/dart"
-check "package: runs pub with --to-archive and --skip-validation" 0 "pub publish --to-archive=$tmp/out/a.tar.gz --skip-validation --directory=$root/packages/ghostty_dart" cat "$tmp/dart-package.log"
+# The repo root's spelling depends on how bash was started (on Windows mise
+# may hand it D:/... or /d/...), so match the flags and the package dir apart.
+check "package: runs pub with --to-archive and --skip-validation" 0 "pub publish --to-archive=$tmp/out/a.tar.gz --skip-validation --directory=" cat "$tmp/dart-package.log"
+check "package: publishes the ghostty_dart package dir" 0 "/packages/ghostty_dart" cat "$tmp/dart-package.log"
 
 # ------------------------------------------------------------- upload
 up="$tmp/up"
