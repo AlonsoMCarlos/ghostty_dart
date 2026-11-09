@@ -36,6 +36,7 @@ ADRs in `docs/internal/adr/`. Research with sources in `docs/internal/research/`
 - **0005** English code and docs; user-facing docs are bilingual en/es.
 - **0007** Package names are `ghostty_dart*`. Every README carries the "unofficial, not affiliated" notice and does not use the Ghostty logo.
 - **0008** Prebuilt release pipeline: 12 assets named in `native/prebuilt_assets.json`, stripped and bit-reproducible (non-Apple built twice and compared), SLSA L3 attestations from `native-build.yml`, immutable releases tagged `native-v<version>-r<n>`, hashes pinned into `prebuilt.dart` through a reviewed PR (`native:pin`).
+- **0009** The package names are kept without asking the Ghostty maintainers first (supersedes that line of 0007).
 - **0006** Native lifetime and public API conventions. Details are in `docs/internal/architecture/ghostty_dart-conventions.md`, which **every change to `ghostty_dart` must follow**. It covers the handle base, the finalizer rules, callables, borrowed views and epochs, tolerant enums, the naming rules (§11), and the analyzer audit that keeps `dart:ffi` out of the public API.
 
 If a change contradicts an ADR, write a new ADR that supersedes it. Do not silently diverge.
