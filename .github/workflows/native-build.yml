@@ -1,0 +1,237 @@
+# Reusable workflow: builds every prebuilt libghostty-vt asset of ADR 0008
+# (names, targets, builders and smoke runners in native/prebuilt_assets.json),
+# proves the non-Apple builds reproducible, checks every binary, and, when
+# `attest` is true, attests their SLSA build provenance.
+#
+# Outputs: the `native-assets` artifact (the 12 assets plus SHA256SUMS), the
+# `native-buildinfo` artifact (runner image and toolchain per build), and the
+# canonical SHA256SUMS as the `sums` output. Every later job checks the
+# artifact's bytes against `sums` (tool/native/sums.sh verify), so a
+# re-uploaded artifact is detected.
+#
+# Attestation runs here, in a dedicated job of this reusable workflow, so the
+# signing identity is this file (SLSA Build L3: the caller cannot influence
+# the build); verify with --signer-workflow .../native-build.yml.
+#
+# Trust: read-only token for every build job, no secrets, no persisted git
+# credentials, no caches of any kind (a cache is writable by other runs), and
+# mise never installs anything beyond the tools a job names. Every download
+# (upstream tarballs, NDK, Dart SDK) is verified against a pinned hash and
+# extracted fresh. Every step runs `bash -euo pipefail` (defaults.run.shell).
+name: Native build
+
+on:
+  workflow_call:
+    inputs:
+      attest:
+        description: Attest build provenance (only when publishing)
+        type: boolean
+        default: false
+    outputs:
+      sums:
+        description: Canonical SHA256SUMS of the release assets
+        value: ${{ jobs.verify.outputs.sums }}
+      sums-sha256:
+        description: sha256 of that SHA256SUMS
+        value: ${{ jobs.verify.outputs.sums-sha256 }}
+      smoke:
+        description: Required smoke tests, [{asset, runner, dart}]
+        value: ${{ jobs.plan.outputs.smoke }}
+      smoke-best-effort:
+        description: Best-effort smoke tests, same shape
+        value: ${{ jobs.plan.outputs.smoke-best-effort }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  # Keep in sync with native-release.yml and ci.yml.
+  MISE_VERSION: 2026.11.2
+  # `mise run` would otherwise install every missing tool of mise.toml
+  # (task.run_auto_install, auto_install: both default to true), including
+  # tools that do not exist for the runner's platform.
+  MISE_AUTO_INSTALL: "false"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  MISE_EXEC_AUTO_INSTALL: "false"
+  MISE_NOT_FOUND_AUTO_INSTALL: "false"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      linux: ${{ steps.matrix.outputs.linux }}
+      macos: ${{ steps.matrix.outputs.macos }}
+      smoke: ${{ steps.matrix.outputs.smoke }}
+      smoke-best-effort: ${{ steps.matrix.outputs.smoke_best_effort }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      - name: Matrices from native/prebuilt_assets.json
+        id: matrix
+        run: mise run native:matrix
+
+  # Every Linux-built asset (Linux, Windows, Android) is built twice, in two
+  # independent jobs on fresh VMs; `verify` fails on any hash difference.
+  build-linux:
+    name: build ${{ matrix.asset }} (${{ matrix.attempt }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        asset: ${{ fromJSON(needs.plan.outputs.linux) }}
+        attempt: [a, b]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: zig jq minisign
+          cache: false
+      - name: Build
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: mise run native:release-asset "$ASSET"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.asset }}-${{ matrix.attempt }}
+          path: |
+            .native-cache/release/${{ matrix.asset }}
+            .native-cache/release/${{ matrix.asset }}.buildinfo
+          if-no-files-found: error
+          retention-days: 7
+
+  # Apple dylibs are built once, on macOS: upstream links them with the
+  # pinned Xcode's `ld` (release_asset.sh selects and checks it), and iOS
+  # needs the Xcode SDK. Apple ld output carries toolchain data, so it is not
+  # held to the bit-identical check.
+  build-apple:
+    name: build ${{ matrix.asset }}
+    needs: plan
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        asset: ${{ fromJSON(needs.plan.outputs.macos) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: zig jq minisign
+          cache: false
+      - name: Build
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: mise run native:release-asset "$ASSET"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.asset }}-a
+          path: |
+            .native-cache/release/${{ matrix.asset }}
+            .native-cache/release/${{ matrix.asset }}.buildinfo
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    name: verify (reproducibility + format checks)
+    needs: [build-linux, build-apple]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      sums: ${{ steps.sums.outputs.sums }}
+      sums-sha256: ${{ steps.sums.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No Flutter: check_binary.sh fetches the pinned Dart SDK itself.
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq minisign
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          path: built
+      - name: Compare the double builds and assemble the release dir
+        run: mise run native:dist built dist buildinfo.tsv
+      - name: Check every binary
+        run: mise run native:check --dist dist
+      - name: Export SHA256SUMS
+        id: sums
+        run: mise run native:sums-output dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-assets
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-buildinfo
+          path: buildinfo.tsv
+          if-no-files-found: error
+          retention-days: 7
+
+  # The only job with signing permissions, and it builds nothing: it attests
+  # exactly the bytes `verify` exported, after checking them against `sums`.
+  attest:
+    name: attest build provenance
+    needs: verify
+    if: inputs.attest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # Sigstore OIDC certificate
+      attestations: write # store the attestation
+      artifact-metadata: write # storage record (required by actions/attest's README)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-assets
+          path: dist
+      - name: Check the artifact against the verified SHA256SUMS
+        env:
+          SUMS: ${{ needs.verify.outputs.sums }}
+        run: |
+          printf '%s\n' "$SUMS" >"$RUNNER_TEMP/SHA256SUMS.expected"
+          mise run native:sums dist "$RUNNER_TEMP/SHA256SUMS.expected"
+      - name: Attest every asset and SHA256SUMS
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*

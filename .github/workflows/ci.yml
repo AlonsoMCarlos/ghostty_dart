@@ -1,7 +1,8 @@
-# Runs `mise run check` (format check, analyze, tests, cooldown) on Linux,
-# macOS (arm64) and Windows, against libghostty-vt built on each runner from
-# the minisign- and sha256-verified upstream tarballs. A separate job scans
-# the full git history and the working tree for leaked secrets (gitleaks).
+# Runs `mise run check` (format check, analyze, tests, cooldown, workflow and
+# shell lint) on Linux, macOS (arm64) and Windows, against libghostty-vt built
+# on each runner from the minisign- and sha256-verified upstream tarballs.
+# A separate job scans the full git history and the working tree for leaked
+# secrets (gitleaks).
 #
 # Supply chain (AGENTS.md): actions pinned by commit SHA to releases at least
 # 3 days old, no secrets, read-only token, no persisted git credentials.
@@ -42,7 +43,7 @@ jobs:
       - name: Install tools (mise.toml, verified against mise.lock)
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: 2026.11.2
+          version: 2026.11.2 # keep in sync with native-build.yml and native-release.yml
           cache: true
 
       - name: Locate pub cache
@@ -68,6 +69,11 @@ jobs:
 
       - name: Build libghostty-vt for the host
         run: mise run native:host
+
+      # The release checker (tool/native/check_binary.dart) on a real ELF, PE
+      # or Mach-O per runner, every CI run, not only at release time.
+      - name: Check the host build (format, arch, exports, deps)
+        run: mise run native:check --host
 
       - name: Check
         run: mise run check

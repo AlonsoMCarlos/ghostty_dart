@@ -35,17 +35,18 @@ ADRs in `docs/internal/adr/`. Research with sources in `docs/internal/research/`
 - **0004** `ghostty_dart_xterm` is a thin adapter. We never claim "drop-in" without the compatibility suite proving it.
 - **0005** English code and docs; user-facing docs are bilingual en/es.
 - **0007** Package names are `ghostty_dart*`. Every README carries the "unofficial, not affiliated" notice and does not use the Ghostty logo.
+- **0008** Prebuilt release pipeline: 12 assets named in `native/prebuilt_assets.json`, stripped and bit-reproducible (non-Apple built twice and compared), SLSA L3 attestations from `native-build.yml`, immutable releases tagged `native-v<version>-r<n>`, hashes pinned into `prebuilt.dart` through a reviewed PR (`native:pin`).
 - **0006** Native lifetime and public API conventions. Details are in `docs/internal/architecture/ghostty_dart-conventions.md`, which **every change to `ghostty_dart` must follow**. It covers the handle base, the finalizer rules, callables, borrowed views and epochs, tolerant enums, the naming rules (§11), and the analyzer audit that keeps `dart:ffi` out of the public API.
 
 If a change contradicts an ADR, write a new ADR that supersedes it. Do not silently diverge.
 
 ## Toolchain: mise is the standard
 
-- **[mise](https://mise.jdx.dev) manages every tool.** `mise install` at the repo root installs the exact versions in `mise.toml`: Flutter 3.47.9 (which bundles Dart 3.13.7), Zig 0.17.1, minisign and jq.
+- **[mise](https://mise.jdx.dev) manages every tool.** `mise install` at the repo root installs the exact versions in `mise.toml`: Flutter 3.47.9 (which bundles Dart 3.13.7), Zig 0.17.1, minisign, jq, plus actionlint and shellcheck (`lint:ci`).
   - Checksums are recorded in `mise.lock`. Commit both files.
   - `minimum_release_age = "3d"` enforces the cooldown for tools.
   - Never install project tools globally or via ad-hoc downloads. Add them to `mise.toml`.
-  - System packages mise cannot provide: `libclang-dev` (ffigen only, from the distro), plus the Android SDK and Xcode for mobile builds.
+  - System packages mise cannot provide: `libclang-dev` (ffigen only, from the distro), plus the Android SDK and Xcode for mobile app builds. Release builds pin the NDK sysroot (`tool/native/fetch_ndk.sh`) and the Xcode version (`native/toolchain.json`).
 - Dart SDK constraint `^3.11.0`. `package:test` and workspace globs need 3.11.
 - CI runs on the minimum and on the mise-pinned stable.
 - Pub workspaces: the root `pubspec.yaml` has `publish_to: none` and `workspace:`; members have `resolution: workspace`. No melos unless a real need appears.
@@ -53,11 +54,14 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
   - `tool/native/build.sh` builds offline, using upstream's deps tarball via `--system`, a fresh Zig cache, and `unshare -rn` where available.
   - `tool/native/fetch_upstream.sh` verifies the minisign signature *and* the pinned sha256.
   - `tool/native/build_host.sh` builds for the host (`x86_64-linux-gnu`, `aarch64-macos`, `x86_64-windows-gnu`: upstream's tier-1 Windows ABI) and stages the library under its bundled name, plus the headers, in `.native-cache/host/`.
-  - The scripts are bash and run on Linux, macOS (bash 3.2, `shasum`) and Windows (Git Bash). Shared helpers live in `tool/native/lib.sh`.
+  - `tool/native/release_asset.sh <asset>` builds one prebuilt release asset from `native/prebuilt_assets.json` (ADR 0008: `-Dstrip=true`, fresh caches, sources re-verified and extracted fresh every time) into `.native-cache/release/`.
+  - `tool/native/check_binary.dart` checks each asset's format, architecture, exports (against the headers), dependencies and platform floors with its own bounded ELF/PE/Mach-O reader. `tool/native/pin_prebuilt.dart` pins a release into `prebuilt.dart` after verifying its attestations. Both are tested by `test:tool`.
+  - The scripts are bash and run on Linux, macOS (bash 3.2, `shasum`) and Windows (Git Bash). Shared helpers live in `tool/native/lib.sh`. Do not use GNU-only tools (`sha256sum`, `find -printf`, `mapfile`) outside Linux-only paths.
 - Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
 - Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` with `path: .native-cache/host/`. A directory `path` makes the hook pick the target OS's bundled library name inside it, so the same pubspec works on every host.
-- CI: `.github/workflows/ci.yml` runs `deps`, `native:host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. A `secrets` job runs gitleaks (pinned release binary, sha256 verified) over the full history and the working tree.
+- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest.
+- Native releases: `.github/workflows/native-release.yml` (tag `native-v<version>-r<n>`, manual dry run, or any PR touching the native pipeline) calls the reusable `native-build.yml` (read-only build jobs, no caches, a/b reproducibility check, format checks, attestation job), smoke-tests on six real runners, and publishes only after approval in the `native-release` environment. PRs never attest or publish. A `secrets` job runs gitleaks (pinned release binary, sha256 verified) over the full history and the working tree.
 
 ## Commands
 
@@ -73,7 +77,13 @@ mise run format
 mise run analyze        # format check + dart analyze --fatal-infos
 mise run test           # runs inside packages/ghostty_dart, so the build hook runs
 mise run cooldown       # no locked dependency younger than 3 days
-mise run check          # everything CI runs
+mise run check          # everything CI runs (analyze, test, test:tool, cooldown, lint:ci)
+mise run lint:ci        # actionlint + shellcheck
+mise run test:tool      # tests of the release tools
+mise run native:release-asset <asset>  # one ADR 0008 asset -> .native-cache/release/
+mise run native:check <asset> [file]   # verify a release asset
+mise run native:ndk     # pinned Android NDK sysroot (Linux only)
+mise run native:pin <tag>              # pin a published release into prebuilt.dart (verifies attestations)
 mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchmarks/README.md)
 ```
 
@@ -143,7 +153,7 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 - Prefer zero dependencies in `ghostty_dart`. Every new dependency needs a justification in the PR.
 - Before using a library's API, read its source in `~/.pub-cache`. Do not create throwaway projects that compile unpinned code.
 - Pin GitHub Actions by commit SHA.
-- Native binaries are built only in CI, with provenance attestations.
+- Native binaries are built only in CI, with provenance attestations (ADR 0008, `native-release.yml`). Non-Apple assets are built twice and must be bit-identical.
 
 ## Docs and language
 

@@ -1,0 +1,25 @@
+{
+  "android_ndk": {
+    "release": "r28c",
+    "revision": "28.2.13676358",
+    "url": "https://dl.google.com/android/repository/android-ndk-r28c-linux.zip",
+    "size": 722261334,
+    "sha1": "a7b54a5de87fecd125a17d54f73c446199e72a64",
+    "sha256": "dfb20d396df28ca02a8c708314b814a4d961dc9074f9a161932746f815aa552f"
+  },
+  "xcode": {
+    "version": "16.4",
+    "build": "16F6",
+    "path": "/Applications/Xcode_16.4.app"
+  },
+  "dart_sdk": {
+    "version": "3.13.7",
+    "note": "The Dart SDK bundled in Flutter 3.47.9, for jobs without Flutter: the release verify job (linux-x64) and the arm64 smoke tests (Flutter publishes no linux-arm64 or windows-arm64 SDK). sha256 from Google's .sha256sum file next to each archive (published 2026-10-23).",
+    "base_url": "https://storage.googleapis.com/dart-archive/channels/stable/release/3.13.7/sdk",
+    "sha256": {
+      "linux-arm64": "887cbb763bc4a1d6f3d7c34a6ea08f0f05211807abf98c06d6e4263907ccac1a",
+      "windows-arm64": "02d1dcf26438dfd65be6cc3075c3b7f23fdef84d2601b488e59aa8aa8cd742b5",
+      "linux-x64": "eb99aed266efbcb615c6ae21c12f52cfe935b9f208bccc5fea7f64c21e867229"
+    }
+  }
+}

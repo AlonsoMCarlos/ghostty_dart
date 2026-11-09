@@ -1,0 +1,229 @@
+# Builds, checks and smoke-tests the prebuilt libghostty-vt binaries, and
+# for a native-v* tag attests and publishes them (ADR 0008).
+#
+#   - Pull request touching the native pipeline: build, compare, check and
+#     smoke-test; no attestation, no release.
+#   - Dry run: Actions > Native release > Run workflow, `publish` unticked.
+#   - Release: push a tag native-v<upstream version>-r<n> (e.g.
+#     native-v1.0.0-r1) on a commit of main. The release job then waits for
+#     approval in the protected `native-release` environment. A dispatch with
+#     `publish` ticked on such a tag does the same.
+#
+# Signing happens inside the reusable native-build.yml (its `attest` job),
+# never here; the release job can only create the GitHub release, and only
+# after checking the downloaded bytes against the verified SHA256SUMS.
+# Pinning the hashes into the hook is a separate, reviewed PR
+# (`mise run native:pin <tag>`, which verifies the attestations).
+#
+# Every step is a mise task (reproducible locally) run by
+# `bash -euo pipefail`; untrusted values reach scripts only through env.
+name: Native release
+
+on:
+  push:
+    tags: ['native-v*']
+  pull_request:
+    paths:
+      - native/**
+      - tool/native/**
+      - .github/workflows/native-*.yml
+      - packages/ghostty_dart/hook/**
+      - packages/ghostty_dart/lib/src/native/**
+      - mise.toml
+      - mise.lock
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the GitHub release (needs a native-v* tag ref on main)
+        type: boolean
+        default: false
+
+permissions: {}
+
+# A newer push to a PR supersedes its run; a release is never cancelled
+# half-way (a second run for the same tag waits).
+concurrency:
+  group: native-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  # Keep in sync with native-build.yml and ci.yml.
+  MISE_VERSION: 2026.11.2
+  # See native-build.yml: mise installs only the tools a job names.
+  MISE_AUTO_INSTALL: "false"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  MISE_EXEC_AUTO_INSTALL: "false"
+  MISE_NOT_FOUND_AUTO_INSTALL: "false"
+
+jobs:
+  validate:
+    name: validate ref
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.ref.outputs.publish }}
+      tag: ${{ steps.ref.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # origin/main, to prove the tagged commit is on it
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      - name: Decide whether to publish, and validate the tag
+        id: ref
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: mise run native:validate-ref
+
+  build:
+    name: build
+    needs: validate
+    # The ceiling for the reusable workflow: only its `attest` job (run only
+    # when publishing) uses the three write permissions; its build jobs ask
+    # for contents: read.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/native-build.yml
+    with:
+      attest: ${{ needs.validate.outputs.publish == 'true' }}
+
+  # The full Dart suite against the downloaded binary on each real OS, through
+  # the root pubspec's `source: path`; runners come from the manifest.
+  smoke:
+    name: smoke (${{ matrix.runner }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.smoke) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Flutter only where it exists; elsewhere smoke.sh uses the pinned Dart SDK.
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ matrix.dart == 'mise' && 'flutter jq' || 'jq' }}
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-assets
+          path: dist
+      - name: Test
+        env:
+          ASSET: ${{ matrix.asset }}
+          SUMS: ${{ needs.build.outputs.sums }}
+        run: |
+          printf '%s\n' "$SUMS" >"$RUNNER_TEMP/SHA256SUMS.expected"
+          mise run native:smoke "$ASSET" dist "$RUNNER_TEMP/SHA256SUMS.expected"
+
+  # Windows arm64 is best effort (ADR 0003): the test step may fail without
+  # failing the job, and its outcome goes into the release notes.
+  smoke-best-effort:
+    name: smoke (${{ matrix.runner }}, best effort)
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    continue-on-error: true
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.test.outcome }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.smoke-best-effort) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: ${{ matrix.dart == 'mise' && 'flutter jq' || 'jq' }}
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-assets
+          path: dist
+      - name: Test
+        id: test
+        continue-on-error: true
+        env:
+          ASSET: ${{ matrix.asset }}
+          SUMS: ${{ needs.build.outputs.sums }}
+        run: |
+          printf '%s\n' "$SUMS" >"$RUNNER_TEMP/SHA256SUMS.expected"
+          mise run native:smoke "$ASSET" dist "$RUNNER_TEMP/SHA256SUMS.expected"
+
+  release:
+    name: release
+    needs: [validate, build, smoke, smoke-best-effort]
+    # !cancelled() lets a failed best-effort job through; the required ones
+    # are checked explicitly.
+    if: >-
+      !cancelled() && needs.validate.outputs.publish == 'true' &&
+      needs.build.result == 'success' && needs.smoke.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: native-release
+    permissions:
+      contents: write # gh release create/upload/edit; nothing else
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-assets
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-buildinfo
+          path: info
+      # The approval wait can last hours; refuse anything but the verified bytes.
+      - name: Check the artifact against the verified SHA256SUMS
+        env:
+          SUMS: ${{ needs.build.outputs.sums }}
+        run: |
+          printf '%s\n' "$SUMS" >"$RUNNER_TEMP/SHA256SUMS.expected"
+          mise run native:sums dist "$RUNNER_TEMP/SHA256SUMS.expected"
+      - name: Write release notes
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          WIN_ARM64: ${{ needs.smoke-best-effort.outputs.outcome || 'failed before the test ran' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mise run native:release-notes "$TAG" dist info/buildinfo.tsv "$WIN_ARM64" "$RUN_URL" >"$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+      - name: Publish the GitHub release
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: mise run native:publish "$TAG" dist "$RUNNER_TEMP/notes.md"
