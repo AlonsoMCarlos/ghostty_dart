@@ -1,0 +1,26 @@
+# Files left out of the published archive. pub reads this file instead of
+# .gitignore files when it lists the package, so it repeats the .gitignore
+# entries that can appear in this directory (root .gitignore).
+
+# Dart / Flutter / IDE
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+coverage/
+*.iml
+.idea/
+.vscode/
+
+# dartdoc output
+doc/api/
+
+# Native build artefacts
+.native-cache/
+.zig-cache/
+.zig-cache-global/
+zig-out/
+
+# Repo-only tooling: tool/ffigen.dart needs libclang and the repo's
+# .native-cache/ headers, so it cannot run from the published package.
+tool/

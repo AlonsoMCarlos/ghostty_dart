@@ -2,20 +2,16 @@
 # Shared helpers for tool/native/*.sh. Source it; do not run it.
 # Portable across Linux, macOS (no sha256sum) and Windows Git Bash (CRLF jq).
 
+# The generic helpers (die, write_outputs, sha256_of, require_on_main) live in
+# tool/lib.sh, shared with tool/release/*.
+# shellcheck source=tool/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
 # jq_raw <filter> <file> [jq args...]: raw jq output without the CR that the
 # native Windows jq adds to each line.
 jq_raw() {
   local filter="$1" file="$2"; shift 2
   jq -r "$@" "$filter" "$file" | tr -d '\r'
-}
-
-# sha256_of <file>: prints the lowercase hex sha256 of a file.
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
-  else
-    shasum -a 256 "$1" | cut -d' ' -f1
-  fi
 }
 
 # native_path <path>: the path in the form native (non-MSYS) programs such as

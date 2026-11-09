@@ -51,7 +51,7 @@ defaults:
     shell: bash --noprofile --norc -euo pipefail {0}
 
 env:
-  # Keep in sync with native-build.yml and ci.yml.
+  # Keep in sync with the other workflows (checked by test:release).
   MISE_VERSION: 2026.11.2
   # See native-build.yml: mise installs only the tools a job names.
   MISE_AUTO_INSTALL: "false"

@@ -1,0 +1,180 @@
+# Publishes ghostty_dart to pub.dev with GitHub's OIDC token (ADR 0010).
+#
+#   - Tag push ghostty_dart-v<X.Y.Z> on a commit of main, or
+#   - Actions > Publish ghostty_dart > Run workflow on such a tag (what
+#     release-please.yml does: `gh workflow run publish.yml --ref <tag>`).
+#     A dispatch on a branch is refused: pub.dev needs ref_type=tag.
+#
+# The three jobs mirror dart-lang/setup-dart's publish.yml on main at
+# a1d8526c926344e01ba48a7368788c05ac98cb29 (2026-10-31, PRs #203 and #206,
+# not yet in a release), adapted to mise:
+#   1. validate: the tag matches pubspec.yaml and CHANGELOG.md and is on main;
+#      the mise-pinned toolchain resolves with --enforce-lockfile and runs
+#      `mise run check` and `dart pub publish --dry-run`.
+#   2. package: `dart pub publish --to-archive` with no network, by the
+#      pinned and sha256-verified Dart SDK (native/toolchain.json); the
+#      archive and its sha256 are the job's outputs.
+#   3. publish: in the protected `pub.dev` environment (required reviewer,
+#      tags ghostty_dart-v* only; pub.dev requires that environment too), the
+#      only job with id-token: write. It checks the archive against job 2's
+#      sha256, then `mise run release:upload` mints the OIDC token for
+#      https://pub.dev itself (the steps of setup-dart's OIDC setup, so no
+#      unverified Dart ever sees the token), registers it with the pinned
+#      Dart and runs `dart pub publish --from-archive --force` on those exact
+#      bytes. No pub get, no build, nothing from the package runs there.
+# We do not call setup-dart's reusable workflow: it resolves the whole
+# workspace (benchmarks needs Flutter, which it installs unpinned) without
+# --enforce-lockfile, and its Dart download has no hash check.
+#
+# Every step is a mise task (reproducible locally). No secrets, no caches,
+# no persisted git credentials; every step runs `bash -euo pipefail`
+# (defaults.run.shell) and gets untrusted values through env only.
+name: Publish ghostty_dart
+
+on:
+  push:
+    tags: ['ghostty_dart-v*']
+  workflow_dispatch:
+
+permissions: {}
+
+# One run per tag; a publish is never cancelled half-way.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  # Keep in sync with the other workflows (checked by test:release).
+  MISE_VERSION: 2026.11.2
+  # See native-build.yml: mise installs only the tools a job names.
+  MISE_AUTO_INSTALL: "false"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  MISE_EXEC_AUTO_INSTALL: "false"
+  MISE_NOT_FOUND_AUTO_INSTALL: "false"
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.ref.outputs.tag }}
+      version: ${{ steps.ref.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tags and origin/main, to prove the tag is on main
+          persist-credentials: false
+      # Only jq first: a wrong ref fails in seconds, before the toolchain.
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      - name: Validate the tag against pubspec.yaml, CHANGELOG.md and main
+        id: ref
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: mise run release:validate-tag
+      # Then every tool of mise.toml (check needs zig, minisign, actionlint,
+      # ...), verified against mise.lock.
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          cache: false
+      - name: Resolve dependencies (pubspec.lock enforced)
+        run: mise run deps
+      - name: Build libghostty-vt for the host
+        run: mise run native:host
+      - name: Check
+        run: mise run check
+      - name: Publish dry run (warnings fail)
+        run: mise run publish:dry-run
+
+  package:
+    name: package
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      sha256: ${{ steps.archive.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      # The Dart SDK that Flutter 3.47.9 bundles, pinned by sha256 in
+      # native/toolchain.json; no Flutter is needed to write the archive.
+      - name: Fetch the pinned Dart SDK
+        run: |
+          bin="$(mise run native:dart-sdk linux-x64 "$RUNNER_TEMP/dart-sdk")"
+          echo "DART=$bin/dart" >>"$GITHUB_ENV"
+      - name: Write the archive (no network)
+        id: archive
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: mise run release:package "$RUNNER_TEMP/out/ghostty_dart-$VERSION.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-archive
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    name: publish to pub.dev
+    needs: [validate, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # pub.dev's automated publishing requires this environment, and GitHub
+    # holds the job here until the maintainer approves it.
+    environment: pub.dev
+    permissions:
+      # The checkout of the check scripts and native/toolchain.json. The repo
+      # is public, so this grants nothing a stranger lacks.
+      contents: read
+      id-token: write # the OIDC token pub.dev exchanges; nothing else
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.MISE_VERSION }}
+          install_args: jq
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package-archive
+          path: ${{ runner.temp }}/archive/
+      # The approval wait can last hours; refuse anything but the packaged bytes.
+      - name: Check the archive against the packaged sha256
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          SHA256: ${{ needs.package.outputs.sha256 }}
+        run: mise run release:check-archive "$RUNNER_TEMP/archive/ghostty_dart-$VERSION.tar.gz" "$SHA256" "$VERSION"
+      - name: Fetch the pinned Dart SDK
+        run: |
+          bin="$(mise run native:dart-sdk linux-x64 "$RUNNER_TEMP/dart-sdk")"
+          echo "DART=$bin/dart" >>"$GITHUB_ENV"
+      # Mints the OIDC token (id-token: write), masks it and registers it with
+      # the pinned Dart, all inside this step: the token never reaches
+      # $GITHUB_ENV or any other step. See tool/release/upload.sh.
+      - name: Publish the archive
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: mise run release:upload "$RUNNER_TEMP/archive/ghostty_dart-$VERSION.tar.gz"

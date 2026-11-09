@@ -1,0 +1,10 @@
+# dartdoc topics (dartdoc 9.0.11, pinned in tool/pana; also checked with the
+# 9.0.6 bundled with Dart 3.13.7). A topic appears in the API docs sidebar
+# only when at least one public member names it with
+# `{@category build-hook-options}`; the id is also its URL:
+# topics/build-hook-options-topic.html.
+dartdoc:
+  categories:
+    build-hook-options:
+      markdown: doc/build_hook_options.md
+      displayName: Build hook options

@@ -16,7 +16,10 @@ import 'result.dart';
 /// such as `1.0.0` or `1.1.0-dev+abc1234`.
 ///
 /// This is the library found at run time, which can differ from the 1.0.0
-/// headers this package was generated from.
+/// headers this package was generated from. Which library is loaded is
+/// chosen by the build hook's `source` option.
+///
+/// {@category build-hook-options}
 String get libghosttyVtVersion => ghostty_version().cast<Utf8>().toDartString();
 
 /// The optimisation mode the library was compiled with

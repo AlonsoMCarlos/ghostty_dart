@@ -17,3 +17,7 @@ zig-out/
 .claude/plan-runs/
 .claude/worktrees/
 .claude/settings.local.json
+
+# dartdoc output (`dart doc`). pub also leaves gitignored files out of the
+# publish archive.
+packages/*/doc/api/

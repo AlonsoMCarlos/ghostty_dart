@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in ghostty_dart does not work as documented.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security vulnerabilities do not belong
+        here**: use the [private report form](https://github.com/AlonsoMCarlos/ghostty_dart/security/advisories/new)
+        instead (see [SECURITY.md](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/SECURITY.md)).
+
+        If the bug reproduces with libghostty-vt from C, without these
+        bindings, it belongs to [Ghostty](https://github.com/ghostty-org/ghostty).
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: The `ghostty_dart` version from your `pubspec.lock`.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        Output of `dart --version` (or `flutter --version`), your OS and
+        architecture, the build target if different, and your
+        `hooks: user_defines: ghostty_dart:` settings, if any.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        The smallest Dart program or byte sequence that shows the problem.
+        For emulation bugs, the exact bytes written to the terminal help most.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and stack traces
+      description: Build hook output, exceptions, stack traces.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

@@ -1,8 +1,9 @@
-# Runs `mise run check` (format check, analyze, tests, cooldown, workflow and
-# shell lint) on Linux, macOS (arm64) and Windows, against libghostty-vt built
+# Runs `mise run check` (format check, analyze, tests, tool and release-script
+# tests, cooldown, translation check, workflow and shell lint) on Linux, macOS (arm64) and Windows, against libghostty-vt built
 # on each runner from the minisign- and sha256-verified upstream tarballs.
 # A separate job scans the full git history and the working tree for leaked
-# secrets (gitleaks).
+# secrets (gitleaks). The pana job scores the package as pub.dev does and
+# validates its publish archive (ADR 0010).
 #
 # Supply chain (AGENTS.md): actions pinned by commit SHA to releases at least
 # 3 days old, no secrets, read-only token, no persisted git credentials.
@@ -43,7 +44,7 @@ jobs:
       - name: Install tools (mise.toml, verified against mise.lock)
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: 2026.11.2 # keep in sync with native-build.yml and native-release.yml
+          version: 2026.11.2 # keep in sync with the other workflows (checked by test:release)
           cache: true
 
       - name: Locate pub cache
@@ -77,6 +78,45 @@ jobs:
 
       - name: Check
         run: mise run check
+
+  # Linux only: the score and the archive do not depend on the runner OS.
+  # Needs network (pana resolves dependencies and clones `repository`), but no
+  # native build: pana never runs build hooks.
+  pana:
+    name: pana and publish dry run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools (mise.toml, verified against mise.lock)
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: 2026.11.2 # keep in sync with the other workflows (checked by test:release)
+          cache: true
+
+      - name: Locate pub cache
+        run: echo "PUB_CACHE=$RUNNER_TEMP/pub-cache" >> "$GITHUB_ENV"
+
+      - name: Cache pub packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PUB_CACHE }}
+          key: pub-pana-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pubspec.lock', 'tool/pana/pubspec.lock') }}
+
+      - name: Resolve dependencies
+        run: mise run deps
+
+      - name: Score with pana (160/160 required)
+        run: mise run pana
+
+      # Warnings fail, hints do not (mise.toml, publish:dry-run).
+      - name: Publish dry run
+        run: mise run publish:dry-run
 
   secrets:
     name: secrets (gitleaks)

@@ -51,14 +51,16 @@ CodeConfig codeConfigFor(PrebuiltTarget target) => codeConfig(
           targetSdk: target.isSimulator
               ? IOSSdk.iPhoneSimulator
               : IOSSdk.iPhoneOS,
-          targetVersion: prebuiltMinIOSVersion,
+          deploymentVersion: AppleVersion(prebuiltMinIOSVersion),
         )
       : null,
   android: target.os == OS.android
       ? AndroidCodeConfig(targetNdkApi: prebuiltMinAndroidApi)
       : null,
   macOS: target.os == OS.macOS
-      ? MacOSCodeConfig(targetVersion: prebuiltMinMacOSVersion)
+      ? MacOSCodeConfig(
+          deploymentVersion: AppleVersion(prebuiltMinMacOSVersion),
+        )
       : null,
 );
 
@@ -123,7 +125,10 @@ void main() {
         codeConfig(
           OS.iOS,
           Architecture.arm64,
-          iOS: IOSCodeConfig(targetSdk: sdk, targetVersion: 15),
+          iOS: IOSCodeConfig(
+            targetSdk: sdk,
+            deploymentVersion: AppleVersion(15),
+          ),
         ),
       );
       expect(ios(IOSSdk.iPhoneOS).fileName, 'libghostty-vt-ios-arm64.dylib');
@@ -159,7 +164,10 @@ void main() {
           codeConfig(
             OS.iOS,
             Architecture.arm64,
-            iOS: IOSCodeConfig(targetSdk: IOSSdk.iPhoneOS, targetVersion: 12),
+            iOS: IOSCodeConfig(
+              targetSdk: IOSSdk.iPhoneOS,
+              deploymentVersion: AppleVersion(12),
+            ),
           ),
         ),
         12,
@@ -169,7 +177,7 @@ void main() {
           codeConfig(
             OS.macOS,
             Architecture.x64,
-            macOS: MacOSCodeConfig(targetVersion: 14),
+            macOS: MacOSCodeConfig(deploymentVersion: AppleVersion(14)),
           ),
         ),
         14,

@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an API, platform or capability that ghostty_dart lacks.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A Flutter widget (`ghostty_dart_flutter`), an adapter with the
+        `package:xterm` 4.0.0 API (`ghostty_dart_xterm`) and web support are
+        already planned; comments on how you would use them are welcome.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: >-
+        The API or behaviour you would like. If it maps to a libghostty-vt C
+        function, name it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds or other packages you tried.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true

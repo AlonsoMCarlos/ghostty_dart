@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/AlonsoMCarlos/ghostty_dart/security/advisories/new
+    about: Report vulnerabilities privately, never in a public issue.
+  - name: libghostty-vt engine bugs
+    url: https://github.com/ghostty-org/ghostty
+    about: Bugs that reproduce with libghostty-vt from C belong to Ghostty.

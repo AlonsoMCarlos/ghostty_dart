@@ -1,0 +1,122 @@
+# Opens and updates the release PR of ghostty_dart, and on its merge tags
+# ghostty_dart-v<version> and creates the GitHub release (ADR 0010).
+# Config: release-please-config.json and .release-please-manifest.json
+# (manifest mode; only packages/ghostty_dart is released).
+#
+# The token is GITHUB_TOKEN: no App, no secret. What it creates starts no
+# workflow run, so this workflow dispatches them (workflow_dispatch is the
+# documented exception):
+#   - a release was created -> publish.yml on the new tag (pub.dev's
+#     "Enable publishing from workflow_dispatch events" must be on);
+#   - the release PR was opened or updated -> ci.yml and dco.yml on its
+#     branch, so the PR gets its checks.
+#
+# Until the first version is published by hand and tagged (see
+# docs/internal/release-checklist.md), the `ready` job skips everything.
+#
+# These jobs install no tools (git and gh come with the runner), so their
+# steps run the scripts directly instead of mise tasks (AGENTS.md); the local
+# mirrors are `mise run release:ready` and `mise run release:dispatch`.
+# Every step runs `bash -euo pipefail` (defaults.run.shell); action outputs
+# reach scripts only through env, and the scripts check them (dispatch.sh
+# also refuses a tag that is not on main).
+name: Release please
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# Runs queue in push order; a half-done release is never cancelled.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  ready:
+    name: bootstrap gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tags
+          persist-credentials: false
+      - name: Look for a ghostty_dart-v<X.Y.Z> tag
+        id: check
+        run: bash tool/release/release_ready.sh
+
+  release-please:
+    name: release-please
+    needs: ready
+    if: needs.ready.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # As the action's README (v5.0.0) lists: contents for the release branch,
+    # tags and releases; pull-requests for the release PR; issues for its
+    # `autorelease: pending|tagged` labels (the labels API is the issues one).
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    outputs:
+      release_created: ${{ steps.release.outputs['packages/ghostty_dart--release_created'] }}
+      tag: ${{ steps.release.outputs['packages/ghostty_dart--tag_name'] }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      pr_branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+    steps:
+      # Bundles release-please 17.6.0 (its package-lock.json).
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  dispatch-publish:
+    name: dispatch publish.yml
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # the checkout of tool/release/, and fetching the tag and main
+      actions: write # gh workflow run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Dispatch publish.yml on the new tag (if it is on main)
+        env:
+          TAG: ${{ needs.release-please.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tool/release/dispatch.sh publish "$TAG"
+
+  dispatch-pr-checks:
+    name: dispatch the release PR's checks
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # the checkout of tool/release/
+      actions: write # gh workflow run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Dispatch ci.yml and dco.yml on the release PR branch
+        env:
+          BRANCH: ${{ needs.release-please.outputs.pr_branch }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tool/release/dispatch.sh pr "$BRANCH"

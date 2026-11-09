@@ -49,7 +49,7 @@ defaults:
     shell: bash --noprofile --norc -euo pipefail {0}
 
 env:
-  # Keep in sync with native-release.yml and ci.yml.
+  # Keep in sync with the other workflows (checked by test:release).
   MISE_VERSION: 2026.11.2
   # `mise run` would otherwise install every missing tool of mise.toml
   # (task.run_auto_install, auto_install: both default to true), including

@@ -2,7 +2,7 @@ name: ghostty_dart
 description: >-
   Dart bindings for libghostty-vt, the terminal emulation engine of Ghostty:
   VT parsing, screen and render state, selection, search, key/mouse encoding.
-version: 0.1.0-dev.1
+version: 0.1.0
 repository: https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart
 issue_tracker: https://github.com/AlonsoMCarlos/ghostty_dart/issues
 topics: [terminal, terminal-emulator, ffi, vt100, ghostty]
@@ -13,7 +13,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  code_assets: ^2.1.0
+  code_assets: ^2.2.0
   crypto: ^3.0.7
   ffi: ^2.2.0
   hooks: ^2.2.0
@@ -21,4 +21,7 @@ dependencies:
 dev_dependencies:
   analyzer: ^14.7.0
   ffigen: ^23.0.0
+  # analysis_options.yaml includes package:lints; pana keeps hosted
+  # dev_dependencies when it analyses the archive.
+  lints: ^6.1.0
   test: ^1.33.0

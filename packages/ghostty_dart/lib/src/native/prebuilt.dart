@@ -165,8 +165,8 @@ const prebuiltTargets = <PrebuiltTarget>[
 /// version requirement.
 int? targetPlatformVersion(CodeConfig code) => switch (code.targetOS) {
   OS.android => code.android.targetNdkApi,
-  OS.iOS => code.iOS.targetVersion,
-  OS.macOS => code.macOS.targetVersion,
+  OS.iOS => code.iOS.deploymentVersion.major,
+  OS.macOS => code.macOS.deploymentVersion.major,
   _ => null,
 };
 

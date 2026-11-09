@@ -1,0 +1,17 @@
+# Pinned pana, kept out of the pub workspace so its ~25 dependencies never
+# enter the workspace lockfile (ADR 0010). Run it with `mise run pana`.
+name: ghostty_dart_pana
+description: Runs pana, pub.dev's package analyzer, at a pinned version.
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  # Exact pins; review the whole lock on any change.
+  # dartdoc: pub.dev scores with dartdoc, not `dart doc`, and pana's
+  # `--dartdoc-version sdk` fails on Dart 3.13 (`dart doc` rejects pana's
+  # `--sanitize-html`). Locking it here replaces pana's unpinned
+  # `pub global activate dartdoc`; run_pana.sh passes it as --dartdoc-command.
+  dartdoc: 9.0.11 # published 2026-10-09, latest on 2026-11-09
+  pana: 0.23.19 # published 2026-09-01, latest on 2026-11-09

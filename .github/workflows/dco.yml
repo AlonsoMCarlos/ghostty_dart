@@ -1,0 +1,55 @@
+# Developer Certificate of Origin (ADR 0010): every non-merge commit of a
+# pull request needs a Signed-off-by trailer matching its author
+# (tool/check_dco.sh; tool/dco_range.sh picks the range). Our own check, no
+# third-party App.
+#
+#   - pull_request (never pull_request_target): the PR's commits, i.e. those
+#     of its head that the up-to-date base does not have. The checkout is the
+#     PR merge commit, so its first parent is the base tip and its second the
+#     PR head.
+#   - workflow_dispatch: the dispatched branch's commits that main lacks.
+#     release-please.yml dispatches it on the release PR branch, whose own
+#     pull_request event starts no run (GITHUB_TOKEN). Only that run, started
+#     by github-actions[bot] on release-please's branch, accepts
+#     release-please's commits with the configured maintainer sign-off.
+#
+# This job installs no tools (bash and git only), so its step runs the
+# script directly instead of a mise task (AGENTS.md); `mise run dco` is the
+# local equivalent. Read-only token, no secrets; every step runs
+# `bash -euo pipefail` (defaults.run.shell).
+name: DCO
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dco-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  dco:
+    name: dco
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the whole PR range, whatever its length
+          persist-credentials: false
+      - name: Check every commit is signed off by its author
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: bash tool/dco_range.sh

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.6.0/schemas/config.json",
+  "release-type": "dart",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "separate-pull-requests": true,
+  "signoff": "Carlos Alonso Martín <42724534+AlonsoMCarlos@users.noreply.github.com>",
+  "packages": {
+    "packages/ghostty_dart": {
+      "component": "ghostty_dart",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

@@ -32,17 +32,11 @@ if [[ "$publish" == true ]]; then
     echo "error: publishing needs a tag native-v$version-r<n> (native/upstream.json); got ${REF_TYPE:-?} '${REF_NAME:-}'" >&2
     exit 1
   fi
-  git -C "$root" rev-parse --verify --quiet origin/main >/dev/null || { echo "error: origin/main is not fetched (checkout fetch-depth: 0)" >&2; exit 1; }
-  if ! git -C "$root" merge-base --is-ancestor HEAD origin/main; then
-    echo "error: $REF_NAME ($(git -C "$root" rev-parse HEAD)) is not reachable from main" >&2
-    exit 1
-  fi
+  require_on_main "$root" HEAD "$REF_NAME"
   tag="$REF_NAME"
   echo "will publish $tag ($(git -C "$root" rev-parse HEAD), on main)" >&2
 else
   echo "no publishing ($EVENT on ${REF_TYPE:-?} '${REF_NAME:-}'): build, check and smoke-test only" >&2
 fi
 
-lines="$(printf 'publish=%s\ntag=%s\n' "$publish" "$tag")"
-printf '%s\n' "$lines"
-if [[ -n "${GITHUB_OUTPUT:-}" ]]; then printf '%s\n' "$lines" >>"$GITHUB_OUTPUT"; fi
+write_outputs "publish=$publish" "tag=$tag"

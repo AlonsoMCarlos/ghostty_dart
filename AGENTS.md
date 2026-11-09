@@ -19,7 +19,9 @@ packages/
 apps/demo/              Flutter app; also deployed as the live web demo (GitHub Pages, --wasm).
 benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm.
 native/                 upstream.json (pinned libghostty-vt version + hashes), CI build scripts.
-tool/                   Repo scripts (translation sync check, compatibility table generator).
+tool/                   Repo scripts: lib.sh (shared bash helpers), check_cooldown, check_translations, check_dco +
+                        dco_range, release/ (publish helpers),
+                        native/ (binary pipeline), pana/ (pinned pana + dartdoc), test/ (tests of the scripts).
 docs/                   User docs (en + es). docs/internal/ = ADRs and research (English only).
 ```
 
@@ -37,6 +39,7 @@ ADRs in `docs/internal/adr/`. Research with sources in `docs/internal/research/`
 - **0007** Package names are `ghostty_dart*`. Every README carries the "unofficial, not affiliated" notice and does not use the Ghostty logo.
 - **0008** Prebuilt release pipeline: 12 assets named in `native/prebuilt_assets.json`, stripped and bit-reproducible (non-Apple built twice and compared), SLSA L3 attestations from `native-build.yml`, immutable releases tagged `native-v<version>-r<n>`, hashes pinned into `prebuilt.dart` through a reviewed PR (`native:pin`).
 - **0009** The package names are kept without asking the Ghostty maintainers first (supersedes that line of 0007).
+- **0010** First release and publishing: 0.1.0 uploaded manually first, own `publish.yml`, release-please with `GITHUB_TOKEN` + dispatch, pana and dartdoc pinned.
 - **0006** Native lifetime and public API conventions. Details are in `docs/internal/architecture/ghostty_dart-conventions.md`, which **every change to `ghostty_dart` must follow**. It covers the handle base, the finalizer rules, callables, borrowed views and epochs, tolerant enums, the naming rules (§11), and the analyzer audit that keeps `dart:ffi` out of the public API.
 
 If a change contradicts an ADR, write a new ADR that supersedes it. Do not silently diverge.
@@ -61,7 +64,8 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 - Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
 - Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` with `path: .native-cache/host/`. A directory `path` makes the hook pick the target OS's bundled library name inside it, so the same pubspec works on every host.
-- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest.
+- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. A Linux `pana` job runs `deps`, `pana` and `publish:dry-run`. `dco.yml` checks every PR commit's `Signed-off-by` (`tool/check_dco.sh`).
+- Package releases (ADR 0010): `release-please.yml` (manifest mode, `GITHUB_TOKEN`) opens release PRs and, because its tags do not trigger workflows, dispatches `ci.yml` on the release PR and `publish.yml` on the new tag. `publish.yml` validates the tag against pubspec and CHANGELOG, builds the archive offline (`--to-archive`), and uploads exactly that archive via OIDC from the protected `pub.dev` environment. Steps of `release-please.yml` and `dco.yml` that install no tools call their scripts directly; each script still has a mirror mise task for local use.
 - Native releases: `.github/workflows/native-release.yml` (tag `native-v<version>-r<n>`, manual dry run, or any PR touching the native pipeline) calls the reusable `native-build.yml` (read-only build jobs, no caches, a/b reproducibility check, format checks, attestation job), smoke-tests on six real runners, and publishes only after approval in the `native-release` environment. PRs never attest or publish. A `secrets` job runs gitleaks (pinned release binary, sha256 verified) over the full history and the working tree.
 
 ## Commands
@@ -78,7 +82,10 @@ mise run format
 mise run analyze        # format check + dart analyze --fatal-infos
 mise run test           # runs inside packages/ghostty_dart, so the build hook runs
 mise run cooldown       # no locked dependency younger than 3 days
-mise run check          # everything CI runs (analyze, test, test:tool, cooldown, lint:ci)
+mise run check          # everything CI runs (analyze, test, test:tool, test:release, cooldown, lint:ci, docs:translations)
+mise run pana           # pub.dev score of the publish archive, pinned pana + dartdoc; must be 160/160 (network)
+mise run publish:dry-run  # validate the publish archive (run on committed changes)
+mise run docs:translations  # Spanish translations in sync with their English source
 mise run lint:ci        # actionlint + shellcheck
 mise run test:tool      # tests of the release tools
 mise run native:release-asset <asset>  # one ADR 0008 asset -> .native-cache/release/
@@ -96,7 +103,7 @@ The `benchmarks/` member depends on `xterm` 4.0.0, whose pubspec requires the Fl
 
 ### General
 - Everything in English: identifiers, comments, dartdoc, commit messages.
-- Lints: `package:lints/recommended.yaml`, plus `strict-casts`, `strict-inference` and `strict-raw-types`. `public_member_api_docs` is on in every published package.
+- Lints: `package:lints/recommended.yaml`, plus `strict-casts`, `strict-inference` and `strict-raw-types`. `public_member_api_docs` is on in every published package. A published package carries a self-contained `analysis_options.yaml` (it ships in the archive) that mirrors the root rules; `tool/test/analysis_options_test.dart` keeps them in sync.
 - Formatting: `dart format` with the default tall style. Zero analyzer infos.
 - Document every public member. Target ≥80% dartdoc coverage (pana requires 20%). Each doc says *what* and *why*, gives one example for main entry points, and documents ownership and lifetime for handles.
 - Comments explain non-obvious *why*. No commented-out code and no TODOs without an issue link.
@@ -146,10 +153,10 @@ The `benchmarks/` member depends on `xterm` 4.0.0, whose pubspec requires the Fl
 This machine had a real compromise via build-time code (2026-08-20). Our build hook runs on users' machines, so it is held to the same standard.
 
 - The hook only downloads the pinned artefact for the target, verifies its sha256 against the value in source, and **fails closed**. It never runs downloaded code at build time and never resolves anything unpinned.
-- `pubspec.lock` is committed.
+- Every `pubspec.lock` is committed: the workspace's and `tool/pana/`'s.
 - Never run `dart pub upgrade` blindly. Review every lockfile diff.
 - Do not adopt any dependency version published less than 3 days ago (cooldown).
-  - `mise run cooldown` checks the lockfile.
+  - `mise run cooldown` checks every committed lockfile, and fails closed if it parses no or too few entries.
   - Hold back a too-new transitive version with a root `dependency_overrides` entry, with a dated comment. Remove it once the version has aged.
 - Prefer zero dependencies in `ghostty_dart`. Every new dependency needs a justification in the PR.
 - Before using a library's API, read its source in `~/.pub-cache`. Do not create throwaway projects that compile unpinned code.
@@ -159,8 +166,8 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 ## Docs and language
 
 - User-facing docs are bilingual. `X.md` is in English and is the source of truth; `X.es.md` sits next to it.
-- Both files start with `**English** | [Español](X.es.md)` (and the reverse in the Spanish file).
-- Each Spanish file starts with `<!-- source: X.md@<sha> -->`. Update both files in the same PR, or the CI warning stays.
+- The English file carries `**English** | [Español](X.es.md)` near the top (after the title and badges; within its first 20 lines). The Spanish file starts with `<!-- source: X.md@<blob sha> -->` on line 1 and the reverse switcher on line 2. Use absolute GitHub URLs in files rendered on pub.dev.
+- The sha is the **blob** sha of the English text the translation matches (`git hash-object X.md`), which survives squash and rebase merges. `mise run docs:translations` (part of `check`) warns when a translation is stale and fails when a header is missing or malformed. Update both files in the same PR.
 - Bilingual files:
   - every package `README`;
   - `CONTRIBUTING`;
@@ -170,14 +177,14 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
   - the docs site.
 - English only: CHANGELOG, ADRs, `docs/internal/`, dartdoc.
 - Spanish must be correct: full accents and punctuation (¿ ¡), neutral and technical. Keep code identifiers in English.
-- README order:
+- README order (banner, demo and "migrating from xterm" apply to the widget and adapter packages only):
   1. banner;
   2. badges;
   3. language switcher;
   4. demo GIF and live-demo link;
   5. three value bullets;
   6. platform table;
-  7. 3-line quick start;
+  7. minimal quick start (install + one short example);
   8. migrating from xterm;
   9. benchmarks;
   10. honest comparison;
@@ -188,17 +195,17 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 
 ## Publishing and releases
 
-- pana target: **160/160 for every package**. Run pana in CI with `--exit-code-threshold 0`.
+- pana target: **160/160 for every package**. `mise run pana` scores the extracted publish archive with pana and dartdoc pinned in `tool/pana/` (`--dartdoc-command`, never an unpinned global dartdoc), with `--exit-code-threshold 0`.
 - pubspec:
   - `description` of 60–180 ASCII characters;
   - `repository` pointing at the package subdirectory;
   - `issue_tracker`;
   - up to 5 `topics`;
   - `screenshots` for the widget packages;
-  - `funding`.
-- Conventional Commits with DCO sign-off (`git commit -s`). release-please in manifest mode cuts the releases.
-- Tags are `<package>-v<version>`. Publishing goes through the OIDC reusable workflow `dart-lang/setup-dart/.github/workflows/publish.yml`, behind the protected `pub.dev` environment.
-- release-please uses a GitHub App token, because `GITHUB_TOKEN` tags do not trigger workflows.
+  - `funding`, once the project has a funding URL (none yet).
+- Conventional Commits with DCO sign-off (`git commit -s`), checked on every PR by `tool/check_dco.sh`. release-please in manifest mode cuts the releases.
+- Tags are `<package>-v<version>`. Publishing uses our own `.github/workflows/publish.yml` (validate, offline `--to-archive`, OIDC upload with SHA-pinned setup-dart) behind the protected `pub.dev` environment. The first version of each package is uploaded manually (`docs/internal/release-checklist.md`).
+- release-please uses `GITHUB_TOKEN` and dispatches CI and `publish.yml` explicitly. No GitHub App, no secrets (ADR 0010).
 - Semver: start at `0.1.0`; while in `0.x`, a minor bump means breaking. Check breaking changes with `dart_apitool diff`.
 - The CHANGELOG entry must match the pubspec version.
 - Package skills: each published package ships `skills/<pkg>-<topic>/SKILL.md`. For example, `ghostty_dart_xterm-migrate-from-xterm` and `ghostty_dart-usage`.
