@@ -79,8 +79,12 @@ extract_upstream_src() {
   "$root/tool/native/fetch_upstream.sh" >/dev/null || return 1
   mkdir -p "$dest" || return 1
   if [[ -n "$(ls -A "$dest")" ]]; then echo "error: $dest is not empty" >&2; return 1; fi
-  tar -xzf "$cache/libghostty-vt-$version.tar.gz" -C "$dest" || return 1
-  tar -xzf "$cache/libghostty-vt-$version-deps.tar.gz" -C "$dest" || return 1
+  # Git Bash's GNU tar reads `D:/...` as host `D` plus a remote path;
+  # --force-local stops that. macOS bsdtar does not know the flag.
+  local local_flag=()
+  if command -v cygpath >/dev/null 2>&1; then local_flag=(--force-local); fi
+  tar ${local_flag[@]+"${local_flag[@]}"} -xzf "$cache/libghostty-vt-$version.tar.gz" -C "$dest" || return 1
+  tar ${local_flag[@]+"${local_flag[@]}"} -xzf "$cache/libghostty-vt-$version-deps.tar.gz" -C "$dest" || return 1
   printf '%s\n' "$dest/libghostty-vt-$version"
 }
 

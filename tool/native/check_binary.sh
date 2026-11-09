@@ -49,7 +49,7 @@ for ((i = 1; i < ${#pairs[@]}; i += 2)); do
   pairs[i]="$(native_path "${pairs[i]}")"
 done
 
-work="$(mktemp -d)"
+work="$(build_work_dir "$root")"
 trap 'rm -rf "$work"' EXIT
 src="$(extract_upstream_src "$root" "$work/src")"
 
