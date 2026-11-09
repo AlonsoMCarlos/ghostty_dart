@@ -13,5 +13,6 @@
       "component": "ghostty_dart",
       "changelog-path": "CHANGELOG.md"
     }
-  }
+  },
+  "bootstrap-sha": "35d31c343f534a0f9df837e231a04aa601a69245"
 }

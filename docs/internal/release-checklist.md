@@ -147,7 +147,7 @@ The push starts `publish.yml`, which then runs:
 - `validate`: the tag against `pubspec.yaml`, `CHANGELOG.md` and `main`, then `mise run check` and the dry run;
 - `package`: the offline archive.
 
-Its `publish` job then waits in the `pub.dev` environment. Use the green `validate` and `package` jobs as the final check, then **reject** the deployment. The upload could not succeed anyway: the package does not exist on pub.dev yet.
+Its `publish` job then waits in the `pub.dev` environment. Use the green `validate` and `package` jobs as the final check, then **reject** the deployment. The upload could not succeed anyway: the package does not exist on pub.dev yet. (Observed for 0.1.0: an approved run reached pub.dev, which authenticated the OIDC token and answered "Only users are allowed to upload new packages". Nothing was uploaded.)
 
 ## 9. Publish 0.1.0 by hand from a clean checkout of the tag
 
@@ -160,7 +160,7 @@ cd "$dir/ghostty_dart"
 git describe --exact-match HEAD          # ghostty_dart-v0.1.0
 mise trust && mise install
 mise run deps                            # flutter pub get --enforce-lockfile
-mise run publish:dry-run                 # what CI runs: 0 warnings; the dependency_overrides hint is expected
+mise run publish:dry-run                 # what CI runs: 0 warnings, no hints
 (cd packages/ghostty_dart && mise x -- dart pub publish)   # Google sign-in in the browser, then confirm with `y`
 ```
 
