@@ -1,0 +1,24 @@
+name: ghostty_vt_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+workspace:
+  - packages/ghostty_vt
+
+hooks:
+  user_defines:
+    ghostty_vt:
+      # Local development: use the library built by tool/native/build.sh.
+      source: path
+      path: .native-cache/out/x86_64-linux-gnu/lib/libghostty-vt.so.1.0.0
+
+dev_dependencies:
+  lints: ^6.1.0
+
+# Supply-chain cooldown (AGENTS.md): hold back versions published < 3 days ago.
+# Remove each entry once it has aged; never applies to published packages.
+dependency_overrides:
+  code_assets: 2.1.0        # 2.2.0 published 2026-11-06
+  native_toolchain_c: 0.19.5 # 0.19.6 published 2026-11-06

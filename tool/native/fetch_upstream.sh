@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Downloads pinned libghostty-vt release files into .native-cache/ and verifies
+# them twice: the minisign signature of SHA256SUMS, and the sha256 pinned in
+# native/upstream.json. Fails closed on any mismatch.
+#
+# Usage: tool/native/fetch_upstream.sh [file...]   (default: source + deps tarballs)
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+manifest="$root/native/upstream.json"
+cache="$root/.native-cache"
+mkdir -p "$cache"
+
+base_url="$(jq -r .base_url "$manifest")"
+pubkey="$(jq -r .minisign_public_key "$manifest")"
+version="$(jq -r .version "$manifest")"
+
+if [[ $# -eq 0 ]]; then
+  set -- "libghostty-vt-$version.tar.gz" "libghostty-vt-$version-deps.tar.gz"
+fi
+
+cd "$cache"
+curl -sSfL --proto '=https' "$base_url/SHA256SUMS" -o SHA256SUMS
+curl -sSfL --proto '=https' "$base_url/SHA256SUMS.minisig" -o SHA256SUMS.minisig
+minisign -Vq -P "$pubkey" -m SHA256SUMS
+
+for file in "$@"; do
+  pinned="$(jq -r --arg f "$file" '.files[$f] // empty' "$manifest")"
+  [[ -n "$pinned" ]] || { echo "error: $file is not pinned in upstream.json" >&2; exit 1; }
+  signed="$(awk -v f="$file" '$2 == f { print $1 }' SHA256SUMS)"
+  [[ "$signed" == "$pinned" ]] || { echo "error: $file: signed sum differs from pinned sum" >&2; exit 1; }
+
+  if [[ ! -f "$file" ]] || ! echo "$pinned  $file" | sha256sum -c --quiet - 2>/dev/null; then
+    curl -sSfL --proto '=https' "$base_url/$file" -o "$file.part"
+    echo "$pinned  $file.part" | sha256sum -c --quiet -
+    mv "$file.part" "$file"
+  fi
+  echo "verified $file"
+done

@@ -1,0 +1,16 @@
+# Dart / Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+coverage/
+*.iml
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Native build artefacts (reproducible via tool/native/)
+.native-cache/
+.zig-cache/
+.zig-cache-global/
+zig-out/

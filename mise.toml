@@ -1,0 +1,51 @@
+# Project toolchain. `mise install` gives every contributor the same tools.
+# Versions are exact and recorded with checksums in mise.lock.
+
+[settings]
+# Supply-chain cooldown: never install a tool version published < 3 days ago.
+minimum_release_age = "3d"
+lockfile = true
+
+[tools]
+flutter = "3.47.9"   # bundles Dart 3.13.x
+zig = "0.17.1"       # libghostty-vt 1.x requires Zig 0.17.x exactly
+minisign = "0.12"    # verifies upstream libghostty-vt release signatures
+
+[env]
+# Zig's global cache can break libghostty-vt builds when reused; keep it in-repo.
+ZIG_GLOBAL_CACHE_DIR = "{{config_root}}/.zig-cache-global"
+
+# Standard entry points: `mise run <task>` (alias `mise <task>`).
+[tasks."native:fetch"]
+description = "Download and verify the pinned libghostty-vt release files"
+run = "tool/native/fetch_upstream.sh"
+
+[tasks."native:build"]
+description = "Build libghostty-vt offline for a Zig target (default: host Linux x64)"
+usage = 'arg "[target]" default="x86_64-linux-gnu"'
+run = "tool/native/build.sh ${usage_target?}"
+
+[tasks.ffigen]
+description = "Regenerate the FFI bindings from the libghostty-vt headers (needs libclang)"
+depends = ["native:build"]
+run = "dart run packages/ghostty_vt/tool/ffigen.dart"
+
+[tasks.format]
+description = "Format all Dart code"
+run = "dart format ."
+
+[tasks.analyze]
+description = "Check formatting and static analysis"
+run = ["dart format --set-exit-if-changed .", "dart analyze --fatal-infos"]
+
+[tasks.test]
+description = "Run all tests"
+run = "dart test packages/ghostty_vt"
+
+[tasks.cooldown]
+description = "Fail if any locked dependency was published less than 3 days ago"
+run = "dart run tool/check_cooldown.dart"
+
+[tasks.check]
+description = "Everything CI runs locally"
+depends = ["analyze", "test", "cooldown"]
