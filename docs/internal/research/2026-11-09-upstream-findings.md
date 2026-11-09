@@ -46,6 +46,23 @@ Each finding lists a repro, what the header leads us to expect, what 1.0.0 does,
 - **Actual:** the APC is reported with content `za` (it ends at the `ESC`). `0xFF` is ignored in the escape state, so `b` becomes the escape's final byte (`ESC b`, ignored); the trailing `ESC \` is a lone ST; only `A` is printed. `ESC _ z a 0xFF b ESC \` (no ESC before `0xFF`) reports `za\xffb`.
 - **Assessment:** consistent with the DEC/VT500 parser state machine (any `ESC` leaves the control string). Not a bug; recorded because the `ESC`-handling inside control strings surprises people writing tests for `writeUntil` / APC limits.
 
+## 7. Line-limited scrollback is 2-4x slower than an equivalent byte limit (upstream issue candidate)
+
+- **[V] Repro** (C, no bindings; `upstream-repro/scrollback-line-limit.c`): 200x50, ~16.6 MB of plain ASCII (`awk 'BEGIN{for(i=0;i<83000;i++) printf "%0198d\r\n", i}'`), 64 KiB writes, median of 5, Linux x86_64 VM:
+
+  | Scrollback setting | MB/s | minor faults | with hot-spare patch |
+  |---|---|---|---|
+  | default (~1 page) | 1493 | 216 | unchanged |
+  | `MAX_LINES` 1000 (bytes unlimited) | 430 | 34,184 | 1482 MB/s, 529 faults |
+  | `MAX_LINES` 10000 | 317 | 34,184 | 668 MB/s, 4,459 faults |
+  | `MAX_BYTES` 18276352 (~10k lines) | 655 | 4,666 | unchanged |
+  | unlimited | 350 | 34,185 | unchanged |
+
+- **Probable cause (read in `src/terminal/PageList.zig`, 1.0.0):** pruning by lines goes through `Limits.enforce` → `erasePage` → `destroyNodeExt`, which decommits the pool item (`terminal_mem.decommit`, `MADV_DONTNEED` on Linux, ~L5651). The next page is then created from that same item, so every new page faults its memory back in (~95 faults per ~400 KB page). The byte-limit path recycles the oldest page in place inside `grow()`. The reflow path already avoids the same decommit/recommit pair with `recycle_node`.
+- **Candidate fix (not verified on macOS/Windows, only `zig build test -Dtest-filter=PageList`):** keep one zeroed pool item resident instead of decommitting it (`upstream-repro/scrollback-line-limit-hot-spare.patch`). It costs at most one extra ~400 KB buffer per terminal. A node-level spare like `recycle_node` may be the cleaner upstream fix.
+- **Status:** not reported upstream yet. The maintainer chose to report only the observable behaviour (no patch), because Ghostty's AI policy requires contributors to fully understand submitted code. Draft kept outside the repo.
+- **Our handling:** none in the bindings (the wrapper/FFI add nothing measurable; the C harness gives the same numbers as Dart). We keep using the unmodified upstream release (ADR 0003). The benchmark keeps the 10,000-line setting as its headline because that is what `xterm.maxLines` users will ask for, and documents the gap.
+
 ## 6. Smaller observations
 
 - **`SelectionOrder` mirrored targets:** `ghostty_selection_order` with a mirrored desired order returns the selection unchanged when it already has that order, and otherwise behaves like `FORWARD`. Documented on `VtSelection.ordered`.
