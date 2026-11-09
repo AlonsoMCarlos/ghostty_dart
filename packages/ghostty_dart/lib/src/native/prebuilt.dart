@@ -20,7 +20,7 @@ const nativeAssetName = 'src/ffi/bindings.g.dart';
 /// Default download location of prebuilt binaries. `$VERSION` and `$FILENAME`
 /// are substituted. Override with the `url_pattern` user-define (mirrors).
 const defaultUrlPattern =
-    r'https://github.com/OWNER/REPO/releases/download/native-v$VERSION/$FILENAME';
+    r'https://github.com/AlonsoMCarlos/ghostty_dart/releases/download/native-v$VERSION/$FILENAME';
 
 /// sha256 of each prebuilt binary, keyed by [PrebuiltTarget.fileName].
 ///

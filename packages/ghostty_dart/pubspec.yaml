@@ -3,8 +3,8 @@ description: >-
   Dart bindings for libghostty-vt, the terminal emulation engine of Ghostty:
   VT parsing, screen and render state, selection, search, key/mouse encoding.
 version: 0.1.0-dev.1
-repository: https://github.com/OWNER/REPO/tree/main/packages/ghostty_dart
-issue_tracker: https://github.com/OWNER/REPO/issues
+repository: https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart
+issue_tracker: https://github.com/AlonsoMCarlos/ghostty_dart/issues
 topics: [terminal, terminal-emulator, ffi, vt100, ghostty]
 
 environment:
