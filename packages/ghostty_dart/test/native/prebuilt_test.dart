@@ -292,13 +292,13 @@ void main() {
       'prebuilt without a pinned hash fails with the alternatives',
       () async {
         await expectLater(
-          runHook(os: OS.linux, architecture: Architecture.arm64),
+          runHook(os: OS.linux, architecture: Architecture.riscv64),
           throwsA(
             isA<UnsupportedError>().having(
               (e) => e.message,
               'message',
               allOf([
-                contains('libghostty-vt-linux-arm64.so'),
+                contains('libghostty-vt-linux-riscv64.so'),
                 contains(prebuiltReleaseTag),
                 contains('source: path'),
                 contains('source: system'),
@@ -307,8 +307,9 @@ void main() {
           ),
         );
       },
-      skip: prebuiltSha256.containsKey('libghostty-vt-linux-arm64.so')
-          ? 'linux-arm64 is pinned now; this case needs an unpinned target'
+      // riscv64 is not in the ADR 0008 table, so it stays unpinned.
+      skip: prebuiltSha256.containsKey('libghostty-vt-linux-riscv64.so')
+          ? 'linux-riscv64 is pinned now; this case needs an unpinned target'
           : false,
     );
 

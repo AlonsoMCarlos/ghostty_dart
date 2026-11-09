@@ -43,7 +43,32 @@ const defaultUrlPattern =
 const prebuiltReleaseTag = 'native-v1.0.0-r1';
 
 /// sha256 of each prebuilt binary, keyed by [PrebuiltTarget.fileName].
-const prebuiltSha256 = <String, String>{};
+const prebuiltSha256 = <String, String>{
+  'ghostty-vt-windows-arm64.dll':
+      'e45472f441a23144f290aed4890ced1d370b9707b22bbb090e618d997e16ab06',
+  'ghostty-vt-windows-x64.dll':
+      '726237f90c5216ea736accf4734e958d22bfd5c1739eed7466064cf1c2fcf349',
+  'libghostty-vt-android-arm.so':
+      'a95246b993177b40d2ab2007dc51d3f3be1fa34a27d7d741b0a828a033892a95',
+  'libghostty-vt-android-arm64.so':
+      '968fdea8ece3b4f40cd1f9cca37ea4ef0534976d2f613eac291170d9f1cf446d',
+  'libghostty-vt-android-x64.so':
+      'a1141ab621e48109ef708707bfa216e24bf5e9d14e4cb813e77539f639a6014c',
+  'libghostty-vt-ios-arm64-simulator.dylib':
+      'dac4a3ce02abfdaf420c89f67439089f18cff235aebece3d414f9c2e1befac96',
+  'libghostty-vt-ios-arm64.dylib':
+      '4976ffaa2f30628d5a9996074e95bef3be00055e35f8d38fcb7c934051478585',
+  'libghostty-vt-ios-x64-simulator.dylib':
+      '95aa6a2af653bc8fef7439c1cde75de482f52f72a7565d4582749086adc4a9d8',
+  'libghostty-vt-linux-arm64.so':
+      '4ec82c0030dc17d04a08790b7fa49079570a903dfe7796ae02236e9777ecd4a6',
+  'libghostty-vt-linux-x64.so':
+      'd2cc7f139adcfb36ed3af2e3b2cf46b51ebc85b6ecea68de50a8cd24b01c6e61',
+  'libghostty-vt-macos-arm64.dylib':
+      'ee22fff82066070215f20d9b1aeaa19e54428c08847adc84e7e3a451457a785b',
+  'libghostty-vt-macos-x64.dylib':
+      '2fc537231bc11e8e453ea20265fa800afb7ab6ba5127580159b91cb0cdf65d29',
+};
 // END GENERATED prebuiltSha256
 
 /// Lowest Android API level the prebuilt Android binaries support (ADR 0008;
