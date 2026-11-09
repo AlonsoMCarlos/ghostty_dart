@@ -4,8 +4,18 @@
 // root pubspec (see the "Build hook options" doc topic):
 //
 // - `prebuilt` (default): download the binary for the target from the
-//   project's GitHub release and verify it against the sha256 pinned in this
-//   package. Fails closed on mismatch.
+//   project's GitHub release `prebuiltReleaseTag` (ADR 0008) and verify it
+//   against the sha256 pinned in `lib/src/native/prebuilt.dart`. Fails
+//   closed on mismatch. Options:
+//   - `url_pattern`: an https mirror. `$TAG`, `$VERSION` and `$FILENAME`
+//     are substituted (see `defaultUrlPattern`); the hash is still checked.
+//   The app must target at least Android API 24, iOS 14 or macOS 13, the
+//   floor of the prebuilt binaries; lower targets fail with a message.
+//   Downloads have connect, idle and per-attempt timeouts, a 64 MiB cap,
+//   https-only redirects (at most 5) and one retry on transient errors
+//   (`lib/src/native/download.dart`). Proxies come from `HTTPS_PROXY` /
+//   `NO_PROXY`; a TLS-intercepting proxy needs `url_pattern` pointing at a
+//   reachable mirror, or `source: path`.
 // - `path`: use a local binary given by the `path` user-define. It may be the
 //   library file, or a directory holding it under its bundled name
 //   (`libghostty-vt.so`, `libghostty-vt.dylib` or `ghostty-vt.dll`, see
@@ -14,11 +24,22 @@
 // - `system`: load an installed `libghostty-vt` 1.x from the system.
 //
 // The hook never runs downloaded code and never fetches anything unpinned.
+//
+// Caching (verified 2026-11-09 in hooks_runner 1.5.0,
+// `lib/src/build_runner/build_runner.dart`): the hook is recompiled and
+// re-run when a Dart source in its kernel depfile changes (lines 481-491,
+// 808-856), and `prebuilt.dart` is one of them. Pub-hosted sources are
+// treated as immutable (`_isImmutable`, line 869), but `package_config.json`
+// is hashed, so a package upgrade also re-runs it. A changed input (target,
+// user-defines) re-runs it too (lines 501-507). So a new pin needs no extra
+// `output.dependencies`. The shared download cache is keyed by the pinned
+// hash, so a new pin never reuses an old file. Only `source: path` reads a
+// file outside the hook's sources, and it is declared as a dependency.
 
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
-import 'package:crypto/crypto.dart';
+import 'package:ghostty_dart/src/native/download.dart';
 import 'package:ghostty_dart/src/native/prebuilt.dart';
 import 'package:hooks/hooks.dart';
 
@@ -58,9 +79,15 @@ void main(List<String> args) async {
           ),
         );
       case 'prebuilt':
+        final urlPattern = input.userDefines['url_pattern'];
+        if (urlPattern is! String?) {
+          throw const FormatException(
+            'ghostty_dart: the "url_pattern" user-define must be a string.',
+          );
+        }
         final file = await _fetchPrebuilt(
-          target: PrebuiltTarget(code.targetOS, code.targetArchitecture),
-          urlPattern: input.userDefines['url_pattern'] as String?,
+          code: code,
+          urlPattern: urlPattern,
           cacheDir: input.outputDirectoryShared,
         );
         final copy = await _copyInto(
@@ -101,51 +128,29 @@ Future<File> _copyInto(File file, Uri dir, OS os) async {
 }
 
 Future<File> _fetchPrebuilt({
-  required PrebuiltTarget target,
+  required CodeConfig code,
   required String? urlPattern,
   required Uri cacheDir,
 }) async {
+  final versionError = prebuiltMinimumVersionError(
+    code.targetOS,
+    targetPlatformVersion(code),
+  );
+  if (versionError != null) throw UnsupportedError(versionError);
+
+  final target = PrebuiltTarget.fromCodeConfig(code);
   final pinned = prebuiltSha256[target.fileName];
   if (pinned == null) {
     throw UnsupportedError(
       'ghostty_dart: no prebuilt libghostty-vt $targetLibghosttyVtVersion for '
-      '${target.fileName}. Set `source: path` or `source: system` in '
-      '`hooks: user_defines: ghostty_dart:` of your root pubspec.yaml.',
+      '${target.fileName} in release $prebuiltReleaseTag.\n'
+      '${prebuiltAlternativesHint()}',
     );
   }
-  final cached = File.fromUri(cacheDir.resolve('$pinned/${target.fileName}'));
-  if (cached.existsSync() && await _sha256(cached) == pinned) return cached;
-
-  final url = Uri.parse(
-    (urlPattern ?? defaultUrlPattern)
-        .replaceAll(r'$VERSION', targetLibghosttyVtVersion)
-        .replaceAll(r'$FILENAME', target.fileName),
+  return const PrebuiltFetcher().fetch(
+    url: prebuiltUrl(urlPattern ?? defaultUrlPattern, target.fileName),
+    fileName: target.fileName,
+    pinnedSha256: pinned,
+    cacheDir: cacheDir,
   );
-  if (url.scheme != 'https') {
-    throw FormatException('ghostty_dart: refusing non-https url_pattern: $url');
-  }
-  await cached.parent.create(recursive: true);
-  final partial = File('${cached.path}.part');
-  final client = HttpClient();
-  try {
-    final response = await (await client.getUrl(url)).close();
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('HTTP ${response.statusCode}', uri: url);
-    }
-    await response.pipe(partial.openWrite());
-  } finally {
-    client.close();
-  }
-  final actual = await _sha256(partial);
-  if (actual != pinned) {
-    await partial.delete();
-    throw StateError(
-      'ghostty_dart: sha256 mismatch for $url\n'
-      '  expected $pinned\n  actual   $actual',
-    );
-  }
-  return partial.rename(cached.path);
 }
-
-Future<String> _sha256(File file) async =>
-    (await sha256.bind(file.openRead()).first).toString();

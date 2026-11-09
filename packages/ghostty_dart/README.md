@@ -67,17 +67,43 @@ dart run example/main.dart
 | macOS, Windows, Linux arm64, Android, iOS | Pending CI builds |
 | Web (wasm) | Planned |
 
-The native library is provided by the package's build hook. Prebuilt,
-sha256-pinned binaries are not published yet, so for now select a local or
-system library in your root `pubspec.yaml`:
+The native library is provided by the package's build hook. Its default
+`prebuilt` source downloads the binary for your target from this project's
+GitHub release and verifies it against a sha256 pinned in the package
+source; a mismatch fails the build. Prebuilt binaries are coming with
+release `native-v1.0.0-r1` for Linux (x64, arm64; glibc 2.28+), Windows
+(x64; arm64 best effort), macOS (arm64, x64; macOS 13+), Android (arm64,
+arm, x64; API 24+) and iOS (arm64 device, arm64 and x64 simulator; iOS
+13+). **That release is not published and no hashes are pinned yet**, so
+today the `prebuilt` source fails with instructions.
 
-```yaml
-hooks:
-  user_defines:
-    ghostty_dart:
-      source: path    # or `system`, which needs no `path`
-      path: path/to/libghostty-vt.so.1.0.0
-```
+Hook options, in `hooks: user_defines: ghostty_dart:` of your root
+`pubspec.yaml`:
+
+- `source: path` with `path:` (a library file, or a directory holding it)
+  and `source: system` (an installed libghostty-vt 1.x) work now. Use one
+  of them until prebuilt binaries are published, and for air-gapped
+  builds:
+
+  ```yaml
+  hooks:
+    user_defines:
+      ghostty_dart:
+        source: path    # or `system`, which needs no `path`
+        path: path/to/libghostty-vt.so.1.0.0
+  ```
+
+- `url_pattern` takes effect once hashes are pinned. It downloads from an
+  https mirror or internal store instead of GitHub. `$TAG` (release tag),
+  `$VERSION` (libghostty-vt version) and `$FILENAME` (asset name) are
+  substituted, for example `https://mirror.example/$TAG/$FILENAME`. The
+  pinned sha256 is still verified.
+
+Downloads use connect and idle timeouts, a 10-minute limit per attempt, a
+64 MiB size cap, https-only redirects and one retry on transient errors.
+They honour `HTTPS_PROXY` and `NO_PROXY`. Behind a TLS-intercepting proxy,
+point `url_pattern` at a mirror the build can reach, or use `source: path`.
+The hook never runs downloaded code.
 
 ## License
 

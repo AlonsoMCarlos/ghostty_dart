@@ -19,11 +19,8 @@ target="$(host_zig_target)"
 "$root/tool/native/build.sh" "$target" "$@"
 
 out="$root/.native-cache/out/$target"
-case "$target" in
-  *-windows-*) lib="$out/bin/ghostty-vt.dll" name=ghostty-vt.dll ;;
-  *-macos) lib="$out/lib/libghostty-vt.dylib" name=libghostty-vt.dylib ;;
-  *) lib="$out/lib/libghostty-vt.so" name=libghostty-vt.so ;;
-esac
+lib="$(built_lib "$out" "$target")"
+name="$(bundled_name "$lib")"
 
 host="$root/.native-cache/host"
 rm -rf "$host" && mkdir -p "$host"

@@ -173,6 +173,7 @@ const _internalTypes = {
   'MultiKey',
   'NativeHandle',
   'PackedCell',
+  'PrebuiltFetcher',
   'PrebuiltTarget',
   'RawEnumCodec',
   'SizedStructInit',

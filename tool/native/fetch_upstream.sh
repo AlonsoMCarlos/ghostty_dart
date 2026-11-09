@@ -27,20 +27,13 @@ curl -sSfL --proto '=https' "$base_url/SHA256SUMS.minisig" -o SHA256SUMS.minisig
 minisign -Vq -P "$pubkey" -m SHA256SUMS
 
 for file in "$@"; do
+  # shellcheck disable=SC2016 # $f is a jq variable, bound with --arg
   pinned="$(jq_raw '.files[$f] // empty' "$manifest" --arg f "$file")"
   [[ -n "$pinned" ]] || { echo "error: $file is not pinned in upstream.json" >&2; exit 1; }
   signed="$(tr -d '\r' <SHA256SUMS | awk -v f="$file" '$2 == f { print $1 }')"
   [[ "$signed" == "$pinned" ]] || { echo "error: $file: signed sum differs from pinned sum" >&2; exit 1; }
 
-  if [[ ! -f "$file" ]] || [[ "$(sha256_of "$file")" != "$pinned" ]]; then
-    curl -sSfL --proto '=https' "$base_url/$file" -o "$file.part"
-    actual="$(sha256_of "$file.part")"
-    if [[ "$actual" != "$pinned" ]]; then
-      rm -f "$file.part"
-      echo "error: $file: sha256 $actual differs from pinned $pinned" >&2
-      exit 1
-    fi
-    mv "$file.part" "$file"
-  fi
+  # Re-hashes a cached copy on every run; downloads and verifies otherwise.
+  fetch_verified "$base_url/$file" "$cache/$file" "$pinned"
   echo "verified $file"
 done
