@@ -21,13 +21,14 @@
   `unknown`; `GHOSTTY_UNSUPPORTED` is an `UnsupportedError`.
 - Ownership: every native object has an idempotent `dispose()` and a
   finalizer; use after dispose throws `StateError`.
-- Build hook, `prebuilt` source: ready for release `native-v1.0.0-r1`
-  (not yet published). iOS device and simulator are separate assets.
+- Build hook, `prebuilt` source: downloads the binaries of release
+  `native-v1.0.0-r1` (12 targets: Linux, Windows, macOS, Android, iOS
+  device and simulator), pinned by sha256. iOS device and simulator are
+  separate assets.
   Downloads have connect, idle and per-attempt timeouts, a 64 MiB size
   cap, https-only redirects and one retry on transient errors, and their
   error messages point at `url_pattern`, `path` and `system`. The source
-  refuses Android below API 24, iOS below 13 and macOS below 13.
+  refuses Android below API 24, iOS below 14 and macOS below 13.
   `url_pattern` gains `$TAG`.
-- Known limitations: verified on Linux x64 only; prebuilt binaries are
-  not published yet, so no hashes are pinned (use the `path` or `system`
-  hook source); no web backend yet.
+- Known limitations: Android and iOS binaries are format-checked but not
+  yet run on devices or emulators; no web backend yet.

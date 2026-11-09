@@ -61,29 +61,36 @@ dart run example/main.dart
 
 ## Platforms
 
-| Platform | Status |
-|---|---|
-| Linux x64 | Verified (the test suite runs against the real library) |
-| macOS, Windows, Linux arm64, Android, iOS | Pending CI builds |
-| Web (wasm) | Planned |
+| Platform | Prebuilt binary | Tested |
+|---|---|---|
+| Linux x64, arm64 (glibc 2.28+) | ✅ | Full test suite, on real runners |
+| macOS arm64, x64 (macOS 13+) | ✅ | Full test suite, on real runners |
+| Windows x64, arm64 | ✅ | Full test suite, on real runners (arm64 best effort) |
+| Android arm64, arm, x64 (API 24+) | ✅ | Format checks only (exports, deps, 16 KB pages) |
+| iOS arm64, simulator arm64 and x64 (iOS 14+) | ✅ | Format checks only |
+| Web (wasm) | — | Planned |
 
 The native library is provided by the package's build hook. Its default
-`prebuilt` source downloads the binary for your target from this project's
-GitHub release and verifies it against a sha256 pinned in the package
-source; a mismatch fails the build. Prebuilt binaries are coming with
-release `native-v1.0.0-r1` for Linux (x64, arm64; glibc 2.28+), Windows
-(x64; arm64 best effort), macOS (arm64, x64; macOS 13+), Android (arm64,
-arm, x64; API 24+) and iOS (arm64 device, arm64 and x64 simulator; iOS
-13+). **That release is not published and no hashes are pinned yet**, so
-today the `prebuilt` source fails with instructions.
+`prebuilt` source downloads the binary for your target from the GitHub
+release
+[`native-v1.0.0-r1`](https://github.com/AlonsoMCarlos/ghostty_dart/releases/tag/native-v1.0.0-r1)
+and verifies it against a sha256 pinned in the package source; a mismatch
+fails the build. No toolchain is needed.
+
+The binaries are built by this repository's CI from the signed upstream
+source tarball. Every one carries a build provenance attestation, and all
+but the Apple ones are bit-reproducible. To check one yourself:
+
+```sh
+gh attestation verify libghostty-vt-linux-x64.so --repo AlonsoMCarlos/ghostty_dart
+```
 
 Hook options, in `hooks: user_defines: ghostty_dart:` of your root
 `pubspec.yaml`:
 
 - `source: path` with `path:` (a library file, or a directory holding it)
-  and `source: system` (an installed libghostty-vt 1.x) work now. Use one
-  of them until prebuilt binaries are published, and for air-gapped
-  builds:
+  or `source: system` (an installed libghostty-vt 1.x) bring your own
+  library, e.g. for air-gapped builds or your own compilation:
 
   ```yaml
   hooks:
@@ -93,7 +100,7 @@ Hook options, in `hooks: user_defines: ghostty_dart:` of your root
         path: path/to/libghostty-vt.so.1.0.0
   ```
 
-- `url_pattern` takes effect once hashes are pinned. It downloads from an
+- `url_pattern` downloads the pinned binaries from an
   https mirror or internal store instead of GitHub. `$TAG` (release tag),
   `$VERSION` (libghostty-vt version) and `$FILENAME` (asset name) are
   substituted, for example `https://mirror.example/$TAG/$FILENAME`. The
