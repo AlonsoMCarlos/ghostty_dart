@@ -30,7 +30,7 @@ run = "tool/native/build.sh ${usage_target?}"
 [tasks.ffigen]
 description = "Regenerate the FFI bindings from the libghostty-vt headers (needs libclang)"
 depends = ["native:build"]
-run = "dart run packages/ghostty_vt/tool/ffigen.dart"
+run = "dart run packages/ghostty_dart/tool/ffigen.dart"
 
 [tasks.format]
 description = "Format all Dart code"
@@ -38,11 +38,11 @@ run = "dart format ."
 
 [tasks.analyze]
 description = "Check formatting and static analysis"
-run = ["dart format --set-exit-if-changed .", "dart analyze --fatal-infos"]
+run = ["dart format -o none --set-exit-if-changed .", "dart analyze --fatal-infos"]
 
 [tasks.test]
 description = "Run all tests"
-run = "dart test packages/ghostty_vt"
+run = "dart test packages/ghostty_dart"
 
 [tasks.cooldown]
 description = "Fail if any locked dependency was published less than 3 days ago"

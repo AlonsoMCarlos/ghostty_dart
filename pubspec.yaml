@@ -1,15 +1,15 @@
-name: ghostty_vt_workspace
+name: ghostty_dart_workspace
 publish_to: none
 
 environment:
   sdk: ^3.11.0
 
 workspace:
-  - packages/ghostty_vt
+  - packages/ghostty_dart
 
 hooks:
   user_defines:
-    ghostty_vt:
+    ghostty_dart:
       # Local development: use the library built by tool/native/build.sh.
       source: path
       path: .native-cache/out/x86_64-linux-gnu/lib/libghostty-vt.so.1.0.0

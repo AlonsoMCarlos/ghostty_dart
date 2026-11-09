@@ -12,10 +12,10 @@ Dart and Flutter bindings for **[libghostty-vt](https://lib.ghostty.org/vt/)** 1
 
 ```
 packages/
-  ghostty_vt/           Pure Dart. ffigen bindings + idiomatic API. FFI backend (native) and
+  ghostty_dart/           Pure Dart. ffigen bindings + idiomatic API. FFI backend (native) and
                         wasm backend (web) behind one interface. hook/build.dart ships the library.
-  ghostty_vt_flutter/   Flutter widget: renderer, keyboard/mouse/IME input, selection, scrolling.
-  ghostty_xterm/        API-compatible adapter for package:xterm 4.0.0 on top of the two above.
+  ghostty_dart_flutter/   Flutter widget: renderer, keyboard/mouse/IME input, selection, scrolling.
+  ghostty_dart_xterm/        API-compatible adapter for package:xterm 4.0.0 on top of the two above.
 apps/demo/              Flutter app; also deployed as the live web demo (GitHub Pages, --wasm).
 benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm.
 native/                 upstream.json (pinned libghostty-vt version + hashes), CI build scripts.
@@ -23,7 +23,7 @@ tool/                   Repo scripts (translation sync check, compatibility tabl
 docs/                   User docs (en + es). docs/internal/ = ADRs and research (English only).
 ```
 
-Dependency direction is one-way: `ghostty_xterm → ghostty_vt_flutter → ghostty_vt → libghostty-vt`. `ghostty_vt` never imports Flutter.
+Dependency direction is one-way: `ghostty_dart_xterm → ghostty_dart_flutter → ghostty_dart → libghostty-vt`. `ghostty_dart` never imports Flutter.
 
 ## Decisions already made (read before proposing alternatives)
 
@@ -32,8 +32,10 @@ ADRs in `docs/internal/adr/`. Research with sources in `docs/internal/research/`
 - **0001** Target libghostty-vt **1.x only**, pinned in `native/upstream.json`. Check `ghostty_version()` at load.
 - **0002** Own bindings; three packages as above. Existing bindings (`libghostty`/`flterm`, `ghostty_vte`) are references, not dependencies.
 - **0003** Prebuilt binaries from our CI, verified by sha256 pinned in source. Opt-in `user_defines`: `source: prebuilt | system | zig`, `url_pattern`, `path`.
-- **0004** `ghostty_xterm` is a thin adapter. We never claim "drop-in" without the compatibility suite proving it.
+- **0004** `ghostty_dart_xterm` is a thin adapter. We never claim "drop-in" without the compatibility suite proving it.
 - **0005** English code and docs; user-facing docs are bilingual en/es.
+- **0007** Package names are `ghostty_dart*`. Every README carries the "unofficial, not affiliated" notice and does not use the Ghostty logo.
+- **0006** Native lifetime and public API conventions. Details are in `docs/internal/architecture/ghostty_dart-conventions.md`, which **every change to `ghostty_dart` must follow**. It covers the handle base, the finalizer rules, callables, borrowed views and epochs, tolerant enums, the naming rules (§11), and the analyzer audit that keeps `dart:ffi` out of the public API.
 
 If a change contradicts an ADR, write a new ADR that supersedes it. Do not silently diverge.
 
@@ -50,9 +52,9 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 - Native: libghostty-vt 1.0.0, pinned in `native/upstream.json`, with Zig 0.17.x.
   - `tool/native/build.sh` builds offline, using upstream's deps tarball via `--system`, a fresh Zig cache, and `unshare -rn` where available.
   - `tool/native/fetch_upstream.sh` verifies the minisign signature *and* the pinned sha256.
-- Bindings: ffigen 23 (Dart API config in `packages/ghostty_vt/tool/ffigen.dart`, `@Native`).
+- Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
-- Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_vt: source: path` to the locally built library.
+- Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` to the locally built library.
 
 ## Commands
 
@@ -81,8 +83,9 @@ When you add a workflow step, add a mise task for it. A task listed here must wo
 - Document every public member. Target ≥80% dartdoc coverage (pana requires 20%). Each doc says *what* and *why*, gives one example for main entry points, and documents ownership and lifetime for handles.
 - Comments explain non-obvious *why*. No commented-out code and no TODOs without an issue link.
 
-### `ghostty_vt` (bindings)
-- `lib/ghostty_vt.dart` uses a conditional export (`if (dart.library.js_interop)`). **Never import `dart:ffi` unconditionally from the main library**, and never use `dart:html`. Either one costs pana platform points (see sqlite3 at 150/160).
+### `ghostty_dart` (bindings)
+- **Target:** `lib/ghostty_dart.dart` will use a conditional export (`if (dart.library.js_interop)`) once the wasm backend exists. Until then it is native-only, and web must not be claimed.
+- Never use `dart:html`. Claiming web without being Wasm-ready costs pana platform points (see sqlite3 at 150/160).
 - One `VtBackend` interface. The FFI and wasm implementations must pass the same test suite.
 - Ownership mirrors the C API:
   - Every `_new` has a matching `_free`. Wrappers implement `Finalizable`, attach a `NativeFinalizer`, and have an idempotent `dispose()` that detaches it.
@@ -96,7 +99,7 @@ When you add a workflow step, add a mise task for it. A task listed here must wo
   - Use zero-copy views (`asTypedList`, `.address`). On wasm, rebuild the `memory.buffer` view whenever memory grows.
 - Map C results to Dart exceptions in one place. `GHOSTTY_UNSUPPORTED` becomes `UnsupportedError`.
 
-### `ghostty_vt_flutter` (widget)
+### `ghostty_dart_flutter` (widget)
 - Repaint only dirty rows, using the render state's `next_dirty`.
 - Draw style runs, not cells. Cache paragraphs per run.
 - A `drawRawAtlas` glyph atlas is the planned v2 path. Land it only with benchmark evidence.
@@ -106,10 +109,10 @@ When you add a workflow step, add a mise task for it. A task listed here must wo
   - The widget must not steal shell shortcuts by default. Ctrl+V and Ctrl+A go to the shell.
   - IME and mobile soft keyboards are first-class, with tests.
 
-### `ghostty_xterm` (compat adapter)
+### `ghostty_dart_xterm` (compat adapter)
 - Mirror the public API of `xterm` 4.0.0 exactly: names, parameters, defaults and callback signatures. When in doubt, read xterm.dart's source (MIT) and match it.
 - `COMPATIBILITY.md` is generated by `tool/` from the xterm 4.0.0 API. Every member is ✅ same, ⚠️ differs, ❌ missing (planned) or 🚫 won't support (with the reason).
-- Port xterm.dart's tests into `packages/ghostty_xterm/test/compat/`. A failing compat test is a bug, not a flaky test.
+- Port xterm.dart's tests into `packages/ghostty_dart_xterm/test/compat/`. A failing compat test is a bug, not a flaky test.
 - Additions beyond xterm are additive only (e.g. `writeBytes`). They must never change the behaviour of an existing xterm member.
 
 ## Testing
@@ -130,7 +133,7 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 - Do not adopt any dependency version published less than 3 days ago (cooldown).
   - `mise run cooldown` checks the lockfile.
   - Hold back a too-new transitive version with a root `dependency_overrides` entry, with a dated comment. Remove it once the version has aged.
-- Prefer zero dependencies in `ghostty_vt`. Every new dependency needs a justification in the PR.
+- Prefer zero dependencies in `ghostty_dart`. Every new dependency needs a justification in the PR.
 - Before using a library's API, read its source in `~/.pub-cache`. Do not create throwaway projects that compile unpinned code.
 - Pin GitHub Actions by commit SHA.
 - Native binaries are built only in CI, with provenance attestations.
@@ -180,7 +183,7 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 - release-please uses a GitHub App token, because `GITHUB_TOKEN` tags do not trigger workflows.
 - Semver: start at `0.1.0`; while in `0.x`, a minor bump means breaking. Check breaking changes with `dart_apitool diff`.
 - The CHANGELOG entry must match the pubspec version.
-- Package skills: each published package ships `skills/<pkg>-<topic>/SKILL.md`. For example, `ghostty_xterm-migrate-from-xterm` and `ghostty_vt-usage`.
+- Package skills: each published package ships `skills/<pkg>-<topic>/SKILL.md`. For example, `ghostty_dart_xterm-migrate-from-xterm` and `ghostty_dart-usage`.
 
 ## Working style for agents
 

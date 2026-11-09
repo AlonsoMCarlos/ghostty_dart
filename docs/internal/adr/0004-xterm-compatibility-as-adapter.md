@@ -1,6 +1,6 @@
 # 0004. xterm compatibility as a thin adapter
 
-**Status:** Accepted (2026-11-09)
+**Status:** Accepted (2026-11-09). Package names superseded by ADR 0007 (`ghostty_dart`, `ghostty_dart_flutter`, `ghostty_dart_xterm`).
 
 ## Context
 `package:xterm` 4.0.0 is the de facto Flutter terminal (~253k downloads/30 days) but unmaintained since 2024. Its API forces `String` input, exposes its internal cell model (`BufferLine` as `Uint32List`), its Dart parser (`EscapeHandler`), and an index-ordered `TerminalKey` without meta. Copying that as our core would cap our performance. ghostty-web's "drop-in" claim for xterm.js was publicly contradicted by its own company's migration PR.

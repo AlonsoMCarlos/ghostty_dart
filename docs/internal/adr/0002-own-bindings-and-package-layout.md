@@ -1,6 +1,6 @@
 # 0002. Own bindings and three-package layout
 
-**Status:** Accepted (2026-11-09)
+**Status:** Accepted (2026-11-09). Package names superseded by ADR 0007 (`ghostty_dart`, `ghostty_dart_flutter`, `ghostty_dart_xterm`).
 
 ## Context
 Existing bindings are pre-1.0, have fast-moving APIs, and download third-party binaries from their build hooks. None offers `xterm` compatibility. We want a high-performance core without inheriting `xterm`'s API limits.
