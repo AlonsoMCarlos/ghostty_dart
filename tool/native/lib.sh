@@ -84,6 +84,20 @@ extract_upstream_src() {
   printf '%s\n' "$dest/libghostty-vt-$version"
 }
 
+# build_work_dir <root>: a new empty directory for one build, printed as a
+# physical path (symlinks resolved). Zig's build runner passes generator
+# steps paths relative to their cwd, which breaks in two cases a system temp
+# dir hits: on macOS `/var` is a symlink to `/private/var`, so `..` resolves
+# differently than the logical path Zig computed; on Windows the temp dir is
+# on C: while the checkout may be on D:, and no relative path crosses drives.
+# A dir under the checkout avoids both.
+build_work_dir() {
+  local base="$1/.native-cache/tmp" dir
+  mkdir -p "$base" || return 1
+  dir="$(mktemp -d "$base/build.XXXXXX")" || return 1
+  (cd "$dir" && pwd -P)
+}
+
 # asset_field <root> <asset> <field>: a field of a release asset in
 # native/prebuilt_assets.json, or empty when unset. Fails on unknown assets.
 asset_field() {

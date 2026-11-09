@@ -17,7 +17,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$root/tool/native/lib.sh"
 cache="$root/.native-cache"
 
-work="$(mktemp -d)"
+work="$(build_work_dir "$root")"
 trap 'rm -rf "$work"' EXIT
 src="$(extract_upstream_src "$root" "$work/src")"
 deps="$src-deps"
