@@ -1,0 +1,25 @@
+--- /tmp/claude-1000/-home-titere-dev-libghostty-vt-flutter-version/58a05b62-74e9-4e6f-8897-0625310b3432/scratchpad/PageList.zig.orig	2026-11-09 11:24:16.841399676 +0100
++++ /tmp/claude-1000/-home-titere-dev-libghostty-vt-flutter-version/58a05b62-74e9-4e6f-8897-0625310b3432/scratchpad/patched/libghostty-vt-1.0.0/src/terminal/PageList.zig	2026-11-09 11:24:16.857399803 +0100
+@@ -5646,9 +5646,19 @@
+                     }
+                 }
+ 
+-                // Reset the memory to zero (and decommit it, where
+-                // supported) so it can be reused.
+-                _ = terminal_mem.decommit(.zero, item, page.memory.len);
++                // Keep one zeroed item resident as a hot spare. When
++                // scrollback is at its line limit, every new page is
++                // paired with pruning the oldest one; decommitting that
++                // item would make the next page fault in ~100 zeroed
++                // OS pages from the kernel. Zeroing the dirty prefix in
++                // place costs one memset instead. Further items are
++                // decommitted as before, so this keeps at most one
++                // extra item resident.
++                if (pool.pages.freeCount() == 0) {
++                    @memset(item[0..page.memory.len], 0);
++                } else {
++                    _ = terminal_mem.decommit(.zero, item, page.memory.len);
++                }
+                 pool.pages.destroy(item);
+             }
+         },

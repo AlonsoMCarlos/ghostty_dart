@@ -205,6 +205,13 @@ First differing row per mismatch:
   ~85–95 and ~82 MB/s with the 10,000-line limit used here (and ~105 / ~85 with
   no limit). The benchmark uses the same 10,000 lines for everyone because
   that is the fair comparison, but it is the slow configuration for ghostty.
+  The gap is mostly an upstream inefficiency, not the cost of keeping 10,000
+  lines: libghostty-vt 1.0.0 decommits each page it prunes by line count and
+  immediately faults it back in for the next page. The byte limit that keeps
+  about the same history (`scrollbackMaxBytes = 18276352`,
+  `scrollbackMaxLines = null`) avoids it and runs ~2x faster. Details, C repro
+  and a candidate fix: `docs/internal/research/2026-11-09-upstream-findings.md` §7.
+  Re-measure when upstream changes it.
 - **JIT vs AOT:** Flutter release builds are AOT, so the AOT table is the one
   that predicts shipped apps; JIT (`dart run`, debug builds) is shown because
   it is what developers see. The FFI cost of `ghostty_dart` is the same in both;
