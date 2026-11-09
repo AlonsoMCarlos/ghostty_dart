@@ -198,7 +198,11 @@ void main() {
         [0x00],
       );
       // Alt sends an ESC prefix only with mode 1036, which is off in a new
-      // encoder but on by default in a terminal.
+      // encoder but on by default in a terminal. On a macOS build Alt is the
+      // Option key and produces plain text unless Option acts as Alt
+      // (key_encode.zig, `isDarwin`); `both` makes this host-independent and
+      // is ignored on other platforms.
+      encoder.configure(macosOptionAsAlt: OptionAsAlt.both);
       final altA = _char(VtKey.a, 'a', modifiers: KeyModifiers.alt);
       expect(utf8.decode(encoder.encode(altA)), 'a');
       withTerminal(80, 24, encoder.setFromTerminal);
