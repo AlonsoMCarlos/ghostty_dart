@@ -57,7 +57,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 - Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
 - Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` with `path: .native-cache/host/`. A directory `path` makes the hook pick the target OS's bundled library name inside it, so the same pubspec works on every host.
-- CI: `.github/workflows/ci.yml` runs `deps`, `native:host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest.
+- CI: `.github/workflows/ci.yml` runs `deps`, `native:host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. A `secrets` job runs gitleaks (pinned release binary, sha256 verified) over the full history and the working tree.
 
 ## Commands
 
