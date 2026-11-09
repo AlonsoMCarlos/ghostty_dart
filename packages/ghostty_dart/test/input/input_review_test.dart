@@ -201,11 +201,13 @@ void main() {
       // encoder but on by default in a terminal. On a macOS build Alt is the
       // Option key and produces plain text unless Option acts as Alt
       // (key_encode.zig, `isDarwin`); `both` makes this host-independent and
-      // is ignored on other platforms.
+      // is ignored on other platforms. setFromTerminal resets it, so set it
+      // after each call.
       encoder.configure(macosOptionAsAlt: OptionAsAlt.both);
       final altA = _char(VtKey.a, 'a', modifiers: KeyModifiers.alt);
       expect(utf8.decode(encoder.encode(altA)), 'a');
       withTerminal(80, 24, encoder.setFromTerminal);
+      encoder.configure(macosOptionAsAlt: OptionAsAlt.both);
       expect(showEscapes(encoder.encode(altA)), 'ESCa');
     });
 
