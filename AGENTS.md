@@ -41,7 +41,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 
 ## Toolchain: mise is the standard
 
-- **[mise](https://mise.jdx.dev) manages every tool.** `mise install` at the repo root installs the exact versions in `mise.toml`: Flutter 3.47.9 (which bundles Dart 3.13.7), Zig 0.17.1 and minisign.
+- **[mise](https://mise.jdx.dev) manages every tool.** `mise install` at the repo root installs the exact versions in `mise.toml`: Flutter 3.47.9 (which bundles Dart 3.13.7), Zig 0.17.1, minisign and jq.
   - Checksums are recorded in `mise.lock`. Commit both files.
   - `minimum_release_age = "3d"` enforces the cooldown for tools.
   - Never install project tools globally or via ad-hoc downloads. Add them to `mise.toml`.
@@ -52,9 +52,12 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 - Native: libghostty-vt 1.0.0, pinned in `native/upstream.json`, with Zig 0.17.x.
   - `tool/native/build.sh` builds offline, using upstream's deps tarball via `--system`, a fresh Zig cache, and `unshare -rn` where available.
   - `tool/native/fetch_upstream.sh` verifies the minisign signature *and* the pinned sha256.
+  - `tool/native/build_host.sh` builds for the host (`x86_64-linux-gnu`, `aarch64-macos`, `x86_64-windows-gnu`: upstream's tier-1 Windows ABI) and stages the library under its bundled name, plus the headers, in `.native-cache/host/`.
+  - The scripts are bash and run on Linux, macOS (bash 3.2, `shasum`) and Windows (Git Bash). Shared helpers live in `tool/native/lib.sh`.
 - Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
-- Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` to the locally built library.
+- Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` with `path: .native-cache/host/`. A directory `path` makes the hook pick the target OS's bundled library name inside it, so the same pubspec works on every host.
+- CI: `.github/workflows/ci.yml` runs `deps`, `native:host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest.
 
 ## Commands
 
@@ -62,8 +65,9 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 
 ```sh
 mise install            # tools
-dart pub get            # workspace deps
-mise run native:build   # libghostty-vt for host Linux x64 (arg: zig target)
+mise run deps           # dart pub get --enforce-lockfile
+mise run native:host    # libghostty-vt for this machine -> .native-cache/host/
+mise run native:build   # libghostty-vt for any zig target (default x86_64-linux-gnu)
 mise run ffigen         # regenerate bindings
 mise run format
 mise run analyze        # format check + dart analyze --fatal-infos

@@ -1,9 +1,10 @@
 // Regenerates lib/src/ffi/bindings.g.dart from the libghostty-vt headers.
 //
-// Usage (from the repo root, after tool/native/build.sh):
+// Usage (from the repo root, after `mise run native:host`):
 //   dart run packages/ghostty_dart/tool/ffigen.dart [include-dir]
 //
-// The include dir defaults to the Linux x64 build output. Requires libclang.
+// The include dir defaults to the host build staged in .native-cache/host/.
+// Requires libclang.
 
 import 'dart:io';
 
@@ -14,7 +15,7 @@ Future<void> main(List<String> args) async {
   final repoRoot = packageRoot.resolve('../../');
   final include = args.isNotEmpty
       ? Directory(args.first).absolute.uri
-      : repoRoot.resolve('.native-cache/out/x86_64-linux-gnu/include/');
+      : repoRoot.resolve('.native-cache/host/include/');
 
   bool isGhostty(String name) =>
       name.startsWith('ghostty_') || name.startsWith('Ghostty');

@@ -59,6 +59,21 @@ String bundledLibraryName(OS os) => switch (os) {
   _ => 'libghostty-vt.so',
 };
 
+/// Resolves the `path` user-define of `source: path` to the library file.
+///
+/// [path] may name the library file itself, or a directory that holds it
+/// under [bundledLibraryName] for [os]. The directory form lets one root
+/// pubspec serve every host: `tool/native/build_host.sh` stages each host's
+/// build into `.native-cache/host/`. Pass whether [path] is an existing
+/// directory as [isDirectory]; this function does no I/O.
+Uri localLibraryUri(Uri path, OS os, {required bool isDirectory}) {
+  if (!isDirectory) return path;
+  final dir = path.path.endsWith('/')
+      ? path
+      : path.replace(path: '${path.path}/');
+  return dir.resolve(bundledLibraryName(os));
+}
+
 /// Name the system dynamic loader resolves for an installed libghostty-vt 1.x.
 String systemLibraryName(OS os) => switch (os) {
   OS.windows => 'ghostty-vt.dll',

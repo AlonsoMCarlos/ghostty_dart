@@ -1,0 +1,72 @@
+# Runs `mise run check` (format check, analyze, tests, cooldown) on Linux,
+# macOS (arm64) and Windows, against libghostty-vt built on each runner from
+# the minisign- and sha256-verified upstream tarballs.
+#
+# Supply chain (AGENTS.md): actions pinned by commit SHA to releases at least
+# 3 days old, no secrets, read-only token, no persisted git credentials.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Git Bash on Windows: the native scripts and mise's `bash -c` tasks need it.
+    shell: bash
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools (mise.toml, verified against mise.lock)
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: 2026.11.2
+          cache: true
+
+      - name: Locate pub cache
+        run: echo "PUB_CACHE=$RUNNER_TEMP/pub-cache" >> "$GITHUB_ENV"
+
+      - name: Cache pub packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PUB_CACHE }}
+          key: pub-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      # Only the downloads are cached; fetch_upstream.sh re-verifies the
+      # minisign signature and the pinned sha256 on every run.
+      - name: Cache upstream libghostty-vt tarballs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .native-cache/*.tar.gz
+          key: native-src-${{ hashFiles('native/upstream.json') }}
+          enableCrossOsArchive: true
+
+      - name: Resolve dependencies
+        run: mise run deps
+
+      - name: Build libghostty-vt for the host
+        run: mise run native:host
+
+      - name: Check
+        run: mise run check
