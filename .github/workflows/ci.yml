@@ -1,6 +1,7 @@
 # Runs `mise run check` (format check, analyze, tests, cooldown) on Linux,
 # macOS (arm64) and Windows, against libghostty-vt built on each runner from
-# the minisign- and sha256-verified upstream tarballs.
+# the minisign- and sha256-verified upstream tarballs. A separate job scans
+# the full git history and the working tree for leaked secrets (gitleaks).
 #
 # Supply chain (AGENTS.md): actions pinned by commit SHA to releases at least
 # 3 days old, no secrets, read-only token, no persisted git credentials.
@@ -70,3 +71,45 @@ jobs:
 
       - name: Check
         run: mise run check
+
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # gitleaks v8.30.1 (released 2026-03-21), official linux x64 release
+      # binary. The sha256 is pinned here and must also match the release's
+      # checksums file; any mismatch fails the job.
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for `gitleaks git`
+          persist-credentials: false
+
+      - name: Install gitleaks (verified)
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir/bin"
+          cd "$dir"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          sums="gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -sSfL --proto '=https' "$base/$tarball" -o "$tarball"
+          curl -sSfL --proto '=https' "$base/$sums" -o "$sums"
+          listed="$(awk -v f="$tarball" '$2 == f { print $1 }' "$sums")"
+          actual="$(sha256sum "$tarball" | cut -d' ' -f1)"
+          [[ "$listed" == "$GITLEAKS_SHA256" ]] || { echo "::error::checksums file differs from pinned sha256"; exit 1; }
+          [[ "$actual" == "$GITLEAKS_SHA256" ]] || { echo "::error::downloaded tarball differs from pinned sha256"; exit 1; }
+          tar -xzf "$tarball" -C bin gitleaks
+          echo "$dir/bin" >> "$GITHUB_PATH"
+
+      - name: Scan full git history
+        run: gitleaks git --redact --verbose --exit-code 1 .
+
+      - name: Scan working tree
+        run: gitleaks dir --redact --verbose --exit-code 1 .

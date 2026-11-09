@@ -15,3 +15,5 @@ coverage/
 .zig-cache-global/
 zig-out/
 .claude/plan-runs/
+.claude/worktrees/
+.claude/settings.local.json
