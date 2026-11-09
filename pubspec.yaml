@@ -6,6 +6,7 @@ environment:
 
 workspace:
   - packages/ghostty_dart
+  - benchmarks
 
 hooks:
   user_defines:

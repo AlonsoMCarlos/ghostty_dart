@@ -64,6 +64,11 @@ run = "dart test"
 description = "Fail if any locked dependency was published less than 3 days ago"
 run = "dart run tool/check_cooldown.dart"
 
+[tasks."bench:parser"]
+description = "Parser throughput benchmark vs xterm 4.0.0 and xterm2_core, JIT and AOT (options: see benchmarks/README.md)"
+dir = "{{config_root}}/benchmarks"
+run = "dart run bin/parser_bench.dart"
+
 [tasks.check]
 description = "Everything CI runs locally"
 depends = ["analyze", "test", "cooldown"]
