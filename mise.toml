@@ -43,7 +43,7 @@ run = "dart run packages/ghostty_dart/tool/ffigen.dart"
 
 [tasks.deps]
 description = "Resolve workspace dependencies exactly as locked in pubspec.lock"
-run = "dart pub get --enforce-lockfile"
+run = "flutter pub get --enforce-lockfile"
 
 [tasks.format]
 description = "Format all Dart code"

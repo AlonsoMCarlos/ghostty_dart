@@ -65,7 +65,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 
 ```sh
 mise install            # tools
-mise run deps           # dart pub get --enforce-lockfile
+mise run deps           # flutter pub get --enforce-lockfile
 mise run native:host    # libghostty-vt for this machine -> .native-cache/host/ (needed by test)
 mise run native:build   # libghostty-vt for any zig target (default x86_64-linux-gnu)
 mise run ffigen         # regenerate bindings
@@ -79,7 +79,7 @@ mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchm
 
 When you add a workflow step, add a mise task for it. A task listed here must work.
 
-The `benchmarks/` member depends on `xterm` 4.0.0, whose pubspec requires the Flutter SDK, so resolving the workspace needs Flutter's Dart (the one mise installs). A Dart-only SDK fails at `dart pub get`.
+The `benchmarks/` member depends on `xterm` 4.0.0, whose pubspec requires the Flutter SDK, so resolving the workspace needs Flutter's Dart (the one mise installs). Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
 
 ## Code rules
 
