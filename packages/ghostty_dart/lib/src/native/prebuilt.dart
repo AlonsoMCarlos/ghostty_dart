@@ -50,9 +50,9 @@ const prebuiltSha256 = <String, String>{};
 /// Flutter's default `minSdk`).
 const prebuiltMinAndroidApi = 24;
 
-/// Lowest iOS major version the prebuilt iOS binaries support (ADR 0008;
-/// upstream's floor).
-const prebuiltMinIOSVersion = 13;
+/// Lowest iOS major version the prebuilt iOS binaries support (ADR 0008).
+/// Upstream builds for iOS 13, but the arm64 simulator starts at iOS 14.
+const prebuiltMinIOSVersion = 14;
 
 /// Lowest macOS major version the prebuilt macOS binaries support (ADR 0008;
 /// upstream's floor).

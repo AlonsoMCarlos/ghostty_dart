@@ -274,7 +274,11 @@ final class PrebuiltFetcher {
     if (declared > maxBytes) {
       throw _Failure(_tooLarge('declares $declared bytes'), retryable: false);
     }
-    final sink = partial.openWrite();
+    // `open` rather than `openWrite`: an IOSink reports a failed open only
+    // on its `done` future, which can fail before anyone awaits it and then
+    // escapes as an uncaught error (seen on Windows). Awaiting the open
+    // surfaces it here, where it gets the guidance like any other failure.
+    final file = await partial.open(mode: FileMode.write);
     var received = 0;
     try {
       await for (final chunk in response.timeout(idleTimeout)) {
@@ -285,10 +289,10 @@ final class PrebuiltFetcher {
             retryable: false,
           );
         }
-        sink.add(chunk);
+        await file.writeFrom(chunk);
       }
     } finally {
-      await sink.close();
+      await file.close();
     }
     if (declared >= 0 && received != declared) {
       throw _Failure(

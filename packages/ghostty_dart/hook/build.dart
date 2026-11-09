@@ -9,7 +9,7 @@
 //   closed on mismatch. Options:
 //   - `url_pattern`: an https mirror. `$TAG`, `$VERSION` and `$FILENAME`
 //     are substituted (see `defaultUrlPattern`); the hash is still checked.
-//   The app must target at least Android API 24, iOS 13 or macOS 13, the
+//   The app must target at least Android API 24, iOS 14 or macOS 13, the
 //   floor of the prebuilt binaries; lower targets fail with a message.
 //   Downloads have connect, idle and per-attempt timeouts, a 64 MiB cap,
 //   https-only redirects (at most 5) and one retry on transient errors

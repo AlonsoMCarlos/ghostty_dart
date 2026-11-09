@@ -46,7 +46,7 @@ void expectThrows<T extends Object>(void Function() body, String what) {
 }
 
 const _api = {'ghostty_terminal_new', 'ghostty_terminal_free'};
-const _floors = Floors(glibc: (2, 28), apple: 13);
+const _floors = Floors(glibc: (2, 28), macos: 13, ios: 14);
 
 List<CheckLine> _check(String asset, Uint8List bytes) =>
     checkBinary(asset: asset, bytes: bytes, api: _api, floors: _floors);
@@ -219,6 +219,17 @@ void main() {
       macho(minOs: 14 << 16),
     );
     expect(_failures(newer).contains('minimum OS 14.0'), 'minos');
+    // iOS has its own floor: 14.0 passes there but 15.0 does not.
+    final sim14 = _check(
+      'libghostty-vt-ios-arm64-simulator.dylib',
+      macho(platform: 7, minOs: 14 << 16),
+    );
+    expect(_allOk(sim14), 'ios 14 ok, got ${_failures(sim14)}');
+    final ios15 = _check(
+      'libghostty-vt-ios-arm64.dylib',
+      macho(platform: 2, minOs: 15 << 16),
+    );
+    expect(_failures(ios15).contains('minimum OS 15.0'), 'ios minos');
   });
 
   test('Mach-O: cmdsize 0 with a huge ncmds is rejected at once', () {

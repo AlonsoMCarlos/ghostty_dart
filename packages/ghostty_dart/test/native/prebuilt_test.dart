@@ -139,7 +139,7 @@ void main() {
     // ADR 0008, not a silent edit.
     test('constants follow ADR 0008', () {
       expect(prebuiltMinAndroidApi, 24);
-      expect(prebuiltMinIOSVersion, 13);
+      expect(prebuiltMinIOSVersion, 14);
       expect(prebuiltMinMacOSVersion, 13);
     });
 
@@ -183,7 +183,7 @@ void main() {
     test('accepts the minimum and above', () {
       expect(prebuiltMinimumVersionError(OS.android, 24), isNull);
       expect(prebuiltMinimumVersionError(OS.android, 35), isNull);
-      expect(prebuiltMinimumVersionError(OS.iOS, 13), isNull);
+      expect(prebuiltMinimumVersionError(OS.iOS, 14), isNull);
       expect(prebuiltMinimumVersionError(OS.macOS, 15), isNull);
       expect(prebuiltMinimumVersionError(OS.linux, null), isNull);
       expect(prebuiltMinimumVersionError(OS.windows, null), isNull);
@@ -196,7 +196,7 @@ void main() {
       expect(android, contains('Android API 24'));
       expect(android, contains('Android API 21'));
       expect(android, contains('minSdk'));
-      expect(ios, contains('iOS 13 or later'));
+      expect(ios, contains('iOS 14 or later'));
       expect(macos, contains('macOS 13 or later'));
       for (final message in [android, ios, macos]) {
         expect(message, contains('source: path'));

@@ -4,7 +4,7 @@
     "glibc": "2.28",
     "android_api": 24,
     "macos": 13,
-    "ios": 13
+    "ios": 14
   },
   "assets": {
     "libghostty-vt-linux-x64.so": {

@@ -21,7 +21,8 @@ source "$root/tool/native/lib.sh"
 manifest="$root/native/prebuilt_assets.json"
 
 glibc_floor="$(jq_raw .floors.glibc "$manifest")"
-apple_floor="$(jq_raw '[.floors.macos, .floors.ios] | max' "$manifest")"
+macos_floor="$(jq_raw .floors.macos "$manifest")"
+ios_floor="$(jq_raw .floors.ios "$manifest")"
 
 pairs=()
 case "${1:?usage: check_binary.sh <asset> [file] | --dist <dir> | --host}" in
@@ -62,5 +63,5 @@ fi
 # relative files, so it needs no package resolution.
 dart "$(native_path "$root/tool/native/check_binary.dart")" \
   --headers "$(native_path "$src/include")" \
-  --glibc-floor "$glibc_floor" --apple-floor "$apple_floor" \
+  --glibc-floor "$glibc_floor" --macos-floor "$macos_floor" --ios-floor "$ios_floor" \
   "${pairs[@]}"

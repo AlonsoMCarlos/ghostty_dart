@@ -6,7 +6,7 @@
 //
 // Usage:
 //   dart tool/native/check_binary.dart --headers <include dir>
-//       --glibc-floor <major.minor> --apple-floor <major> <asset> <file> [<asset> <file>...]
+//       --glibc-floor <major.minor> --macos-floor <major> --ios-floor <major> <asset> <file> [<asset> <file>...]
 // Exit codes: 0 all passed, 1 a check failed, 64 usage error (EX_USAGE),
 // 66 headers missing (EX_NOINPUT).
 
@@ -15,7 +15,7 @@ import 'dart:io';
 import 'src/binary_check.dart';
 
 void main(List<String> args) {
-  String? headers, glibc, apple;
+  String? headers, glibc, macos, ios;
   final pairs = <String>[];
   for (var i = 0; i < args.length; i++) {
     String value() => i + 1 < args.length ? args[++i] : _usage();
@@ -24,24 +24,29 @@ void main(List<String> args) {
         headers = value();
       case '--glibc-floor':
         glibc = value();
-      case '--apple-floor':
-        apple = value();
+      case '--macos-floor':
+        macos = value();
+      case '--ios-floor':
+        ios = value();
       case final a:
         pairs.add(a);
     }
   }
   final glibcMatch = RegExp(r'^(\d+)\.(\d+)$').firstMatch(glibc ?? '');
-  final appleFloor = int.tryParse(apple ?? '');
+  final macosFloor = int.tryParse(macos ?? '');
+  final iosFloor = int.tryParse(ios ?? '');
   if (headers == null ||
       glibcMatch == null ||
-      appleFloor == null ||
+      macosFloor == null ||
+      iosFloor == null ||
       pairs.isEmpty ||
       pairs.length.isOdd) {
     _usage();
   }
   final floors = Floors(
     glibc: (int.parse(glibcMatch[1]!), int.parse(glibcMatch[2]!)),
-    apple: appleFloor,
+    macos: macosFloor,
+    ios: iosFloor,
   );
 
   final include = Directory(headers);
@@ -94,7 +99,7 @@ void main(List<String> args) {
 Never _usage() {
   stderr.writeln(
     'usage: check_binary.dart --headers <dir> --glibc-floor <x.y> '
-    '--apple-floor <n> <asset> <file> [<asset> <file>...]',
+    '--macos-floor <n> --ios-floor <n> <asset> <file> [<asset> <file>...]',
   );
   exit(64);
 }

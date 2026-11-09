@@ -15,13 +15,17 @@ import 'dart:typed_data';
 
 /// Platform floors a release asset must meet (native/prebuilt_assets.json).
 final class Floors {
-  const Floors({required this.glibc, required this.apple});
+  const Floors({required this.glibc, required this.macos, required this.ios});
 
   /// Newest GLIBC symbol version allowed, as (major, minor).
   final (int, int) glibc;
 
-  /// Highest allowed minimum OS major version for macOS and iOS.
-  final int apple;
+  /// Highest allowed minimum macOS major version.
+  final int macos;
+
+  /// Highest allowed minimum iOS major version (device and simulator). Kept
+  /// apart from [macos]: the arm64 iOS simulator starts at iOS 14.
+  final int ios;
 }
 
 /// One check outcome: `ok` false fails the asset.
@@ -222,10 +226,11 @@ void _checkMachO(
     '(expected ${_platformNames[expected.machOPlatform]})',
   );
   final minOs = macho.minOs;
+  final floor = expected.machOPlatform == 1 ? floors.macos : floors.ios;
   check(
-    minOs != null && minOs.$1 <= floors.apple,
+    minOs != null && minOs.$1 <= floor,
     'minimum OS ${minOs == null ? 'missing' : '${minOs.$1}.${minOs.$2}'} '
-    '(floor ${floors.apple}.0)',
+    '(floor $floor.0)',
   );
 }
 

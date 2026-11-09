@@ -31,7 +31,7 @@ ADR 0003 makes prebuilt binaries from our CI the default source of the build hoo
 
 **Build settings.**
 - Every build uses `-Doptimize=ReleaseFast -Dstrip=true`, from the minisign-verified upstream tarball, offline with `--system` deps.
-- Minimum platform versions are Android API 24, iOS 13 and macOS 13 (upstream's floor). The hook fails with a clear message when the app targets something lower.
+- Minimum platform versions are Android API 24, iOS 14 and macOS 13. Upstream's floor is iOS 13, but the arm64 iOS simulator only exists from iOS 14 (first CI run, 2026-11-09); Flutter itself requires iOS 15, so no app loses anything. The hook fails with a clear message when the app targets something lower.
 - The NDK is r28c (`28.2.13676358`), the one Flutter 3.47.9 pins. It is downloaded from dl.google.com and verified against a sha256 pinned in the repo plus Google's SHA-1. `ANDROID_NDK_HOME` is always set explicitly.
 
 **Pipeline.**
