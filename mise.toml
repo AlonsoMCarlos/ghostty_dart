@@ -55,7 +55,10 @@ run = ["dart format -o none --set-exit-if-changed .", "dart analyze --fatal-info
 
 [tasks.test]
 description = "Run all tests"
-run = "dart test packages/ghostty_dart"
+# Run inside the package: `dart test <dir>` from the workspace root does not
+# run the package's build hook, so the native library would be missing.
+dir = "{{config_root}}/packages/ghostty_dart"
+run = "dart test"
 
 [tasks.cooldown]
 description = "Fail if any locked dependency was published less than 3 days ago"

@@ -66,12 +66,12 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 ```sh
 mise install            # tools
 mise run deps           # dart pub get --enforce-lockfile
-mise run native:host    # libghostty-vt for this machine -> .native-cache/host/
+mise run native:host    # libghostty-vt for this machine -> .native-cache/host/ (needed by test)
 mise run native:build   # libghostty-vt for any zig target (default x86_64-linux-gnu)
 mise run ffigen         # regenerate bindings
 mise run format
 mise run analyze        # format check + dart analyze --fatal-infos
-mise run test
+mise run test           # runs inside packages/ghostty_dart, so the build hook runs
 mise run cooldown       # no locked dependency younger than 3 days
 mise run check          # everything CI runs
 ```
