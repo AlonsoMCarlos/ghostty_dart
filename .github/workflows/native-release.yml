@@ -75,6 +75,8 @@ jobs:
           fetch-depth: 0 # origin/main, to prove the tagged commit is on it
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: jq
@@ -122,6 +124,8 @@ jobs:
           persist-credentials: false
       # Flutter only where it exists; elsewhere smoke.sh uses the pinned Dart SDK.
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ matrix.dart == 'mise' && 'flutter jq' || 'jq' }}
@@ -159,6 +163,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: ${{ matrix.dart == 'mise' && 'flutter jq' || 'jq' }}
@@ -195,6 +201,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: jq

@@ -74,6 +74,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: jq
@@ -101,6 +103,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: zig jq minisign
@@ -138,6 +142,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: zig jq minisign
@@ -171,6 +177,8 @@ jobs:
           persist-credentials: false
       # No Flutter: check_binary.sh fetches the pinned Dart SDK itself.
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: jq minisign
@@ -217,6 +225,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: ${{ env.MISE_VERSION }}
           install_args: jq

@@ -43,6 +43,8 @@ jobs:
 
       - name: Install tools (mise.toml, verified against mise.lock)
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: 2026.11.2 # keep in sync with the other workflows (checked by test:release)
           cache: true
@@ -95,6 +97,8 @@ jobs:
 
       - name: Install tools (mise.toml, verified against mise.lock)
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        # Installing takes 15-80 s; a stalled download (seen once, 30 min) fails fast.
+        timeout-minutes: 10
         with:
           version: 2026.11.2 # keep in sync with the other workflows (checked by test:release)
           cache: true
