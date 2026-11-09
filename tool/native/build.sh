@@ -39,7 +39,13 @@ for arg in "$@"; do
   if [[ "$arg" == -Dcpu=* ]]; then cpu=(); fi
 done
 
-(cd "$src" && ZIG_GLOBAL_CACHE_DIR="$(native_path "$zig_cache")" ${run[@]+"${run[@]}"} zig build \
+# Upstream's build.zig runs git to detect its version. The work dir sits
+# inside our checkout, so git would find *our* repo: a tagged release run
+# then panics ("tagged releases must be in vX.Y.Z format"), and any build
+# could embed our commit. The ceiling keeps git from looking above the work
+# dir, so upstream sees a plain tarball, as it expects.
+(cd "$src" && GIT_CEILING_DIRECTORIES="$(native_path "$work")" \
+  ZIG_GLOBAL_CACHE_DIR="$(native_path "$zig_cache")" ${run[@]+"${run[@]}"} zig build \
   --prefix "$(native_path "$out")" \
   --system "$(native_path "$deps")" \
   -Dtarget="$target" \
