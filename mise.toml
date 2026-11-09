@@ -14,6 +14,8 @@ minisign = "0.12"    # verifies upstream libghostty-vt release signatures
 [env]
 # Zig's global cache can break libghostty-vt builds when reused; keep it in-repo.
 ZIG_GLOBAL_CACHE_DIR = "{{config_root}}/.zig-cache-global"
+# ffigen (bindings generation only). Debian/Ubuntu: apt install libclang-19-dev.
+LIBCLANG_PATH = "/usr/lib/llvm-19/lib/libclang.so"
 
 # Standard entry points: `mise run <task>` (alias `mise <task>`).
 [tasks."native:fetch"]

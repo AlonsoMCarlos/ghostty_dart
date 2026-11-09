@@ -42,7 +42,17 @@ Future<void> main(List<String> args) async {
         func: (node) => node.isIncluded = isGhostty(node.originalName),
         struct: (node) => node.isIncluded = isGhostty(node.originalName),
         union: (node) => node.isIncluded = isGhostty(node.originalName),
-        enumClass: (node) => node.isIncluded = isGhostty(node.originalName),
+        enumClass: (node) {
+          node.isIncluded = isGhostty(node.originalName);
+          // Every libghostty-vt enum ends with a sentinel set to INT_MAX
+          // (GHOSTTY_ENUM_MAX_VALUE, include/ghostty/vt/types.h), which pins
+          // its size to `int` on every supported compiler.
+          node.silenceWarning = true;
+          // Minor releases may add enum values (ABI policy), and Dart enums
+          // throw on unknown values. Raw bindings use ints; the public API
+          // maps them to Dart enums that tolerate unknown values.
+          node.style = EnumStyle.intConstants;
+        },
         typealias: (node) => node.isIncluded = isGhostty(node.originalName)
             ? TypealiasInclude.always
             : TypealiasInclude.ifUsed,
@@ -51,5 +61,10 @@ Future<void> main(List<String> args) async {
       ),
     ],
   );
-  await generator.generate();
+  // Prefer an explicit LIBCLANG_PATH; ffigen's own lookup shells out to
+  // ldconfig, which is often not on a user's PATH.
+  final libclang = Platform.environment['LIBCLANG_PATH'];
+  await generator.generate(
+    libclangDylib: libclang == null ? null : Uri.file(libclang),
+  );
 }
