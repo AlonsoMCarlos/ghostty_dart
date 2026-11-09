@@ -1,0 +1,15 @@
+name: ghostty_dart_benchmarks
+description: Parser and throughput benchmarks of ghostty_dart against xterm 4.0.0 and xterm2_core.
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+resolution: workspace
+
+# Exact pins: the benchmark compares specific releases. Dependency audit
+# (age, transitive closure, no build hooks) is recorded in README.md.
+dependencies:
+  ghostty_dart: any
+  xterm: 4.0.0
+  xterm2_core: 1.0.0

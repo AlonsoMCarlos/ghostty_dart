@@ -74,9 +74,12 @@ mise run analyze        # format check + dart analyze --fatal-infos
 mise run test           # runs inside packages/ghostty_dart, so the build hook runs
 mise run cooldown       # no locked dependency younger than 3 days
 mise run check          # everything CI runs
+mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchmarks/README.md)
 ```
 
 When you add a workflow step, add a mise task for it. A task listed here must work.
+
+The `benchmarks/` member depends on `xterm` 4.0.0, whose pubspec requires the Flutter SDK, so resolving the workspace needs Flutter's Dart (the one mise installs). A Dart-only SDK fails at `dart pub get`.
 
 ## Code rules
 
