@@ -1,0 +1,29 @@
+name: ghostty_dart_demo
+description: Demo app of ghostty_dart_flutter, a real shell on native platforms and a fake shell on the web.
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.47.0"
+
+resolution: workspace
+
+# flutter_pty compiles a small C library on the user's machine (forkpty on
+# Unix, ConPTY on Windows) and downloads nothing at build time; reviewed
+# 2026-11-10 (ADR 0011, "Demo app"). Exact pin: a newer release must be
+# reviewed again before it is adopted.
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_pty: 0.4.2
+  ghostty_dart: any
+  ghostty_dart_flutter: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^6.1.0
+
+flutter:
+  uses-material-design: true

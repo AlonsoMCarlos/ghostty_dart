@@ -8,6 +8,8 @@ workspace:
   - packages/ghostty_dart
   - packages/ghostty_dart_flutter
   - benchmarks
+  - benchmarks/widget
+  - apps/demo
 
 hooks:
   user_defines:

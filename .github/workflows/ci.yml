@@ -1,5 +1,6 @@
-# Runs `mise run check` (format check, analyze, tests, tool and release-script
-# tests, cooldown, translation check, workflow and shell lint) on Linux, macOS (arm64) and Windows, against libghostty-vt built
+# Runs `mise run check` (format check, analyze, tests, demo app and frame
+# benchmark harness tests, tool and release-script tests, cooldown,
+# translation check, workflow and shell lint) on Linux, macOS (arm64) and Windows, against libghostty-vt built
 # on each runner from the minisign- and sha256-verified upstream tarballs.
 # A separate job scans the full git history and the working tree for leaked
 # secrets (gitleaks). The pana job scores the package as pub.dev does and

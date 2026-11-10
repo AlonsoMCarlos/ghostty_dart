@@ -1,14 +1,26 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:ghostty_dart/ghostty_dart.dart';
 
 import '../seams/terminal_geometry.dart';
 import '../seams/terminal_seams.dart';
+import '../theme/terminal_theme.dart';
+import 'paragraph_cache.dart';
+import 'row_recorder.dart';
 
-/// The terminal grid renderer (ADR 0011): one repaint-isolated render box
-/// that draws the rows of [source] with a cached picture per row, the
-/// cursor and the selection, inside [geometry]. Never exported.
+/// The terminal grid renderer (ADR 0011 "Rendering (v1)"): one
+/// repaint-isolated render box that draws the rows of [source] with a
+/// cached picture per row, plus the cursor, inside [geometry]. Never
+/// exported.
 ///
-/// Not implemented yet: it sizes itself and paints nothing.
+/// Output only repaints: the frame is read from [source] once per paint,
+/// only rows that changed are recorded again, and a frame where nothing
+/// changed records nothing. The cursor is an overlay with its own blink
+/// timer, so moving or blinking it never records a row.
 class TerminalRenderWidget extends LeafRenderObjectWidget {
   /// A renderer for [source] laid out by [geometry], drawing with
   /// [textStyle]'s font. [focused] selects the focused cursor style.
@@ -19,7 +31,14 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     required this.textStyle,
     required this.focused,
     this.hideCursor = false,
-  });
+    this.textScaler = TextScaler.noScaling,
+    this.cursorStyle,
+    this.alwaysShowCursor = false,
+    this.backgroundOpacity = 1.0,
+  }) : assert(
+         backgroundOpacity >= 0 && backgroundOpacity <= 1,
+         'backgroundOpacity must be between 0 and 1',
+       );
 
   /// Where the frames come from.
   final TerminalFrameSource source;
@@ -27,15 +46,34 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
   /// Where the grid is and how big its cells are.
   final TerminalGeometry geometry;
 
-  /// The font of the grid; [geometry]'s metrics were measured with it.
+  /// The font of the grid; [geometry]'s metrics were measured with it (and
+  /// with [textScaler]).
   final TextStyle textStyle;
 
-  /// Whether the view has keyboard focus.
+  /// Whether the view has keyboard focus. An unfocused view draws the
+  /// cursor as a hollow block and does not blink it.
   final bool focused;
 
   /// Whether to hide the cursor, e.g. while the input layer shows IME
   /// composing text at the cursor.
   final bool hideCursor;
+
+  /// The text scaling [geometry]'s metrics were measured with
+  /// (`VtCellMetrics.measure`); applied to [textStyle]'s font size.
+  final TextScaler textScaler;
+
+  /// Draws the cursor in this shape instead of the one the program asked
+  /// for (DECSCUSR); `null` follows the program. For xterm's `cursorType`.
+  final VtCursorStyle? cursorStyle;
+
+  /// Draws the cursor even while the program hides it (DECTCEM). For
+  /// xterm's `alwaysShowCursor`.
+  final bool alwaysShowCursor;
+
+  /// The opacity of the default background (0 to 1), so the app behind
+  /// shows through. Cell backgrounds stay opaque. For xterm's
+  /// `backgroundOpacity`.
+  final double backgroundOpacity;
 
   @override
   RenderTerminal createRenderObject(BuildContext context) => RenderTerminal(
@@ -44,6 +82,11 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     textStyle: textStyle,
     focused: focused,
     hideCursor: hideCursor,
+    textScaler: textScaler,
+    cursorStyle: cursorStyle,
+    alwaysShowCursor: alwaysShowCursor,
+    backgroundOpacity: backgroundOpacity,
+    blinkEnabled: TickerMode.valuesOf(context).enabled,
   );
 
   @override
@@ -53,11 +96,48 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
       ..geometry = geometry
       ..textStyle = textStyle
       ..focused = focused
-      ..hideCursor = hideCursor;
+      ..hideCursor = hideCursor
+      ..textScaler = textScaler
+      ..cursorStyle = cursorStyle
+      ..alwaysShowCursor = alwaysShowCursor
+      ..backgroundOpacity = backgroundOpacity
+      ..blinkEnabled = TickerMode.valuesOf(context).enabled;
   }
 }
 
-/// The render box behind [TerminalRenderWidget].
+/// A cached row: its picture and the content it was recorded from.
+final class _CachedRow {
+  _CachedRow(this.picture, this.content, this.frame);
+
+  final ui.Picture picture;
+  final RowContent content;
+
+  /// The last frame that showed this row.
+  int frame;
+}
+
+/// The render box behind [TerminalRenderWidget]. Never exported.
+///
+/// **Row cache.** Each visible row is a [ui.Picture] keyed by its
+/// [RenderRowId], stored with the [RowContent] it was recorded from. A row
+/// that is dirty (or every row, after a colour, theme or column change) is
+/// scanned again; its picture is recorded again only if the scan differs
+/// from the cached content. libghostty-vt flags every row dirty when the
+/// viewport moves, so this content check is what lets a scroll reuse the
+/// rows that only moved (ADR 0011, amendment of 2026-11-10). Pictures of
+/// rows that left the viewport are disposed. Every picture and paragraph
+/// is dropped when the text style, text scaler or cell metrics change.
+///
+/// **Render hold.** While [TerminalFrameSource.isRenderHeld] is true the
+/// frame is not read and nothing is dropped: the cached pictures are
+/// replayed, and a font or theme change waits for the end of the hold.
+///
+/// **Disposal.** Once [TerminalFrameSource.isDisposed] is true it paints
+/// the last background colour only and frees every picture.
+///
+/// **Pixel alignment.** Cell edges fall on device pixels relative to this
+/// box. The box itself is not snapped: placed at a fractional device-pixel
+/// offset by its parent, its layer is resampled and text blurs.
 class RenderTerminal extends RenderBox {
   /// Creates the render box; see [TerminalRenderWidget].
   RenderTerminal({
@@ -66,25 +146,53 @@ class RenderTerminal extends RenderBox {
     required TextStyle textStyle,
     required bool focused,
     bool hideCursor = false,
+    TextScaler textScaler = TextScaler.noScaling,
+    VtCursorStyle? cursorStyle,
+    bool alwaysShowCursor = false,
+    double backgroundOpacity = 1.0,
+    bool blinkEnabled = true,
   }) : _source = source,
        _geometry = geometry,
        _textStyle = textStyle,
        _focused = focused,
-       _hideCursor = hideCursor;
+       _hideCursor = hideCursor,
+       _textScaler = textScaler,
+       _cursorStyle = cursorStyle,
+       _alwaysShowCursor = alwaysShowCursor,
+       _backgroundOpacity = backgroundOpacity,
+       _blinkEnabled = blinkEnabled;
+
+  /// How long the cursor stays on, then off, while it blinks: Ghostty's
+  /// `CURSOR_BLINK_INTERVAL` (600 ms, `src/renderer/Thread.zig:20` at
+  /// libghostty-vt 1.0.0, read 2026-11-10).
+  static const blinkInterval = Duration(milliseconds: 600);
+
+  /// The width of a bar cursor and the height of an underline cursor, as
+  /// a fraction of the cell width (at least one device pixel). A heuristic.
+  static const cursorThicknessFraction = 1 / 8;
 
   TerminalFrameSource _source;
   TerminalGeometry _geometry;
   TextStyle _textStyle;
   bool _focused;
   bool _hideCursor;
+  TextScaler _textScaler;
+  VtCursorStyle? _cursorStyle;
+  bool _alwaysShowCursor;
+  double _backgroundOpacity;
+  bool _blinkEnabled;
 
   /// See [TerminalRenderWidget.source].
   TerminalFrameSource get source => _source;
   set source(TerminalFrameSource value) {
     if (identical(value, _source)) return;
-    if (attached) _source.removeListener(markNeedsPaint);
+    if (attached) _source.removeListener(_onSourceChanged);
     _source = value;
-    if (attached) _source.addListener(markNeedsPaint);
+    if (attached) _source.addListener(_onSourceChanged);
+    // Row ids belong to the old source's render state.
+    _dropRows();
+    _colors = null;
+    _cursor = null;
     markNeedsPaint();
   }
 
@@ -109,6 +217,7 @@ class RenderTerminal extends RenderBox {
   set focused(bool value) {
     if (value == _focused) return;
     _focused = value;
+    _blinkOn = true;
     markNeedsPaint();
   }
 
@@ -117,6 +226,114 @@ class RenderTerminal extends RenderBox {
   set hideCursor(bool value) {
     if (value == _hideCursor) return;
     _hideCursor = value;
+    markNeedsPaint();
+  }
+
+  /// See [TerminalRenderWidget.textScaler].
+  TextScaler get textScaler => _textScaler;
+  set textScaler(TextScaler value) {
+    if (value == _textScaler) return;
+    _textScaler = value;
+    markNeedsPaint();
+  }
+
+  /// See [TerminalRenderWidget.cursorStyle].
+  VtCursorStyle? get cursorStyle => _cursorStyle;
+  set cursorStyle(VtCursorStyle? value) {
+    if (value == _cursorStyle) return;
+    _cursorStyle = value;
+    markNeedsPaint();
+  }
+
+  /// See [TerminalRenderWidget.alwaysShowCursor].
+  bool get alwaysShowCursor => _alwaysShowCursor;
+  set alwaysShowCursor(bool value) {
+    if (value == _alwaysShowCursor) return;
+    _alwaysShowCursor = value;
+    markNeedsPaint();
+  }
+
+  /// See [TerminalRenderWidget.backgroundOpacity].
+  double get backgroundOpacity => _backgroundOpacity;
+  set backgroundOpacity(double value) {
+    if (value == _backgroundOpacity) return;
+    _backgroundOpacity = value;
+    markNeedsPaint();
+  }
+
+  /// Whether the cursor may blink: `false` while tickers are muted
+  /// ([TickerMode]), e.g. in a hidden tab or a route below another.
+  bool get blinkEnabled => _blinkEnabled;
+  set blinkEnabled(bool value) {
+    if (value == _blinkEnabled) return;
+    _blinkEnabled = value;
+    if (!value) _stopBlink();
+    _blinkOn = true;
+    markNeedsPaint();
+  }
+
+  // Row cache.
+  final _paragraphs = ParagraphCache();
+  final _rows = <RenderRowId, _CachedRow>{};
+  List<RenderRowId?> _visibleRowIds = const [];
+  bool _visibleRowsComplete = false;
+  int _rowCols = 0;
+  int _frame = 0;
+
+  // What the cached pictures were recorded with.
+  RowRecorder? _recorder;
+  VtTerminalTheme? _recordedTheme;
+  RenderColors? _colors;
+
+  // Cursor overlay.
+  RenderCursor? _cursor;
+  CursorCell? _cursorCell;
+  bool _blinkOn = true;
+  bool _paintedSinceTick = false;
+  VtCursorStyle? _paintedCursor;
+  Timer? _blinkTimer;
+
+  Color? _lastBackground;
+  int _rowRecordings = 0;
+  int _rowScans = 0;
+
+  /// How many row pictures were recorded since creation (tests prove that
+  /// frames without changes record nothing).
+  @visibleForTesting
+  int get debugRowRecordings => _rowRecordings;
+
+  /// How many rows were scanned since creation (a scan that matches the
+  /// cached content keeps the picture).
+  @visibleForTesting
+  int get debugRowScans => _rowScans;
+
+  /// How many row pictures are cached.
+  @visibleForTesting
+  int get debugCachedRows => _rows.length;
+
+  /// The paragraph cache (tests check its size and that it is cleared).
+  @visibleForTesting
+  ParagraphCache get debugParagraphs => _paragraphs;
+
+  /// Whether the cursor is in the "on" half of its blink.
+  @visibleForTesting
+  bool get debugBlinkOn => _blinkOn;
+
+  /// The cursor shape the last paint drew, or `null` if it drew none
+  /// (hidden, scrolled away or in the "off" half of its blink).
+  @visibleForTesting
+  VtCursorStyle? get debugPaintedCursor => _paintedCursor;
+
+  /// Whether the blink timer runs.
+  @visibleForTesting
+  bool get debugBlinking => _blinkTimer?.isActive ?? false;
+
+  /// Drops every cached picture, paragraph and colour, as a cold start
+  /// would; the next paint rebuilds everything from the frame source.
+  /// Tests compare the pixels before and after.
+  @visibleForTesting
+  void debugDropCaches() {
+    _dropAll();
     markNeedsPaint();
   }
 
@@ -132,15 +349,333 @@ class RenderTerminal extends RenderBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _source.addListener(markNeedsPaint);
+    _source.addListener(_onSourceChanged);
   }
 
   @override
   void detach() {
-    _source.removeListener(markNeedsPaint);
+    _source.removeListener(_onSourceChanged);
+    _stopBlink();
     super.detach();
   }
 
   @override
-  void paint(PaintingContext context, Offset offset) {}
+  void dispose() {
+    _stopBlink();
+    _dropAll();
+    super.dispose();
+  }
+
+  void _onSourceChanged() {
+    // Output or input: show the cursor at once and restart its blink (the
+    // paint that follows starts the timer again).
+    _blinkOn = true;
+    _stopBlink();
+    markNeedsPaint();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    _paintedSinceTick = true;
+    final canvas = context.canvas;
+    final bounds = offset & size;
+    if (_source.isDisposed) {
+      _stopBlink();
+      _dropAll();
+      canvas.drawRect(
+        bounds,
+        Paint()
+          ..color = _withOpacity(_lastBackground ?? const Color(0xFF000000)),
+      );
+      return;
+    }
+
+    final held = _source.isRenderHeld;
+    // While held, keep the old recorder and pictures: a font or theme
+    // change is applied when the hold ends, so the grid never goes blank.
+    final recorder = held && _recorder != null
+        ? _recorder!
+        : _prepareRecorder();
+    if (!held) _pullFrame(recorder);
+
+    final colors = _colors;
+    final background = colors == null
+        ? _source.theme.background
+        : colorOfRgb(colors.background);
+    _lastBackground = background;
+    canvas
+      ..drawRect(bounds, Paint()..color = _withOpacity(background))
+      ..save()
+      ..clipRect(bounds);
+    final grid = offset + _geometry.gridRect.topLeft;
+    final height = _geometry.metrics.height;
+    for (var y = 0; y < _visibleRowIds.length; y++) {
+      final id = _visibleRowIds[y];
+      final row = id == null ? null : _rows[id];
+      if (row == null) continue;
+      canvas
+        ..save()
+        ..translate(grid.dx, grid.dy + y * height)
+        ..drawPicture(row.picture)
+        ..restore();
+    }
+    final drawn = _paintCursor(canvas, grid, recorder);
+    canvas.restore();
+    _syncBlink(drawn);
+  }
+
+  Color _withOpacity(Color color) => _backgroundOpacity >= 1
+      ? color
+      : color.withValues(alpha: color.a * _backgroundOpacity);
+
+  /// The recorder for the current font and metrics; drops every cached
+  /// picture and paragraph when one of them changed. A theme change only
+  /// makes the next pull scan every row (the selection colour is part of
+  /// a row's content).
+  RowRecorder _prepareRecorder() {
+    final metrics = _geometry.metrics;
+    final theme = _source.theme;
+    if (theme != _recordedTheme) {
+      _recordedTheme = theme;
+      _visibleRowsComplete = false;
+      _rescanAll = true;
+    }
+    final current = _recorder;
+    if (current != null &&
+        current.metrics == metrics &&
+        current.textStyle == _textStyle &&
+        current.textScaler == _textScaler) {
+      return current;
+    }
+    _dropRows();
+    _paragraphs.clear();
+    return _recorder = RowRecorder(
+      metrics: metrics,
+      textStyle: _textStyle,
+      textScaler: _textScaler,
+      paragraphs: _paragraphs,
+    );
+  }
+
+  bool _rescanAll = false;
+
+  /// Reads the frame and re-records the rows whose content changed.
+  void _pullFrame(RowRecorder recorder) {
+    final state = _source.updateFrame();
+    try {
+      final colors = state.colors;
+      if (!identical(colors, _colors)) {
+        // The cursor colour is not part of any row.
+        final previous = _colors;
+        if (previous == null || !_sameRowColors(previous, colors)) {
+          _rescanAll = true;
+        }
+        _colors = colors;
+      }
+      if (state.cols != _rowCols) {
+        _rescanAll = true;
+        _rowCols = state.cols;
+      }
+      final rows = math.min(state.rows, _geometry.rows);
+      final cursor = state.cursor;
+      final needsPass =
+          _rescanAll ||
+          state.dirty != RenderDirtyState.clean ||
+          !identical(cursor, _cursor) ||
+          _visibleRowIds.length != rows ||
+          !_visibleRowsComplete;
+      _cursor = cursor;
+      if (!needsPass) return;
+
+      final frame = ++_frame;
+      final position = cursor.position;
+      final cursorY = position?.y ?? -1;
+      final cursorX = position == null
+          ? 0
+          : position.x - (cursor.isOnWideTail ? 1 : 0);
+      CursorCell? cursorCell;
+      final ids = List<RenderRowId?>.filled(rows, null);
+      final selection = _recordedTheme!.selection;
+      var complete = true;
+      try {
+        for (final row in state.allRows) {
+          final y = row.viewportY;
+          if (y < 0 || y >= rows) continue;
+          final id = row.id;
+          final cached = _rows[id];
+          if (cached == null || row.isDirty || _rescanAll) {
+            recorder.scan(row, colors, selection);
+            _rowScans++;
+            if (cached == null || !recorder.scanMatches(cached.content)) {
+              final content = recorder.takeScan();
+              // Record before disposing the old picture, so an exception
+              // never leaves a disposed picture in the cache.
+              final picture = recorder.record(content);
+              _rowRecordings++;
+              _rows[id] = _CachedRow(picture, content, frame);
+              cached?.picture.dispose();
+            } else {
+              cached.frame = frame;
+            }
+          } else {
+            cached.frame = frame;
+          }
+          ids[y] = id;
+          if (y == cursorY && cursorX >= 0 && cursorX < row.length) {
+            cursorCell = recorder.readCell(row, cursorX, colors);
+          }
+        }
+      } catch (_) {
+        _dropRows();
+        rethrow;
+      }
+      for (final id in ids) {
+        if (id == null) complete = false;
+      }
+      _rows.removeWhere((id, row) {
+        if (row.frame == frame) return false;
+        row.picture.dispose();
+        return true;
+      });
+      _visibleRowIds = ids;
+      _visibleRowsComplete = complete;
+      _cursorCell = cursorCell;
+      _rescanAll = false;
+    } finally {
+      _source.endFrame();
+    }
+  }
+
+  static bool _sameRowColors(RenderColors a, RenderColors b) {
+    if (a.background != b.background || a.foreground != b.foreground) {
+      return false;
+    }
+    final pa = a.palette;
+    final pb = b.palette;
+    for (var i = 0; i < pa.length; i++) {
+      if (pa[i] != pb[i]) return false;
+    }
+    return true;
+  }
+
+  /// Paints the cursor; returns whether a blinking cursor is shown (so the
+  /// blink timer should run).
+  bool _paintCursor(Canvas canvas, Offset grid, RowRecorder recorder) {
+    _paintedCursor = null;
+    final cursor = _cursor;
+    final position = cursor?.position;
+    if (cursor == null || position == null || _hideCursor) return false;
+    if (!cursor.isVisible && !_alwaysShowCursor) return false;
+    if (position.y >= _visibleRowIds.length) return false;
+    final blinks = _focused && _blinkEnabled && cursor.isBlinking;
+    if (blinks && !_blinkOn) return true;
+
+    final metrics = _geometry.metrics;
+    final x = position.x - (cursor.isOnWideTail ? 1 : 0);
+    final colors = _colors!;
+    final cell = _cursorCell ?? CursorCell.empty(colorOfRgb(colors.background));
+    final span = cursor.isOnWideTail ? 2 : cell.span;
+    final rect = Rect.fromLTWH(
+      grid.dx + x * metrics.width,
+      grid.dy + position.y * metrics.height,
+      span * metrics.width,
+      metrics.height,
+    );
+    final color = _cursorColor(colors);
+    final px = 1 / metrics.devicePixelRatio;
+    final thickness = math.max(
+      px,
+      (metrics.width * cursorThicknessFraction * metrics.devicePixelRatio)
+              .round() *
+          px,
+    );
+    final paint = Paint()..color = color;
+    var style = _cursorStyle ?? cursor.style;
+    if (!_focused) style = VtCursorStyle.blockHollow;
+    _paintedCursor = style;
+    switch (style) {
+      case VtCursorStyle.block || VtCursorStyle.unknown:
+        canvas.drawRect(rect, paint);
+        recorder.paintCellText(canvas, cell, rect.topLeft, cell.background);
+      case VtCursorStyle.blockHollow:
+        canvas.drawRect(
+          rect.deflate(px / 2),
+          paint
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = px,
+        );
+      case VtCursorStyle.bar:
+        canvas.drawRect(
+          Rect.fromLTWH(rect.left, rect.top, thickness, rect.height),
+          paint,
+        );
+      case VtCursorStyle.underline:
+        canvas.drawRect(
+          Rect.fromLTWH(
+            rect.left,
+            rect.bottom - thickness,
+            rect.width,
+            thickness,
+          ),
+          paint,
+        );
+    }
+    return blinks;
+  }
+
+  /// The cursor colour (seam rule): the theme's own colour, alpha
+  /// included, unless the program set another one (OSC 12).
+  Color _cursorColor(RenderColors colors) {
+    final theme = _source.theme;
+    final program = colors.cursor;
+    if (program == null || program == VtTerminalTheme.rgbOf(theme.cursor)) {
+      return theme.cursor;
+    }
+    return colorOfRgb(program);
+  }
+
+  void _syncBlink(bool blinking) {
+    if (!blinking || !attached) {
+      _stopBlink();
+      _blinkOn = true;
+      return;
+    }
+    _blinkTimer ??= Timer.periodic(blinkInterval, (_) {
+      if (!_paintedSinceTick) {
+        // The last toggle was never painted: the view is offstage or
+        // otherwise not drawn. Stop until the next paint restarts it.
+        _stopBlink();
+        _blinkOn = true;
+        return;
+      }
+      _paintedSinceTick = false;
+      _blinkOn = !_blinkOn;
+      markNeedsPaint();
+    });
+  }
+
+  void _stopBlink() {
+    _blinkTimer?.cancel();
+    _blinkTimer = null;
+  }
+
+  void _dropRows() {
+    for (final row in _rows.values) {
+      row.picture.dispose();
+    }
+    _rows.clear();
+    _visibleRowIds = const [];
+    _visibleRowsComplete = false;
+    _cursorCell = null;
+  }
+
+  void _dropAll() {
+    _dropRows();
+    _paragraphs.clear();
+    _recorder = null;
+    _recordedTheme = null;
+    _colors = null;
+    _cursor = null;
+    _rowCols = 0;
+  }
 }

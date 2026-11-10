@@ -1,0 +1,30 @@
+name: ghostty_dart_widget_benchmarks
+description: Frame-time benchmarks of the ghostty_dart_flutter view against xterm 4.0.0 and xterm2 5.4.0.
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.47.0"
+
+resolution: workspace
+
+# Exact pins: the benchmark compares specific releases. xterm 4.0.0 and
+# xterm2 5.4.0 ship no build hooks and no native code (audit in
+# benchmarks/README.md).
+dependencies:
+  flutter:
+    sdk: flutter
+  ghostty_dart: any
+  ghostty_dart_flutter: any
+  xterm: 4.0.0
+  xterm2: 5.4.0
+
+dev_dependencies:
+  flutter_driver:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  lints: ^6.1.0

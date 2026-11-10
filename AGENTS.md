@@ -16,8 +16,10 @@ packages/
                         wasm backend (web) behind one interface. hook/build.dart ships the library.
   ghostty_dart_flutter/   Flutter widget: renderer, keyboard/mouse/IME input, selection, scrolling.
   ghostty_dart_xterm/        API-compatible adapter for package:xterm 4.0.0 on top of the two above.
-apps/demo/              Flutter app; also deployed as the live web demo (GitHub Pages, --wasm).
-benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm.
+apps/demo/              Flutter app: flutter_pty on desktop, a fake shell on the web. The live web demo
+                        (GitHub Pages, --wasm) waits for ghostty_dart's wasm backend.
+benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm. benchmarks/widget/ is the
+                        Flutter frame-time benchmark (integration_test + flutter drive --profile).
 native/                 upstream.json (pinned libghostty-vt version + hashes), CI build scripts.
 tool/                   Repo scripts: lib.sh (shared bash helpers), check_cooldown, check_translations, check_dco +
                         dco_range, release/ (publish helpers),
@@ -85,7 +87,7 @@ mise run test:flutter   # flutter test in packages/ghostty_dart_flutter (spike t
 mise run test:spike     # letterSpacing/metrics spikes on host fonts (manual, not in CI)
 mise run deps:no-flutter  # resolve without the Flutter members, exactly as locked (arm64 smoke runners)
 mise run cooldown       # no locked dependency younger than 3 days
-mise run check          # everything CI runs (analyze, test, test:flutter, test:tool, test:release, cooldown, lint:ci, docs:translations)
+mise run check          # everything CI runs (analyze, test, test:flutter, demo:test, bench:widget:test, test:tool, test:release, cooldown, lint:ci, docs:translations)
 mise run pana           # pub.dev score of the publish archive, pinned pana + dartdoc; must be 160/160 (network)
 mise run publish:dry-run  # validate the publish archive (run on committed changes)
 mise run docs:translations  # Spanish translations in sync with their English source
@@ -96,11 +98,17 @@ mise run native:check <asset> [file]   # verify a release asset
 mise run native:ndk     # pinned Android NDK sysroot (Linux only)
 mise run native:pin <tag>              # pin a published release into prebuilt.dart (verifies attestations)
 mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchmarks/README.md)
+mise run bench:widget [device] [--frames=n] [--passes=n] [--renderer=impeller|skia]  # frame times vs xterm/xterm2; needs a display
+mise run bench:widget:test  # the frame benchmark harness, headless
+mise run demo:test      # demo app tests (fake shell, wiring)
+mise run demo:run [device] [--fake]  # run the demo (default linux; --fake: the web's fake shell)
+mise run demo:build-linux   # needs clang, cmake, ninja-build, pkg-config, libgtk-3-dev
+mise run demo:build-web     # stops with a message until ghostty_dart has a wasm backend
 ```
 
 When you add a workflow step, add a mise task for it. A task listed here must work.
 
-Two members need the Flutter SDK: `packages/ghostty_dart_flutter`, and `benchmarks/` (it depends on `xterm` 4.0.0, whose pubspec requires Flutter). Resolving the workspace therefore needs Flutter's Dart (the one mise installs); `mise run deps:no-flutter` drops both members where only plain Dart exists. Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
+Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`, `benchmarks/widget`, and `benchmarks/` (it depends on `xterm` 4.0.0, whose pubspec requires Flutter). Resolving the workspace therefore needs Flutter's Dart (the one mise installs); `mise run deps:no-flutter` drops those four members where only plain Dart exists. Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
 
 ## Code rules
 

@@ -32,6 +32,8 @@
 - Cell metrics are aligned to device pixels and use a forced strut. Ligatures are off (`liga`, `calt`). The cell size is passed to `terminal.resize`. Whether `letterSpacing = cellWidth - advance` keeps the grid on Impeller, CanvasKit and skwasm is **to measure** first.
 - Fonts: JetBrains Mono (OFL-1.1) is bundled in tests for goldens, which run on Linux CI only. The package bundles no font by default; users choose one. The README explains how, and warns about web's default fallback fetch from `fonts.gstatic.com`.
 
+*Amendment (2026-11-10, row reuse and run placement).* Row ids are stable, but dirty flags cannot tell "moved" from "changed": libghostty-vt 1.0.0 rebuilds every row and flags it dirty whenever the viewport pin changes (`src/terminal/render.zig:1022-1024` sets `redraw`; `RowBuilder.row` sets `dirties[vy] = true` unconditionally, `:2684`), so every scroll, including each newline while following output, reports every row dirty; ED 2 also keeps the ids with new content. The renderer therefore keys each cached picture by `RenderRowId` **and** a content key: the draw operations it derives anyway while scanning a dirty row (background spans, selection span and colour, run and cluster texts with their colours, faces and columns, decorations). A dirty row whose scan equals the cached content keeps its picture; colour, theme and column changes rescan every row instead of dropping pictures; only text style, text scaler and cell-metric changes drop everything. Scrolling a 60-row screen by one line now records one row (60 scans). No `ghostty_dart` API was added. Runs are also verified once when laid out: a letter-spaced run whose width is not its cell count times the cell width (within half a device pixel: a fallback font, another face advance, a zero-advance format character) is drawn cell by cell, and U+00AD and combining marks never enter runs. A differential test (warm caches against a cold repaint, after scroll, ED 2, resize, alternate screen, render hold, OSC 4/10/11/12, reverse video, selection and random output) guards both.
+
 **Input.**
 - Hardware keys go to `VtKeyEvent`: the physical key through a static USB-HID table, the text, the unshifted codepoint, and the modifiers.
   - Both key-down and key-up events reach the encoder, for Kitty.
@@ -52,11 +54,14 @@
   - The wheel scrolls the viewport, or sends arrows on the alternate screen when mode 1007 is set.
 - Scrolling is owned by libghostty: there is no `ScrollPosition`. A custom scrollbar is drawn from `ViewportScrollbar`.
 
+*Amendment (2026-11-10, key routing).* While a text input connection is open and nothing is composing, a plain printable key (a writing-system key or Space, without Ctrl, Alt or Super after the AltGr and Option rules) is left to the platform text input, as `EditableText` does: desktop embedders offer a key to the IME only after the framework leaves it unhandled (Flutter 3.47.9 `shell/platform/linux/fl_view.cc`, `handle_key_event`), so encoding it would break IMEs, dead keys and compose sequences. Its text arrives as committed text. The exception is a program that set Kitty flag 2 (report event types) or 8 (report all keys as escape codes): those need key events that committed text cannot carry, so printable keys are then encoded directly, presses, repeats and releases included, and only an active composition still goes to the IME. Encoded keys and pastes wait until the text of earlier keys left to the platform has arrived (bounded by a 100 ms timeout), so the order is kept on embedders that do not serialize key events. A key is `handled` only when the encoder produced bytes, or for Tab, Esc, Enter, Space and the arrows; other keys, such as Cmd shortcuts and media keys, reach the platform.
+
 **Accessibility (v1).** A `Semantics` node with the visible text, computed only while accessibility is on, plus an opt-in announcement of new output (`sendAnnouncement`). Full screen-reader navigation is deferred.
 
 **Demo app** (`apps/demo`, `publish_to: none`):
 - native platforms use `flutter_pty`, with a committed lockfile and its native build reviewed;
 - web uses a fake shell in pure Dart, deployed as the live demo.
+- the web demo waits for `ghostty_dart`'s wasm backend; until it exists, `mise run demo:build-web` stops with that message.
 
 **Deferred:**
 - Kitty images: `setVtPngDecoder` must decode synchronously, while `dart:ui` decodes asynchronously and has no web sync path. The layer order reserves a slot for them.

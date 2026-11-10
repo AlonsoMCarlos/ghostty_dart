@@ -1,0 +1,13 @@
+# Not published: the repository rules, plus the build and platform-runner
+# directories that `flutter pub get` excludes in every Flutter app
+# (flutter_tools AnalysisOptionsMigration re-adds them when removed).
+include: ../../analysis_options.yaml
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - build/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**

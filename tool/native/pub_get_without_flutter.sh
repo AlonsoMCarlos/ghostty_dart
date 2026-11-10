@@ -3,7 +3,8 @@
 # smoke tests, without trusting the resolver to pick versions.
 #
 # `mise run deps` uses `flutter pub get` because some members need the
-# Flutter SDK: benchmarks (it depends on xterm) and ghostty_dart_flutter.
+# Flutter SDK: benchmarks (it depends on xterm), benchmarks/widget, apps/demo
+# and ghostty_dart_flutter.
 # Where there is no Flutter SDK, this script drops those members from the
 # root pubspec, runs `dart pub get`, and then fails unless every resolved
 # package version is exactly the one in the committed pubspec.lock.
@@ -47,7 +48,7 @@ locked_stanzas() {
     END { flush() }' | LC_ALL=C sort
 }
 
-flutter_members=(benchmarks packages/ghostty_dart_flutter)
+flutter_members=(benchmarks benchmarks/widget apps/demo packages/ghostty_dart_flutter)
 cp "$backup/pubspec.yaml" "$root/pubspec.yaml"
 for member in "${flutter_members[@]}"; do
   grep -qxF "  - $member" "$root/pubspec.yaml" || { echo "error: root pubspec has no '  - $member' workspace entry" >&2; exit 1; }

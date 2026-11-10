@@ -1,0 +1,503 @@
+// Behaviour of the renderer (ADR 0011 "Rendering (v1)"): the row picture
+// cache, the render hold, disposal, the cursor overlay and its blink.
+
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:ghostty_dart/ghostty_dart.dart';
+import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
+import 'package:ghostty_dart_flutter/src/render/terminal_render.dart';
+import 'package:ghostty_dart_flutter/src/seams/controller_seams.dart';
+import 'package:ghostty_dart_flutter/src/seams/terminal_geometry.dart';
+import 'package:ghostty_dart_flutter/src/seams/terminal_seams.dart';
+
+import '../support/fonts.dart';
+import 'render_harness.dart';
+
+/// A frame source that counts [updateFrame] calls.
+class _CountingSource extends Fake implements TerminalFrameSource {
+  _CountingSource(this.inner);
+
+  final ControllerSeams inner;
+  int updates = 0;
+
+  @override
+  bool get isDisposed => inner.isDisposed;
+  @override
+  VtTerminalTheme get theme => inner.theme;
+  @override
+  bool get isRenderHeld => inner.isRenderHeld;
+  @override
+  RenderState updateFrame() {
+    updates++;
+    return inner.updateFrame();
+  }
+
+  @override
+  void endFrame() => inner.endFrame();
+  @override
+  void addListener(VoidCallback listener) => inner.addListener(listener);
+  @override
+  void removeListener(VoidCallback listener) => inner.removeListener(listener);
+}
+
+void main() {
+  setUpAll(loadJetBrainsMono);
+
+  group('row picture cache', () {
+    testWidgets('the first frame records every row once', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello\r\nworld');
+      expect(h.render.debugRowRecordings, 5);
+      expect(h.render.debugCachedRows, 5);
+    });
+
+    testWidgets('frames without changes record nothing', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello\r\nworld');
+      final recorded = h.render.debugRowRecordings;
+      for (var i = 0; i < 5; i++) {
+        h.render.markNeedsPaint();
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(h.render.debugRowRecordings, recorded);
+    });
+
+    testWidgets('a change to one row records that row only', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'one\r\ntwo\r\nthree');
+      final recorded = h.render.debugRowRecordings;
+      final scanned = h.render.debugRowScans;
+      await h.write('!'); // the cursor stays on row 2
+      expect(h.render.debugRowRecordings, recorded + 1);
+      expect(h.render.debugRowScans, scanned + 1);
+      // Row 0 changes. libghostty also flags row 2 (the cursor left and
+      // re-entered it): it is scanned, but its content is unchanged, so
+      // its picture is kept.
+      await h.write('\x1b[1;1HX\x1b[3;6H');
+      expect(h.render.debugRowRecordings, recorded + 2);
+      expect(h.render.debugRowScans, scanned + 3);
+    });
+
+    testWidgets('a cursor move records only the rows libghostty flags', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'one\r\ntwo');
+      final recorded = h.render.debugRowRecordings;
+      final scanned = h.render.debugRowScans;
+      await h.write('\x1b[1;1H');
+      await h.write('\x1b[4;10H');
+      // libghostty flags the rows the cursor left and entered (1 and 0,
+      // then 0 and 3); they are scanned, none is recorded.
+      expect(h.render.debugRowScans, scanned + 4);
+      expect(h.render.debugRowRecordings, recorded);
+      await h.write('\x1b[4;11H');
+      final afterMoves = h.render.debugRowRecordings;
+      h.render.markNeedsPaint();
+      await tester.pump();
+      expect(h.render.debugRowRecordings, afterMoves);
+    });
+
+    testWidgets('only the visible rows stay cached', (tester) async {
+      final h = await pumpRenderer(tester);
+      await h.write(List.generate(30, (i) => 'line $i').join('\r\n'));
+      expect(h.render.debugCachedRows, 5);
+      h.controller.scrollViewport(const ViewportScroll.top());
+      await tester.pump();
+      expect(h.render.debugCachedRows, 5);
+    });
+
+    testWidgets('a theme change re-records only rows it changes', (
+      tester,
+    ) async {
+      // The theme reaches rows only through the selection colour; the
+      // default colours it pushes into the terminal are colour changes.
+      final h = await pumpRenderer(tester, initial: 'hello\r\nworld');
+      h.seams.selection = h.seams.terminal.selectRange(
+        const GridPoint.viewport(0, 1),
+        const GridPoint.viewport(2, 1),
+      );
+      await tester.pump();
+      final recorded = h.render.debugRowRecordings;
+      final misses = h.render.debugParagraphs.misses;
+      h.controller.theme = VtTerminalTheme.defaultTheme.copyWith(
+        selection: const Color(0x8000FF00),
+      );
+      await tester.pump();
+      expect(h.render.debugRowRecordings, recorded + 1);
+      expect(h.render.debugParagraphs.misses, misses);
+    });
+
+    testWidgets('a text style change drops every picture and paragraph', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      final style = gridStyle.copyWith(fontSize: 14);
+      await h.rebuild(
+        textStyle: style,
+        geometry: TerminalGeometry(
+          metrics: VtCellMetrics.measure(style, devicePixelRatio: 1),
+          cols: 20,
+          rows: 5,
+        ),
+      );
+      expect(h.render.debugRowRecordings, recorded + 5);
+      expect(h.render.debugParagraphs.misses, 1); // "hello", laid out again
+    });
+
+    testWidgets('a text scaler change drops every picture', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      await h.rebuild(textScaler: const TextScaler.linear(2));
+      expect(h.render.debugRowRecordings, recorded + 5);
+    });
+
+    testWidgets('a metrics change drops every picture', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      final metrics = VtCellMetrics.measure(gridStyle, devicePixelRatio: 2);
+      await h.rebuild(
+        geometry: TerminalGeometry(metrics: metrics, cols: 20, rows: 5),
+      );
+      expect(h.render.debugRowRecordings, recorded + 5);
+    });
+
+    testWidgets('a padding change records nothing', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      await h.rebuild(
+        geometry: TerminalGeometry(
+          metrics: h.geometry.metrics,
+          cols: 20,
+          rows: 5,
+          padding: const EdgeInsets.all(4),
+        ),
+      );
+      expect(h.render.debugRowRecordings, recorded);
+    });
+
+    testWidgets('reverse video (DECSCNM) re-scans although no row is dirty', (
+      tester,
+    ) async {
+      // libghostty-vt 1.0.0 reports DECSCNM as a colour change with a clean
+      // dirty state, so the renderer must watch the colours itself. Only
+      // the row with text looks different; empty rows show the default
+      // background, which the view fills.
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      final scanned = h.render.debugRowScans;
+      await h.write('\x1b[?5h');
+      expect(h.render.debugRowScans, scanned + 5);
+      expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('OSC 11 changes the fill, not the rows', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      await h.write('\x1b]11;rgb:10/20/30\x07');
+      expect(h.render.debugRowRecordings, recorded);
+      expect(h.render, paints..rect(color: const Color(0xFF102030)));
+    });
+
+    testWidgets('OSC 10 re-records the rows with default-coloured text', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hello\r\n\x1b[31mred');
+      final recorded = h.render.debugRowRecordings;
+      await h.write('\x1b]10;rgb:ff/ff/00\x07');
+      expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('OSC 4 re-records the rows that use the entry', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello\r\n\x1b[31mred');
+      final recorded = h.render.debugRowRecordings;
+      await h.write('\x1b]4;1;rgb:00/ff/00\x07');
+      expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('OSC 12 (cursor colour) scans no row', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final scanned = h.render.debugRowScans;
+      await h.write('\x1b]12;rgb:00/ff/00\x07');
+      expect(h.render.debugRowScans, scanned);
+    });
+
+    testWidgets('a column-count change re-scans every row', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello\r\nworld');
+      final scanned = h.render.debugRowScans;
+      await h.resize(30, 5);
+      expect(h.render.debugRowScans, scanned + 5);
+      expect(h.render.debugCachedRows, 5);
+    });
+
+    testWidgets('scrolling 60 rows by one line records one row', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(
+        tester,
+        cols: 80,
+        rows: 60,
+        initial: List.generate(
+          120,
+          (i) => '\x1b[3${i % 8}mline $i ${'x' * (i % 50)}\x1b[0m',
+        ).join('\r\n'),
+      );
+      var recorded = h.render.debugRowRecordings;
+      var scanned = h.render.debugRowScans;
+      // Output that scrolls (libghostty flags all 60 rows dirty).
+      await h.write('\r\nline 120');
+      expect(h.render.debugRowScans, scanned + 60);
+      expect(h.render.debugRowRecordings, recorded + 1);
+
+      // The viewport scrolled back by one line.
+      recorded = h.render.debugRowRecordings;
+      scanned = h.render.debugRowScans;
+      h.controller.scrollViewport(const ViewportScroll.delta(-1));
+      await tester.pump();
+      expect(h.render.debugRowScans, scanned + 60);
+      expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('a selection change re-records the rows it marks dirty', (
+      tester,
+    ) async {
+      // libghostty-vt 1.0.0 marks every viewport row dirty on a selection
+      // change.
+      final h = await pumpRenderer(tester, initial: 'one\r\ntwo\r\nthree');
+      final recorded = h.render.debugRowRecordings;
+      h.seams.selection = h.seams.terminal.selectRange(
+        const GridPoint.viewport(0, 1),
+        const GridPoint.viewport(2, 1),
+      );
+      await tester.pump();
+      // Every row is flagged; only row 1 looks different.
+      expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('a new source drops the pictures of the old one', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final other = VtTerminalController(cols: 20, rows: 5);
+      addTearDown(other.dispose);
+      final recorded = h.render.debugRowRecordings;
+      await h.rebuild(source: ControllerSeams(other));
+      expect(h.render.debugRowRecordings, recorded + 5);
+    });
+  });
+
+  group('render hold', () {
+    testWidgets('while held, the frame is not read and nothing is recorded', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final source = _CountingSource(h.seams);
+      await h.rebuild(source: source);
+      final updates = source.updates;
+      final recorded = h.render.debugRowRecordings;
+
+      await h.write('\x1b[?2026hworld');
+      expect(h.seams.isRenderHeld, isTrue);
+      h.render.markNeedsPaint();
+      await tester.pump();
+      expect(source.updates, updates);
+      expect(h.render.debugRowRecordings, recorded);
+      expect(h.render.debugCachedRows, 5);
+
+      await h.write('\x1b[?2026l');
+      expect(source.updates, updates + 1); // one frame after the hold
+      expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('a font or theme change during a hold keeps the grid', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      await h.write('\x1b[?2026h');
+      final recorded = h.render.debugRowRecordings;
+      await h.rebuild(textStyle: gridStyle.copyWith(fontSize: 14));
+      h.controller.theme = VtTerminalTheme.whiteOnBlack;
+      await tester.pump();
+      // Still the old pictures, not a blank grid.
+      expect(h.render.debugCachedRows, 5);
+      expect(h.render, paintsExactlyCountTimes(#drawPicture, 5));
+      expect(h.render.debugRowRecordings, recorded);
+
+      h.controller.write('\x1b[?2026l');
+      await h.rebuild(textStyle: gridStyle.copyWith(fontSize: 14));
+      expect(h.render.debugRowRecordings, recorded + 5);
+    });
+  });
+
+  group('disposal', () {
+    testWidgets('a disposed source paints the background only', (tester) async {
+      final h = await pumpRenderer(tester, initial: '\x1b[41mred');
+      h.controller.dispose();
+      h.render.markNeedsPaint();
+      await tester.pump();
+      expect(h.render.debugCachedRows, 0);
+      expect(h.render.debugParagraphs.length, 0);
+      expect(h.render, paintsExactlyCountTimes(#drawPicture, 0));
+      expect(h.render, paintsExactlyCountTimes(#drawRect, 1));
+      expect(
+        h.render,
+        paints..rect(color: VtTerminalTheme.defaultTheme.background),
+      );
+    });
+  });
+
+  group('cursor', () {
+    testWidgets('draws the program shape when focused', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hi');
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+      await h.write('\x1b[6 q'); // steady bar
+      expect(h.render.debugPaintedCursor, VtCursorStyle.bar);
+      await h.write('\x1b[4 q'); // steady underline
+      expect(h.render.debugPaintedCursor, VtCursorStyle.underline);
+    });
+
+    testWidgets('is a hollow block when unfocused', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hi', focused: false);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.blockHollow);
+    });
+
+    testWidgets('hideCursor and DECTCEM hide it; alwaysShowCursor wins', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hi');
+      await h.rebuild(hideCursor: true);
+      expect(h.render.debugPaintedCursor, isNull);
+      await h.rebuild();
+      await h.write('\x1b[?25l');
+      expect(h.render.debugPaintedCursor, isNull);
+      await h.rebuild(alwaysShowCursor: true);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+    });
+
+    testWidgets('cursorStyle overrides the program shape', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hi');
+      await h.rebuild(cursorStyle: VtCursorStyle.underline);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.underline);
+    });
+
+    testWidgets('is not drawn while scrolled out of view', (tester) async {
+      final h = await pumpRenderer(tester);
+      await h.write(List.generate(30, (i) => 'line $i').join('\r\n'));
+      h.controller.scrollViewport(const ViewportScroll.top());
+      await tester.pump();
+      expect(h.render.debugPaintedCursor, isNull);
+    });
+
+    testWidgets('blinks on its own timer without recording rows', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hi\x1b[1 q');
+      final recorded = h.render.debugRowRecordings;
+      expect(h.render.debugBlinking, isTrue);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+
+      await tester.pump(RenderTerminal.blinkInterval);
+      expect(h.render.debugBlinkOn, isFalse);
+      expect(h.render.debugPaintedCursor, isNull);
+      await tester.pump(RenderTerminal.blinkInterval);
+      expect(h.render.debugBlinkOn, isTrue);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+      await tester.pump(RenderTerminal.blinkInterval);
+      expect(h.render.debugRowRecordings, recorded);
+
+      // Output shows the cursor at once.
+      expect(h.render.debugBlinkOn, isFalse);
+      await h.write('!');
+      expect(h.render.debugBlinkOn, isTrue);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+    });
+
+    testWidgets('does not blink while unfocused or steady', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hi\x1b[1 q');
+      await h.rebuild(focused: false);
+      expect(h.render.debugBlinking, isFalse);
+      await h.rebuild();
+      expect(h.render.debugBlinking, isTrue);
+      await h.write('\x1b[2 q');
+      expect(h.render.debugBlinking, isFalse);
+    });
+
+    testWidgets('does not blink while tickers are muted (TickerMode)', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hi\x1b[1 q');
+      expect(h.render.debugBlinking, isTrue);
+      await h.rebuild(
+        wrap: (child) => TickerMode(enabled: false, child: child),
+      );
+      expect(h.render.debugBlinking, isFalse);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+      await tester.pump(RenderTerminal.blinkInterval * 3);
+      expect(h.render.debugBlinking, isFalse);
+    });
+
+    testWidgets('stops blinking while the view is not painted', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hi\x1b[1 q');
+      Widget Function(Widget) offstage(bool hidden) =>
+          (child) => Offstage(offstage: hidden, child: child);
+      await h.rebuild(wrap: offstage(false));
+      final render = h.render;
+      expect(render.debugBlinking, isTrue);
+      await h.rebuild(wrap: offstage(true));
+      // The first tick's toggle is never painted; the next tick stops.
+      await tester.pump(RenderTerminal.blinkInterval);
+      expect(render.debugBlinking, isTrue);
+      await tester.pump(RenderTerminal.blinkInterval);
+      expect(render.debugBlinking, isFalse);
+      await h.rebuild(wrap: offstage(false));
+      expect(identical(h.render, render), isTrue);
+      expect(render.debugBlinking, isTrue);
+    });
+
+    testWidgets('uses the theme colour, alpha included, until OSC 12', (
+      tester,
+    ) async {
+      const cursor = Color(0x80FF0000);
+      final h = await pumpRenderer(
+        tester,
+        initial: 'hi\x1b[2 q',
+        theme: VtTerminalTheme.defaultTheme.copyWith(cursor: cursor),
+      );
+      final background = VtTerminalTheme.defaultTheme.background;
+      expect(
+        h.render,
+        paints
+          ..rect(color: background)
+          ..rect(color: cursor),
+      );
+      await h.write('\x1b]12;rgb:00/ff/00\x07');
+      expect(
+        h.render,
+        paints
+          ..rect(color: background)
+          ..rect(color: const Color(0xFF00FF00)),
+      );
+      // Reset to the default (the theme's colour, pushed opaque).
+      await h.write('\x1b]112\x07');
+      expect(
+        h.render,
+        paints
+          ..rect(color: background)
+          ..rect(color: cursor),
+      );
+    });
+
+    testWidgets('lets pumpAndSettle settle while blinking', (tester) async {
+      await pumpRenderer(tester, initial: 'hi\x1b[1 q');
+      await tester.pumpAndSettle();
+    });
+  });
+
+  group('background', () {
+    testWidgets('backgroundOpacity applies to the default background', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hi');
+      await h.rebuild(backgroundOpacity: 0.5);
+      final background = VtTerminalTheme.defaultTheme.background;
+      expect(h.render, paints..rect(color: background.withValues(alpha: 0.5)));
+    });
+  });
+}

@@ -277,3 +277,138 @@ xterm2_core).
 `benchmark_harness` is not used: it reports a mean of a time-boxed loop,
 whereas this benchmark needs per-run medians over a fixed amount of input, and
 avoiding it keeps the dependency set smaller.
+
+## Frame-time benchmark (widgets)
+
+How long does each Flutter terminal widget take to produce a frame? This
+benchmark (`benchmarks/widget/`, a Flutter app and workspace member) drives
+the same per-frame byte streams into three widgets and records the frame
+timeline with `integration_test`'s `traceAction` under `flutter drive
+--profile`, as the [Flutter profiling
+cookbook](https://docs.flutter.dev/cookbook/testing/integration/profiling)
+describes (checked 2026-11-10).
+
+| Widget | Package | Input |
+|---|---|---|
+| `ghostty_dart_flutter` | this workspace, `VtTerminalView` | `Uint8List` via `writeBytes` |
+| `xterm 4.0.0` | [`xterm`](https://pub.dev/packages/xterm) 4.0.0, `TerminalView` | `String` (UTF-8 decoded in the write) |
+| `xterm2 5.4.0` | [`xterm2`](https://pub.dev/packages/xterm2) 5.4.0, `TerminalView` | `String` (UTF-8 decoded in the write) |
+
+### Run it
+
+It needs a display and a desktop toolchain (Linux: `clang cmake ninja-build
+pkg-config libgtk-3-dev`, from the [Flutter Linux
+setup](https://docs.flutter.dev/platform-integration/linux/setup), updated
+2026-09-10), plus the JetBrains Mono test fonts in
+`packages/ghostty_dart_flutter/test/fonts/`.
+
+```sh
+mise run bench:widget                      # Linux desktop: 3 passes x 300 traced frames, Impeller
+mise run bench:widget --frames=600 --passes=5
+mise run bench:widget --renderer=skia      # --no-enable-impeller
+mise run bench:widget macos                # on a Mac
+# Headless Linux: a virtual display large enough for the window; GDK_SCALE=2
+# asks GTK for device pixel ratio 2 (the ADR 0011 targets are at DPR 2).
+GDK_SCALE=2 xvfb-run -a -s '-screen 0 3840x2400x24' mise run bench:widget
+```
+
+The report goes to stdout and `benchmarks/widget/build/widget_bench.md`;
+every run's timeline and `TimelineSummary` are in
+`benchmarks/widget/build/<scenario>__<widget>__p<pass>.timeline{,_summary}.json`.
+`mise run bench:widget:test` (part of `mise run check`) tests the harness
+headlessly: the streams, the report, and that all three widgets end up with
+the same screen text for every scenario.
+
+The macOS bench app is not sandboxed, because it reads the test fonts from
+the repository. It has not been run on a Mac yet.
+
+### Methodology
+
+- **Same grid for everyone:** 200 × 60 cells, JetBrains Mono 12 px, no
+  focus (no cursor blink), cursor hidden. `ghostty_dart_flutter` gets a box
+  of exactly 200 × 60 device-pixel-aligned cells (`VtCellMetrics.measure`,
+  the style's natural line height). The xterm widgets get `autoResize:
+  false`, a 200 × 60 terminal, line height 1.0, and a box measured from the
+  font plus 2% slack, so every row is inside the viewport and painted. The
+  row and column counts are identical (the harness test proves the same
+  text), but the painted areas differ slightly. The test fails if the window
+  cannot hold the grid (the Linux runner opens 1800 × 1100 logical px).
+- **Streams** (`lib/src/frame_streams.dart`, `Random(42)`): printable ASCII
+  in words with SGR styling (16, 256 and truecolor foregrounds, bold,
+  italic, underline, backgrounds). Every row is exactly 200 columns and is
+  addressed with CUP, so nothing scrolls. The setup writes RIS and ED, hides
+  the cursor and fills the screen.
+- **Scenarios** (ADR 0011 targets for `ghostty_dart_flutter`, UI / raster):
+  1. `idle`: no output; a forced frame recomposites the unchanged screen
+     (≤ 0.5 / ≤ 1 ms);
+  2. `3 dirty rows`: three rows 20 apart are rewritten per frame, moving
+     down one row each frame (≤ 1 / ≤ 2 ms);
+  3. `full screen, warm`: all 60 rows are rewritten per frame, cycling
+     through 8 screens (≤ 4 / ≤ 4 ms). This is the ADR's "warm cache" case
+     and favours widgets that cache rows or paragraphs, ours included. Real
+     full-screen output (`top`, scrolling `cat`) rarely repeats rows exactly,
+     so read it as a best case.
+- **Warm-up:** 32 untraced frames from the *same* stream as the measured
+  frames. The measured frames continue that stream, so every measured
+  full-screen frame has already been drawn once.
+- **Frames:** the binding uses `benchmarkLive`, so frames come from the
+  engine's vsync, as in an app. Each step writes its bytes, forces a frame
+  and waits for it (`endOfFrame`).
+- **Write time:** the write runs before the frame, on the UI thread. It
+  includes parsing and anything the widget does synchronously on a write
+  (listeners, render-state updates). It is timed per step with a
+  `Stopwatch` and reported next to the frame times. The UI target is
+  checked against **write + UI frame** time, so work moved out of the frame
+  still counts.
+- **Passes:** 3 by default. Each pass runs every scenario on every widget,
+  rotating the widget order, so no widget always runs first or last.
+  Averages are the median of the per-pass averages. p90, p99 (nearest rank)
+  and worst pool every pass. A run where the timeline recorded fewer than
+  95% of the driven frames is flagged `⚠` and must not be published.
+- **Renderer and DPR:** the task passes `--enable-impeller` (the default)
+  or `--no-enable-impeller`, which the desktop device forwards to the
+  engine. The report records the renderer the timeline shows (events in the
+  `impeller` category, or Skia's `SkCanvas::Flush`) and the actual device
+  pixel ratio. The ADR verdict is printed only at DPR 2. Under `xvfb-run`
+  there is no GPU, so the raster numbers are software rendering; report
+  them only next to the machine and display they come from.
+
+### Results
+
+None yet. `VtTerminalView` is wired in the integration step, and a run on
+the placeholder view would measure nothing. Numbers go here only from a
+real run, with the environment table the report prints.
+
+### Dependency audit (frame benchmark)
+
+Checked on 2026-11-10 against the pub.dev API (versions, dates, and archive
+sha256 equal to `pubspec.lock`), with the sources read in `~/.pub-cache`.
+The lockfile diff adds exactly these entries, and `mise run cooldown`
+passes.
+
+| Package | Version | Published | Why it is here | `hook/` or build-time code |
+|---|---|---|---|---|
+| `xterm2` | 5.4.0 | 2026-10-21 | widget under test | none (no `hook/`, no native code) |
+| `flutter_pty` | 0.4.2 | 2025-01-06 | demo app (`apps/demo`) | a small C library built by the Flutter plugin build, no downloads (below) |
+| `integration_test`, `flutter_driver`, `fuchsia_remote_debug_protocol` | SDK | – | the harness | none |
+| `webdriver` | 3.2.0 | 2026-09-09 | flutter_driver | none |
+| `sync_http` | 0.3.1 | 2022-06-15 | webdriver | none |
+
+`xterm` 4.0.0 was already locked for the parser benchmark.
+
+**flutter_pty 0.4.2 native build**, read 2026-11-10:
+- `linux/CMakeLists.txt` and `windows/CMakeLists.txt` only
+  `add_subdirectory(../src)`. That builds one shared library from
+  `src/flutter_pty.c`, which includes Dart's `dart_api_dl.c`, then
+  `forkpty.c` + `flutter_pty_unix.c` on Unix or `flutter_pty_win.c`
+  (ConPTY) on Windows.
+- The macOS and iOS podspecs compile a forwarder of the same file, so the
+  macOS demo needs CocoaPods.
+- There is no `ExternalProject`, `FetchContent`, `file(DOWNLOAD)`,
+  `execute_process` or network access anywhere, and no build hook.
+- The Android `build.gradle` declares the Android Gradle Plugin 8.1.0 from
+  Google's Maven repository, as every Android plugin does. The demo does not
+  build for Android.
+
+Its runtime defects and what the demo does about them are listed under
+"Known limitations" in `apps/demo/README.md`.
