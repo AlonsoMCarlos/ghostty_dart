@@ -21,3 +21,40 @@ zig-out/
 # dartdoc output (`dart doc`). pub also leaves gitignored files out of the
 # publish archive.
 packages/*/doc/api/
+
+# Local-only pub configuration. pubspec_overrides.yaml silently redirects
+# dependencies (path or git) without touching pubspec.yaml; it must never be
+# committed (AGENTS.md supply chain). tool/test/repo_hygiene_test.dart checks.
+pubspec_overrides.yaml
+.pub-cache/
+.pub/
+
+# Secrets and signing material. Release signing happens in CI only.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+key.properties
+google-services.json
+GoogleService-Info.plist
+
+# Machine-local platform configuration and caches
+local.properties
+.gradle/
+**/Flutter/ephemeral/
+**/flutter/ephemeral/
+**/Pods/
+**/xcuserdata/
+
+# OS and editor droppings, logs
+.DS_Store
+Thumbs.db
+*.swp
+*~
+*.log

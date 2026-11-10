@@ -1,0 +1,10 @@
+# Files kept out of the pub.dev archive. pub reads .pubignore instead of
+# .gitignore when it exists in a directory, so repeat what .gitignore hides.
+.dart_tool/
+build/
+pubspec_overrides.yaml
+
+# Test-only assets: the pinned JetBrains Mono files and the Linux goldens are
+# for this repo's CI, not for users (about 1.3 MB).
+test/fonts/
+test/goldens/

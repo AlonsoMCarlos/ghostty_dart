@@ -92,7 +92,7 @@ mise run pana           # pub.dev score of the publish archive, pinned pana + da
 mise run publish:dry-run  # validate the publish archive (run on committed changes)
 mise run docs:translations  # Spanish translations in sync with their English source
 mise run lint:ci        # actionlint + shellcheck
-mise run test:tool      # tests of the release tools
+mise run test:tool      # tests of the release tools and repo hygiene (nothing ignored, secret or >1 MiB is tracked)
 mise run native:release-asset <asset>  # one ADR 0008 asset -> .native-cache/release/
 mise run native:check <asset> [file]   # verify a release asset
 mise run native:ndk     # pinned Android NDK sysroot (Linux only)
@@ -164,6 +164,7 @@ Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`,
 This machine had a real compromise via build-time code (2026-08-20). Our build hook runs on users' machines, so it is held to the same standard.
 
 - The hook only downloads the pinned artefact for the target, verifies its sha256 against the value in source, and **fails closed**. It never runs downloaded code at build time and never resolves anything unpinned.
+- Never commit `pubspec_overrides.yaml`, secrets, signing material or build output. `.gitignore` blocks them and `tool/test/repo_hygiene_test.dart` (`test:tool`) fails if one is tracked anyway. Published packages carry a `.pubignore` that keeps test-only assets out of the archive.
 - Every `pubspec.lock` is committed: the workspace's and `tool/pana/`'s.
 - Never run `dart pub upgrade` blindly. Review every lockfile diff.
 - Do not adopt any dependency version published less than 3 days ago (cooldown).

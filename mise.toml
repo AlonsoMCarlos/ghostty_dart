@@ -164,12 +164,13 @@ dart tool/native/pin_prebuilt.dart "$usage_tag" ${usage_no_verify:+--no-verify} 
 '''
 
 [tasks."test:tool"]
-description = "Test the repo tools (binary checker, pin logic, asset manifest, cooldown lock parsing, translation check, analysis options sync)"
+description = "Test the repo tools (binary checker, pin logic, asset manifest, cooldown lock parsing, translation check, analysis options sync, repo hygiene)"
 run = [
   "dart tool/native/test/tool_test.dart",
   "dart tool/test/check_cooldown_test.dart",
   "dart tool/test/check_translations_test.dart",
   "dart tool/test/analysis_options_test.dart",
+  "dart tool/test/repo_hygiene_test.dart",
 ]
 
 # The name is the one CI and the task list use; it covers workflows and the
