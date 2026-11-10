@@ -165,7 +165,8 @@ void main() {
       expect(controller.macosOptionAsAlt, OptionAsAlt.none);
       // Option-as-Alt is compiled in only on macOS (key_encode.zig).
       if (Platform.isMacOS) {
-        expect(output, ['\x1bw', '∑']);
+        // _recording decodes bytes as Latin-1, so compare the UTF-8 bytes.
+        expect(output, ['\x1bw', latin1.decode(utf8.encode('∑'))]);
       } else {
         expect(output, hasLength(2));
         expect(output[0], output[1]);
