@@ -1,13 +1,13 @@
 // Golden images of the renderer (ADR 0011: Linux only, bundled JetBrains
-// Mono 2.304). Other operating systems rasterise text differently, so these
-// tests skip there. Regenerate on Linux with
-// `flutter test --update-goldens test/goldens`.
+// Mono 2.304). Other operating systems rasterise text differently, so the
+// `golden` tag skips these tests there (dart_test.yaml). Regenerate on
+// Linux with `mise run test:goldens:update`.
 //
 // flutter_tester has no system fonts: characters JetBrains Mono lacks (CJK,
 // emoji) render as the test framework's fallback boxes. The goldens still
 // pin their placement: centred in their cells, scaled down when wider.
-
-import 'dart:io';
+@Tags(['golden'])
+library;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,7 +16,7 @@ import 'package:ghostty_dart/ghostty_dart.dart';
 import '../render/render_harness.dart';
 import '../support/fonts.dart';
 
-final _skip = !Platform.isLinux || skipWithoutBundledFonts;
+final _skip = skipWithoutBundledFonts;
 
 /// Every SGR attribute and colour kind, one block per row band, plus text,
 /// box drawing, wide characters and a long plain line: a 200 × 60 screen.

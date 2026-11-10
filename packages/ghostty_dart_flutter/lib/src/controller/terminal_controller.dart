@@ -117,7 +117,7 @@ class VtTerminalController extends ChangeNotifier {
       terminal.dispose();
       rethrow;
     }
-    bindControllerInternals(this, _Internals(this));
+    bindControllerInternals(this, _internalsRef = _Internals(this));
   }
 
   /// The scrollback memory limit a controller starts with: 10 MiB.
@@ -192,8 +192,15 @@ class VtTerminalController extends ChangeNotifier {
   String get title => _checked.title;
 
   /// The colours of the terminal. Setting a different theme pushes its
-  /// colours into the terminal (see [VtTerminalTheme]) and notifies
+  /// colours into the terminal at once (see [VtTerminalTheme]) and notifies
   /// listeners.
+  ///
+  /// The notification is synchronous, like every other one, except while a
+  /// frame is being built, laid out or painted for a view of this
+  /// controller: then it is delivered once after that frame, so listeners
+  /// may call `setState`. Still, prefer setting it from `initState`,
+  /// `didUpdateWidget` (only when it changed) or an event handler, never
+  /// from a `build` method.
   VtTerminalTheme get theme {
     _checkNotDisposed();
     return _theme;
@@ -204,7 +211,30 @@ class VtTerminalController extends ChangeNotifier {
     if (value == _theme) return;
     _theme = value;
     _guard(() => _pushTheme(value));
-    notifyListeners();
+    if (_internalsUsedByWidgets &&
+        SchedulerBinding.instance.schedulerPhase ==
+            SchedulerPhase.persistentCallbacks) {
+      _notifyAfterFrame();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  bool _themeNotificationScheduled = false;
+  _Internals? _internalsRef;
+
+  bool get _internalsUsedByWidgets => _internalsRef?.usedByWidgets ?? false;
+
+  /// Notifies once after the current frame (coalesced).
+  void _notifyAfterFrame() {
+    if (_themeNotificationScheduled) return;
+    _themeNotificationScheduled = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) {
+        _themeNotificationScheduled = false;
+        _notify();
+      }, debugLabel: 'VtTerminalController.theme')
+      ..ensureVisualUpdate();
   }
 
   /// Whether the macOS Option key acts as Alt for [sendKey] (it only has
@@ -642,6 +672,9 @@ final class _Internals implements ControllerInternals {
 
   @override
   Object? frameOwner;
+
+  @override
+  bool usedByWidgets = false;
 
   @override
   void resizeDuringLayout(

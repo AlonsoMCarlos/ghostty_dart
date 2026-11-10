@@ -70,6 +70,7 @@ class TerminalInputScope extends StatefulWidget {
     this.deleteDetection = true,
     this.onUnsafePaste,
     this.composingBackgroundColor,
+    this.composingBackground,
     this.kittyKeyboardFlags,
     this.macosOptionAsAlt,
     required this.child,
@@ -140,6 +141,12 @@ class TerminalInputScope extends StatefulWidget {
   /// [textStyle]'s background colour still applies).
   final Color? composingBackgroundColor;
 
+  /// Reads the fill behind the IME composing text when the preedit is
+  /// drawn, and again on every [text] notification while composing, so a
+  /// theme or OSC 11 change shows at once. Wins over
+  /// [composingBackgroundColor] when it returns a colour.
+  final ValueGetter<Color?>? composingBackground;
+
   /// The program's Kitty keyboard flags, read on every key. `null` reads
   /// them from [keys] when it is also a [TerminalPointerSink] (as the
   /// controller's seams are), else assumes none.
@@ -188,6 +195,10 @@ class TerminalInputScopeState extends State<TerminalInputScope>
 
   bool _hadFocus = false;
   bool _disposing = false;
+
+  /// Whether [closeKeyboard] closed the connection: a rebuild must not
+  /// open it again; [requestKeyboard] or the next focus gain does.
+  bool _keyboardClosed = false;
   bool _rectsScheduled = false;
   bool _passwordInput = false;
   bool _composingShown = false;
@@ -218,6 +229,7 @@ class TerminalInputScopeState extends State<TerminalInputScope>
   /// text input connection. Does nothing for [TerminalInputScope.readOnly]
   /// or [TerminalInputScope.hardwareKeyboardOnly] views beyond focusing.
   void requestKeyboard() {
+    _keyboardClosed = false;
     if (!widget.focusNode.hasFocus) {
       widget.focusNode.requestFocus();
       return; // the focus listener opens the connection
@@ -231,7 +243,10 @@ class TerminalInputScopeState extends State<TerminalInputScope>
 
   /// Hides the soft keyboard by closing the text input connection; the
   /// view keeps the focus and hardware keys still work.
-  void closeKeyboard() => _closeTextInput();
+  void closeKeyboard() {
+    _keyboardClosed = true;
+    _closeTextInput();
+  }
 
   @override
   void initState() {
@@ -274,15 +289,28 @@ class TerminalInputScopeState extends State<TerminalInputScope>
     }
     if (!_wantsTextInput) {
       _closeTextInput();
-    } else if (widget.focusNode.hasFocus && !_textInput.isAttached) {
+    } else if (widget.focusNode.hasFocus &&
+        !_textInput.isAttached &&
+        !_keyboardClosed) {
       _openTextInput();
     }
     if (oldWidget.focusNode != widget.focusNode) {
       oldWidget.focusNode.removeListener(_onFocusChanged);
       widget.focusNode.addListener(_onFocusChanged);
       // The new node may differ in focus: report it and open or close the
-      // connection, as if it had changed.
-      _onFocusChanged();
+      // connection, as if it had changed. When the old node had the focus,
+      // the owner may be moving it to the new node (the view does), which
+      // applies after this frame: judge once the focus has settled, so the
+      // program sees no focus-out/focus-in blip.
+      if (oldWidget.focusNode.hasFocus) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          scheduleMicrotask(() {
+            if (mounted && !_disposing) _onFocusChanged();
+          });
+        });
+      } else {
+        _onFocusChanged();
+      }
     }
     if (oldWidget.geometry != widget.geometry ||
         oldWidget.textStyle != widget.textStyle) {
@@ -317,6 +345,7 @@ class TerminalInputScopeState extends State<TerminalInputScope>
       widget.text.sendFocus(focused: focused);
     }
     if (focused) {
+      _keyboardClosed = false;
       _openTextInput();
     } else {
       _closeTextInput();
@@ -481,6 +510,33 @@ class TerminalInputScopeState extends State<TerminalInputScope>
       return;
     }
     _scheduleRects();
+    if (_textInput.composingText.isNotEmpty &&
+        widget.composingBackground != null &&
+        _composingBackgroundOrNull() != _shownComposingBackground) {
+      _scheduleRebuild();
+    }
+  }
+
+  Color? _shownComposingBackground;
+  bool _rebuildScheduled = false;
+
+  Color? _composingBackgroundOrNull() =>
+      widget.composingBackground?.call() ?? widget.composingBackgroundColor;
+
+  /// Rebuilds now, or after the frame when notified during one (output
+  /// written from a build method).
+  void _scheduleRebuild() {
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      setState(() {});
+      return;
+    }
+    if (_rebuildScheduled) return;
+    _rebuildScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _rebuildScheduled = false;
+      if (mounted) setState(() {});
+    });
   }
 
   /// Coalesces the platform calls the text sink's notifications cause to
@@ -759,7 +815,8 @@ class TerminalInputScopeState extends State<TerminalInputScope>
                 text: composing,
                 origin: widget.geometry.cellOrigin(cell.x, cell.y),
                 style: widget.textStyle,
-                backgroundColor: widget.composingBackgroundColor,
+                backgroundColor: _shownComposingBackground =
+                    _composingBackgroundOrNull(),
               ),
           ],
         ),

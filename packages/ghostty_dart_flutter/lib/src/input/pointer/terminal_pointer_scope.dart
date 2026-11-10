@@ -14,10 +14,17 @@ import '../../seams/terminal_geometry.dart';
 import '../../seams/terminal_seams.dart';
 import 'pointer_mapping.dart';
 
-/// Called with the local position of a tap and the viewport cell under it
-/// (see [TerminalPointerScope.onTapUp]). Never exported.
-typedef TerminalPointerTapCallback =
-    void Function(Offset localPosition, GridPoint cell);
+/// Called with the details of a primary tap or a secondary release and the
+/// viewport cell under it (see [TerminalPointerScope.onTapUp]), the shape
+/// of xterm 4.0.0's `onTapUp` with a [GridPoint] for its `CellOffset`.
+/// Never exported.
+typedef TerminalTapUpCallback =
+    void Function(TapUpDetails details, GridPoint cell);
+
+/// Called with the details of a secondary press and the viewport cell under
+/// it (see [TerminalPointerScope.onSecondaryTapDown]). Never exported.
+typedef TerminalTapDownCallback =
+    void Function(TapDownDetails details, GridPoint cell);
 
 /// The devices that go through gesture recognizers (and so compete in the
 /// gesture arena with enclosing scrollables, page views and drawers).
@@ -52,7 +59,9 @@ const _arenaDevices = {
 /// and routed by [TerminalScrollRouter]: wheel reports while the program
 /// tracks the mouse, raw cursor keys on the alternate screen with DEC
 /// 1007, otherwise the viewport. libghostty keeps a scrolled-back viewport
-/// anchored while output arrives.
+/// anchored while output arrives. A macOS mouse wheel scrolls at least one
+/// line of three rows per discrete notch, as Ghostty does
+/// ([wheelScrollExtent]).
 ///
 /// **Touch, stylus and trackpad** go through gesture recognizers, so they
 /// compete fairly with enclosing scrollables: a vertical drag (a
@@ -119,14 +128,14 @@ class TerminalPointerScope extends StatefulWidget {
 
   /// A primary click or tap that selected nothing (no drag, no double
   /// click) and was not reported to the program, with its viewport cell.
-  final TerminalPointerTapCallback? onTapUp;
+  final TerminalTapUpCallback? onTapUp;
 
   /// A secondary (right) mouse press that was not reported to the
   /// program, with its viewport cell.
-  final TerminalPointerTapCallback? onSecondaryTapDown;
+  final TerminalTapDownCallback? onSecondaryTapDown;
 
   /// The release of a secondary press passed to [onSecondaryTapDown].
-  final TerminalPointerTapCallback? onSecondaryTapUp;
+  final TerminalTapUpCallback? onSecondaryTapUp;
 
   @override
   State<TerminalPointerScope> createState() => _TerminalPointerScopeState();
@@ -197,6 +206,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
   int _lastMotionButtons = -1;
 
   final _wheelRows = RowAccumulator();
+  final _wheelStream = WheelStream();
   final _wheelCols = RowAccumulator();
   final _dragRows = RowAccumulator();
 
@@ -443,7 +453,14 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     }
     if (event.buttons & kSecondaryButton != 0) {
       _route = _Route.secondary;
-      widget.onSecondaryTapDown?.call(event.localPosition, cell);
+      widget.onSecondaryTapDown?.call(
+        TapDownDetails(
+          globalPosition: event.position,
+          localPosition: event.localPosition,
+          kind: event.kind,
+        ),
+        cell,
+      );
       return;
     }
     _route = _Route.none;
@@ -493,10 +510,10 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
           if (gesture != null && !gesture.isDisposed) {
             final tap = !gesture.hasDragged && gesture.clickCount == 1;
             _guarded(() => gesture.release(cell));
-            if (tap) widget.onTapUp?.call(event.localPosition, cell);
+            if (tap) widget.onTapUp?.call(_tapUpDetails(event), cell);
           }
         case _Route.secondary:
-          widget.onSecondaryTapUp?.call(event.localPosition, cell);
+          widget.onSecondaryTapUp?.call(_tapUpDetails(event), cell);
         case _Route.report:
           _syncReportedButtons(event, currentKeyModifiers());
         case _Route.extend || _Route.none:
@@ -749,8 +766,14 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
       return;
     }
     _setSelection(null);
-    widget.onTapUp?.call(details.localPosition, _cellAt(details.localPosition));
+    widget.onTapUp?.call(details, _cellAt(details.localPosition));
   }
+
+  static TapUpDetails _tapUpDetails(PointerEvent event) => TapUpDetails(
+    kind: event.kind,
+    globalPosition: event.position,
+    localPosition: event.localPosition,
+  );
 
   // -------------------------------------------------------------------
   // Wheel
@@ -776,7 +799,17 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     // Some platforms turn Shift+wheel into a horizontal scroll; with Shift
     // the wheel always scrolls the scrollback.
     if (modifiers.hasShift && delta.dy == 0) delta = Offset(0, delta.dx);
-    final rows = _wheelRows.add(delta.dy, _geometry.metrics.height);
+    final rowExtent = _geometry.metrics.height;
+    final rows = _wheelRows.add(
+      wheelScrollExtent(
+        delta.dy,
+        rowExtent,
+        platform: defaultTargetPlatform,
+        kind: event.kind,
+        isolated: _wheelStream.isolated(event.timeStamp),
+      ),
+      rowExtent,
+    );
     final cols = modifiers.hasShift
         ? 0
         : _wheelCols.add(delta.dx, _geometry.metrics.width);

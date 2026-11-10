@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
@@ -35,6 +36,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     this.cursorStyle,
     this.alwaysShowCursor = false,
     this.backgroundOpacity = 1.0,
+    this.cursorHidden,
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
@@ -75,6 +77,12 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
   /// `backgroundOpacity`.
   final double backgroundOpacity;
 
+  /// Hides the cursor while its value is true, like [hideCursor], but
+  /// without a rebuild: the render box listens to it and repaints. The view
+  /// drives it from the IME composing state, which can change while the
+  /// tree is being built (a connection closed from `didUpdateWidget`).
+  final ValueListenable<bool>? cursorHidden;
+
   @override
   RenderTerminal createRenderObject(BuildContext context) => RenderTerminal(
     source: source,
@@ -86,6 +94,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     cursorStyle: cursorStyle,
     alwaysShowCursor: alwaysShowCursor,
     backgroundOpacity: backgroundOpacity,
+    cursorHidden: cursorHidden,
     blinkEnabled: TickerMode.valuesOf(context).enabled,
   );
 
@@ -101,6 +110,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
       ..cursorStyle = cursorStyle
       ..alwaysShowCursor = alwaysShowCursor
       ..backgroundOpacity = backgroundOpacity
+      ..cursorHidden = cursorHidden
       ..blinkEnabled = TickerMode.valuesOf(context).enabled;
   }
 }
@@ -150,8 +160,10 @@ class RenderTerminal extends RenderBox {
     VtCursorStyle? cursorStyle,
     bool alwaysShowCursor = false,
     double backgroundOpacity = 1.0,
+    ValueListenable<bool>? cursorHidden,
     bool blinkEnabled = true,
   }) : _source = source,
+       _cursorHidden = cursorHidden,
        _geometry = geometry,
        _textStyle = textStyle,
        _focused = focused,
@@ -176,6 +188,7 @@ class RenderTerminal extends RenderBox {
   TextStyle _textStyle;
   bool _focused;
   bool _hideCursor;
+  ValueListenable<bool>? _cursorHidden;
   TextScaler _textScaler;
   VtCursorStyle? _cursorStyle;
   bool _alwaysShowCursor;
@@ -228,6 +241,19 @@ class RenderTerminal extends RenderBox {
     _hideCursor = value;
     markNeedsPaint();
   }
+
+  /// See [TerminalRenderWidget.cursorHidden].
+  ValueListenable<bool>? get cursorHidden => _cursorHidden;
+  set cursorHidden(ValueListenable<bool>? value) {
+    if (identical(value, _cursorHidden)) return;
+    if (attached) _cursorHidden?.removeListener(markNeedsPaint);
+    _cursorHidden = value;
+    if (attached) _cursorHidden?.addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  /// Whether the cursor is hidden now, by [hideCursor] or [cursorHidden].
+  bool get isCursorHidden => _hideCursor || (_cursorHidden?.value ?? false);
 
   /// See [TerminalRenderWidget.textScaler].
   TextScaler get textScaler => _textScaler;
@@ -350,11 +376,13 @@ class RenderTerminal extends RenderBox {
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _source.addListener(_onSourceChanged);
+    _cursorHidden?.addListener(markNeedsPaint);
   }
 
   @override
   void detach() {
     _source.removeListener(_onSourceChanged);
+    _cursorHidden?.removeListener(markNeedsPaint);
     _stopBlink();
     super.detach();
   }
@@ -564,7 +592,7 @@ class RenderTerminal extends RenderBox {
     _paintedCursor = null;
     final cursor = _cursor;
     final position = cursor?.position;
-    if (cursor == null || position == null || _hideCursor) return false;
+    if (cursor == null || position == null || isCursorHidden) return false;
     if (!cursor.isVisible && !_alwaysShowCursor) return false;
     if (position.y >= _visibleRowIds.length) return false;
     final blinks = _focused && _blinkEnabled && cursor.isBlinking;

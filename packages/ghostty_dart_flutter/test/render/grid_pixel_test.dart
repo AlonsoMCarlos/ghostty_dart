@@ -8,7 +8,6 @@
 // flutter_tester's software rasteriser; Impeller and the web renderers need
 // the same check on a real device or browser.
 
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -138,44 +137,92 @@ void main() {
     }
   }, skip: skipWithoutBundledFonts);
 
-  testWidgets('box drawing joins without seams', (tester) async {
-    // At 11 px a JetBrains Mono glyph advances 6.6 px in a 7 px cell. A
-    // centred "─" would leave 0.2 px gaps at both cell edges, which
-    // antialias into a dimmer pixel column at every cell boundary; the
-    // renderer stretches box drawing to the cell instead.
-    const cols = 40;
-    final h = await pumpRenderer(
-      tester,
-      cols: cols,
-      rows: 1,
-      textStyle: gridStyle.copyWith(fontSize: 11),
-      initial: '${'─' * cols}\x1b[?25l',
-    );
-    final bytes = await h.pixels();
-    final width = (h.geometry.viewSize.width).round();
-    final height = h.geometry.metrics.heightPx;
-    // Exact raster values: Linux only, like the goldens.
-    // The pixel row where the line is brightest.
-    var lineY = 0;
-    var best = -1;
-    for (var y = 0; y < height; y++) {
-      final red = bytes[(y * width + width ~/ 2) * 4];
-      if (red > best) {
-        best = red;
-        lineY = y;
+  testWidgets(
+    'box drawing joins without seams',
+    (tester) async {
+      // At 11 px a JetBrains Mono glyph advances 6.6 px in a 7 px cell. A
+      // centred "─" would leave 0.2 px gaps at both cell edges, which
+      // antialias into a dimmer pixel column at every cell boundary; the
+      // renderer stretches box drawing to the cell instead.
+      const cols = 40;
+      final h = await pumpRenderer(
+        tester,
+        cols: cols,
+        rows: 1,
+        textStyle: gridStyle.copyWith(fontSize: 11),
+        initial: '${'─' * cols}\x1b[?25l',
+      );
+      final bytes = await h.pixels();
+      final width = (h.geometry.viewSize.width).round();
+      final height = h.geometry.metrics.heightPx;
+      // Exact raster values: Linux only, like the goldens (`golden` tag).
+      // The pixel row where the line is brightest.
+      var lineY = 0;
+      var best = -1;
+      for (var y = 0; y < height; y++) {
+        final red = bytes[(y * width + width ~/ 2) * 4];
+        if (red > best) {
+          best = red;
+          lineY = y;
+        }
       }
-    }
-    final dimmest = [
-      for (var x = 0; x < cols * h.geometry.metrics.widthPx; x++)
-        bytes[(lineY * width + x) * 4],
-    ].reduce(math.min);
-    // Measured 2026-11-10 (flutter_tester, Linux): stretched 195 / 190,
-    // centred 186 / 177. The stretched glyph still antialiases a little
-    // at its own ends, hence the small allowance.
-    expect(
-      dimmest,
-      greaterThanOrEqualTo(best - 6),
-      reason: 'line brightness $best, dimmest $dimmest',
-    );
-  }, skip: !Platform.isLinux || skipWithoutBundledFonts);
+      final dimmest = [
+        for (var x = 0; x < cols * h.geometry.metrics.widthPx; x++)
+          bytes[(lineY * width + x) * 4],
+      ].reduce(math.min);
+      // Measured 2026-11-10 (flutter_tester, Linux): stretched 195 / 190,
+      // centred 186 / 177. The stretched glyph still antialiases a little
+      // at its own ends, hence the small allowance.
+      expect(
+        dimmest,
+        greaterThanOrEqualTo(best - 6),
+        reason: 'line brightness $best, dimmest $dimmest',
+      );
+    },
+    tags: ['golden'],
+    skip: skipWithoutBundledFonts,
+  );
+
+  testWidgets(
+    'vertical box drawing does not overdraw at row joins',
+    (tester) async {
+      // A "│" taller than its cell used to spill into the rows above and
+      // below; the antialiased overlap drew a brighter dot at every row
+      // boundary. Each cluster is clipped to its cell now.
+      for (final size in [11.0, 13.0, 22.0]) {
+        const rows = 8;
+        final h = await pumpRenderer(
+          tester,
+          cols: 1,
+          rows: rows,
+          textStyle: gridStyle.copyWith(fontSize: size),
+          initial: '${List.filled(rows, '│').join('\r\n')}\x1b[?25l',
+        );
+        final bytes = await h.pixels();
+        final width = (h.geometry.viewSize.width).round();
+        final cellHeight = h.geometry.metrics.heightPx;
+        // The brightest pixel column in the middle of the first cell.
+        var lineX = 0;
+        var best = -1;
+        for (var x = 0; x < width; x++) {
+          final red = bytes[(cellHeight ~/ 2 * width + x) * 4];
+          if (red > best) {
+            best = red;
+            lineX = x;
+          }
+        }
+        final column = [
+          for (var y = 0; y < rows * cellHeight; y++)
+            bytes[(y * width + lineX) * 4],
+        ];
+        expect(
+          column.reduce(math.max) - column.reduce(math.min),
+          lessThanOrEqualTo(2),
+          reason: 'font size $size: line column $lineX, values $column',
+        );
+      }
+    },
+    tags: ['golden'],
+    skip: skipWithoutBundledFonts,
+  );
 }

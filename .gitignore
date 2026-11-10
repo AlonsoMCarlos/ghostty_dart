@@ -18,6 +18,10 @@ zig-out/
 .claude/worktrees/
 .claude/settings.local.json
 
+# Golden test failure images (flutter_test writes them next to the test).
+**/test/**/failures/
+**/integration_test/**/failures/
+
 # dartdoc output (`dart doc`). pub also leaves gitignored files out of the
 # publish archive.
 packages/*/doc/api/

@@ -214,6 +214,14 @@ description = "Run the ghostty_dart_flutter tests (flutter test, without the spi
 dir = "{{config_root}}/packages/ghostty_dart_flutter"
 run = "flutter test --exclude-tags spike"
 
+[tasks."test:goldens:update"]
+description = "Regenerate the ghostty_dart_flutter goldens and doc/screenshot.png (Linux only; review the image diff)"
+dir = "{{config_root}}/packages/ghostty_dart_flutter"
+# The `golden` tag skips every golden off Linux, so elsewhere this would
+# "succeed" and update nothing: fail loudly instead.
+shell = "bash -c"
+run = '[ "$(uname -s)" = Linux ] || { echo "error: goldens are rendered on Linux only (ADR 0011)" >&2; exit 1; }; flutter test --update-goldens --tags golden'
+
 [tasks."test:spike"]
 description = "Run the ghostty_dart_flutter measurement spikes (unpinned host fonts; manual, not in CI)"
 dir = "{{config_root}}/packages/ghostty_dart_flutter"

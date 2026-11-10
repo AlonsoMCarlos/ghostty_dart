@@ -5,6 +5,10 @@ build/
 pubspec_overrides.yaml
 
 # Test-only assets: the pinned JetBrains Mono files and the Linux goldens are
-# for this repo's CI, not for users (about 1.3 MB).
+# for this repo's CI, not for users (about 1.3 MB). doc/screenshot.png
+# stays: pub.dev shows it (pubspec `screenshots`).
 test/fonts/
 test/goldens/
+test/view/goldens/
+test/**/failures/
+integration_test/**/failures/

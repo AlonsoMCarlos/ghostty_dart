@@ -13,3 +13,7 @@ Format: `NNNN-short-title.md` with sections **Status**, **Context**, **Decision*
 | [0005](0005-language-policy.md) | Language policy: English code, bilingual docs | Accepted |
 | [0006](0006-native-lifetime-and-api-conventions.md) | Native lifetime and public API conventions | Accepted |
 | [0007](0007-package-names-and-trademark.md) | Package names and the Ghostty trademark | Accepted |
+| [0008](0008-prebuilt-release-pipeline.md) | Prebuilt binary release pipeline | Accepted |
+| [0009](0009-keep-package-names-without-consultation.md) | Keep the package names without asking the Ghostty maintainers first | Accepted |
+| [0010](0010-first-release-and-publishing.md) | First release and the publishing pipeline | Accepted |
+| [0011](0011-flutter-widget-architecture.md) | `ghostty_dart_flutter` widget architecture | Accepted |

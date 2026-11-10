@@ -1,4 +1,11 @@
-# `spike`: measurements on unpinned host fonts (test/spike/). Excluded from
-# `mise run test:flutter` and CI; run them with `mise run test:spike`.
 tags:
+  # Measurements on unpinned host fonts (test/spike/). Excluded from
+  # `mise run test:flutter` and CI; run them with `mise run test:spike`.
   spike:
+  # Pixel-exact images (goldens, the pub.dev screenshot, exact raster
+  # values). Text rasterises differently on every OS, so they run on Linux
+  # only (ADR 0011); `mise run test:goldens:update` regenerates them.
+  golden:
+    on_platform:
+      "!linux":
+        skip: "Goldens and exact raster checks run on Linux only (ADR 0011)."

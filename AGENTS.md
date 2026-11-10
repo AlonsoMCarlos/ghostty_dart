@@ -38,11 +38,12 @@ ADRs in `docs/internal/adr/`. Research with sources in `docs/internal/research/`
 - **0003** Prebuilt binaries from our CI, verified by sha256 pinned in source. Opt-in `user_defines`: `source: prebuilt | system | zig`, `url_pattern`, `path`.
 - **0004** `ghostty_dart_xterm` is a thin adapter. We never claim "drop-in" without the compatibility suite proving it.
 - **0005** English code and docs; user-facing docs are bilingual en/es.
+- **0006** Native lifetime and public API conventions. Details are in `docs/internal/architecture/ghostty_dart-conventions.md`, which **every change to `ghostty_dart` must follow**. It covers the handle base, the finalizer rules, callables, borrowed views and epochs, tolerant enums, the naming rules (§11), and the analyzer audit that keeps `dart:ffi` out of the public API.
 - **0007** Package names are `ghostty_dart*`. Every README carries the "unofficial, not affiliated" notice and does not use the Ghostty logo.
 - **0008** Prebuilt release pipeline: 12 assets named in `native/prebuilt_assets.json`, stripped and bit-reproducible (non-Apple built twice and compared), SLSA L3 attestations from `native-build.yml`, immutable releases tagged `native-v<version>-r<n>`, hashes pinned into `prebuilt.dart` through a reviewed PR (`native:pin`).
 - **0009** The package names are kept without asking the Ghostty maintainers first (supersedes that line of 0007).
 - **0010** First release and publishing: 0.1.0 uploaded manually first, own `publish.yml`, release-please with `GITHUB_TOKEN` + dispatch, pana and dartdoc pinned.
-- **0006** Native lifetime and public API conventions. Details are in `docs/internal/architecture/ghostty_dart-conventions.md`, which **every change to `ghostty_dart` must follow**. It covers the handle base, the finalizer rules, callables, borrowed views and epochs, tolerant enums, the naming rules (§11), and the analyzer audit that keeps `dart:ffi` out of the public API.
+- **0011** `ghostty_dart_flutter` architecture: pty-agnostic `VtTerminalController` + `VtTerminalView` (`Vt` prefix); one repaint-isolated render box with a cached picture per row (content-keyed, so scrolling reuses pictures), run paragraphs at `col * cellWidth`, cursor overlay; keys through libghostty's encoder, IME through a delta text input client, shortcuts that never take Ctrl+V/Ctrl+A; mouse via `MouseEncoder`/`SelectionGesture`; scrolling owned by libghostty; semantics only while accessibility is on. Goldens Linux only (`golden` tag).
 
 If a change contradicts an ADR, write a new ADR that supersedes it. Do not silently diverge.
 
@@ -85,6 +86,7 @@ mise run analyze        # format check + dart analyze --fatal-infos
 mise run test           # runs inside packages/ghostty_dart, so the build hook runs
 mise run test:flutter   # flutter test in packages/ghostty_dart_flutter (spike tag excluded)
 mise run test:spike     # letterSpacing/metrics spikes on host fonts (manual, not in CI)
+mise run test:goldens:update  # regenerate the widget goldens + doc/screenshot.png (Linux; review the diff)
 mise run deps:no-flutter  # resolve without the Flutter members, exactly as locked (arm64 smoke runners)
 mise run cooldown       # no locked dependency younger than 3 days
 mise run check          # everything CI runs (analyze, test, test:flutter, demo:test, bench:widget:test, test:tool, test:release, cooldown, lint:ci, docs:translations)
@@ -139,7 +141,7 @@ Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`,
 - Repaint only dirty rows, using the render state's `next_dirty`.
 - Draw style runs, not cells. Cache paragraphs per run.
 - A `drawRawAtlas` glyph atlas is the planned v2 path. Land it only with benchmark evidence.
-- Must work on Skia, Impeller and the web renderers.
+- Must work on Skia and Impeller, and on the web renderers (CanvasKit, skwasm) once `ghostty_dart` has its wasm backend; until then the package declares native platforms only.
 - Input:
   - Keys are encoded by libghostty's key encoder, including the Kitty protocol.
   - The widget must not steal shell shortcuts by default. Ctrl+V and Ctrl+A go to the shell.
@@ -154,7 +156,7 @@ Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`,
 ## Testing
 
 - Every behaviour change ships with tests, on both backends where they apply.
-- Golden tests run on Linux CI only, with a bundled monospace font.
+- Golden tests run on Linux CI only, with a bundled monospace font. In `ghostty_dart_flutter` they carry the `golden` tag, which `dart_test.yaml` skips off Linux; regenerate them with `mise run test:goldens:update`.
 - Use VT conformance fixtures (vttest-style byte streams) for the adapter.
 - Use property tests with random byte streams. Fuzzing belongs upstream in C.
 - Benchmarks use `benchmark_harness`, with `--flavor aot` and `wasm`. A PR claiming a perf win includes before/after numbers.

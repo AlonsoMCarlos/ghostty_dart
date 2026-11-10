@@ -21,7 +21,9 @@ final class ControllerSeams
         TerminalViewport,
         TerminalPointerSink {
   /// Seams for [controller], which must not be disposed.
-  ControllerSeams(this.controller) : _internals = internalsOf(controller);
+  ControllerSeams(this.controller) : _internals = internalsOf(controller) {
+    _internals.usedByWidgets = true;
+  }
 
   /// The controller every seam delegates to.
   final VtTerminalController controller;

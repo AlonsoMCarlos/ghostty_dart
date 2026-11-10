@@ -535,8 +535,12 @@ final class RowRecorder {
     if (advance > 0 && _stretches(key.$1)) {
       // Box drawing and block elements join their neighbours: stretch them
       // to the cell exactly instead of centring them, so no seam shows.
+      // Clip them to the cell too: a vertical stroke is taller than the
+      // line, and the antialiased overlap with the next row's stroke drew
+      // a brighter dot at every row boundary.
       canvas
         ..save()
+        ..clipRect(Rect.fromLTWH(left, 0, box, metrics.height))
         ..translate(left, 0)
         ..scale(box / advance, 1)
         ..drawParagraph(paragraph, Offset(0, top))

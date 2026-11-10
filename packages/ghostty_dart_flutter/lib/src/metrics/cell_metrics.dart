@@ -94,8 +94,9 @@ final class VtCellMetrics {
   /// The advance is the average advance of a run of 100 `M`s, so
   /// fractional rounding in the engine averages out; ascent and descent
   /// come from the line metrics of the same run. [lineHeight] multiplies
-  /// the natural line height (1.0 by default). [textScaler] is applied to
-  /// the font size first.
+  /// the natural line height (1.0 by default); [style]'s own `height`,
+  /// `letterSpacing` and `wordSpacing` are ignored, as the renderer
+  /// ignores them. [textScaler] is applied to the font size first.
   ///
   /// Needs the Flutter engine (`dart:ui` text layout), so it works in apps
   /// and in `flutter test`, not in plain Dart.
@@ -109,9 +110,19 @@ final class VtCellMetrics {
     final builder =
         ui.ParagraphBuilder(ui.ParagraphStyle(textDirection: TextDirection.ltr))
           ..pushStyle(
-            style
-                .copyWith(height: null, letterSpacing: 0, wordSpacing: 0)
-                .getTextStyle(textScaler: textScaler),
+            // Only the font: `copyWith(height: null)` would keep a caller's
+            // `height` (null means "unchanged"), which skews the line
+            // metrics. The renderer draws with the same fields.
+            TextStyle(
+              fontFamily: style.fontFamily,
+              fontFamilyFallback: style.fontFamilyFallback,
+              fontSize: style.fontSize,
+              fontWeight: style.fontWeight,
+              fontStyle: style.fontStyle,
+              fontFeatures: style.fontFeatures,
+              fontVariations: style.fontVariations,
+              locale: style.locale,
+            ).getTextStyle(textScaler: textScaler),
           )
           ..addText('M' * sample);
     final paragraph = builder.build()

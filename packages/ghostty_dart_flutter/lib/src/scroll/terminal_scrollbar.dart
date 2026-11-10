@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
@@ -176,6 +177,7 @@ class _ScrollbarBodyState extends State<_ScrollbarBody> {
   Timer? _fadeTimer;
   bool _pollScheduled = false;
   final _rows = RowAccumulator();
+  final _wheelStream = WheelStream();
 
   TerminalViewport get _viewport => widget.router.viewport;
 
@@ -290,7 +292,16 @@ class _ScrollbarBodyState extends State<_ScrollbarBody> {
     GestureBinding.instance.pointerSignalResolver.register(event, (resolved) {
       if (_viewport.isDisposed) return;
       final scroll = resolved as PointerScrollEvent;
-      _scroll(scroll.scrollDelta.dy, origin + scroll.localPosition);
+      _scroll(
+        wheelScrollExtent(
+          scroll.scrollDelta.dy,
+          widget.geometry.metrics.height,
+          platform: defaultTargetPlatform,
+          kind: scroll.kind,
+          isolated: _wheelStream.isolated(scroll.timeStamp),
+        ),
+        origin + scroll.localPosition,
+      );
     });
   }
 

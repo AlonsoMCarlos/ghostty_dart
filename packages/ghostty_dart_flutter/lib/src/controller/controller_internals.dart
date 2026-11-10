@@ -33,6 +33,11 @@ abstract interface class ControllerInternals {
   /// use it to catch two views sharing one controller.
   Object? frameOwner;
 
+  /// Whether a widget (a view or the key toolbar) built seams over this
+  /// controller, so the Flutter scheduler binding exists and setters may
+  /// ask it which phase the frame is in.
+  bool usedByWidgets = false;
+
   /// Resizes the terminal at once and delivers `onResize` and the
   /// listener notification after the current frame (see
   /// [VtTerminalController.resize]).
