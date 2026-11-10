@@ -229,7 +229,8 @@ run = "flutter test --tags spike"
 
 # Demo app (apps/demo, ADR 0011): flutter_pty on desktop, a fake shell in
 # Dart on the web. Linux desktop builds need clang, cmake, ninja-build,
-# pkg-config and libgtk-3-dev from the distribution.
+# pkg-config, libgtk-3-dev and libstdc++-12-dev (Debian 13: the -14 one that
+# g++ brings) from the distribution.
 [tasks."demo:test"]
 description = "Run the demo app tests (fake shell, app wiring)"
 dir = "{{config_root}}/apps/demo"
@@ -290,7 +291,7 @@ shell = "bash -c"
 run = '''
 impeller=--enable-impeller
 [[ "$usage_renderer" == skia ]] && impeller=--no-enable-impeller
-flutter drive --profile -d "$usage_device" "$impeller" \
+flutter drive --profile -d "$usage_device" "$impeller" --endless-trace-buffer \
   --driver test_driver/perf_driver.dart \
   --target integration_test/frame_bench_test.dart \
   --dart-define=BENCH_FRAMES="$usage_frames" \
@@ -299,16 +300,45 @@ flutter drive --profile -d "$usage_device" "$impeller" \
   --dart-define=BENCH_FONT_DIR="{{config_root}}/packages/ghostty_dart_flutter/test/fonts"
 '''
 
+# The grid pixel check (ADR 0011) on the device's own renderer, which
+# flutter_tester's software raster cannot show: glyphs of a 200-column row
+# must land on the device-pixel grid under Impeller (or Skia) too. Needs a
+# display, like bench:widget.
+[tasks."test:grid-pixels"]
+description = "Check on a desktop device that glyphs land on the device-pixel grid (200 columns, 4 DPRs x 3 sizes)"
+usage = '''
+arg "[device]" default="linux" help="desktop device id: linux or macos"
+flag "--renderer <renderer>" default="impeller" help="impeller or skia" {
+  choices "impeller" "skia"
+}
+'''
+dir = "{{config_root}}/benchmarks/widget"
+shell = "bash -c"
+run = '''
+impeller=--enable-impeller
+[[ "$usage_renderer" == skia ]] && impeller=--no-enable-impeller
+flutter drive -d "$usage_device" "$impeller" \
+  --driver test_driver/integration_test.dart \
+  --target integration_test/grid_pixel_test.dart \
+  --dart-define=BENCH_FONT_DIR="{{config_root}}/packages/ghostty_dart_flutter/test/fonts"
+'''
+
 [tasks.cooldown]
 description = "Fail if any locked dependency was published less than 3 days ago"
 run = "dart run tool/check_cooldown.dart"
 
-# pub.dev score (ADR 0010): the pinned pana of tool/pana/ on the package's
+# pub.dev score (ADR 0010): the pinned pana of tool/pana/ on each package's
 # publish archive. Needs network. Separate from `check` (see ci.yml's pana job).
 [tasks.pana]
-description = "Score packages/ghostty_dart with the pinned pana, as pub.dev does (must be 160/160)"
+description = "Score the published packages with the pinned pana, as pub.dev does (each must be 160/160)"
+usage = 'arg "[package]..." var=#true help="package dirs relative to the repo root (default: packages/ghostty_dart packages/ghostty_dart_flutter)"'
 shell = "bash -c"
-run = "bash tool/pana/run_pana.sh"
+# usage passes variadic args as one shell-quoted string; `eval set --`
+# splits it back into words without breaking a quoted path with spaces.
+run = '''
+eval "set -- ${usage_package:-}"
+bash tool/pana/run_pana.sh "$@"
+'''
 
 # Fails on any pub validation warning (exit 65); hints do not fail it. While
 # the root pubspec holds a cooldown `dependency_overrides` entry, pub prints
@@ -316,9 +346,12 @@ run = "bash tool/pana/run_pana.sh"
 # ../../pubspec.yaml". A dirty git tree is a warning, so run it on committed
 # changes.
 [tasks."publish:dry-run"]
-description = "Validate the ghostty_dart publish archive (dart pub publish --dry-run); warnings fail"
-dir = "{{config_root}}/packages/ghostty_dart"
-run = "dart pub publish --dry-run"
+description = "Validate the publish archives of ghostty_dart and ghostty_dart_flutter (pub publish --dry-run); warnings fail"
+dir = "{{config_root}}/packages"
+run = [
+  "cd ghostty_dart && dart pub publish --dry-run",
+  "cd ghostty_dart_flutter && flutter pub publish --dry-run",
+]
 
 [tasks."bench:parser"]
 description = "Parser throughput benchmark vs xterm 4.0.0 and xterm2_core, JIT and AOT (options: see benchmarks/README.md)"

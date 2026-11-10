@@ -25,7 +25,16 @@ const terminalKey = ValueKey('terminal');
 
 /// A mounted renderer and what drives it.
 final class RenderHarness {
-  RenderHarness._(this.tester, this.controller, this.seams, this.geometry);
+  RenderHarness._(
+    this.tester,
+    this.controller,
+    this.seams,
+    this.geometry,
+    this.cacheBudget,
+  );
+
+  /// The renderer's cache budget (`TerminalRenderWidget.cacheBudget`).
+  final int cacheBudget;
 
   /// The tester that pumped it.
   final WidgetTester tester;
@@ -105,6 +114,7 @@ final class RenderHarness {
       cursorStyle: cursorStyle,
       alwaysShowCursor: alwaysShowCursor,
       backgroundOpacity: backgroundOpacity,
+      cacheBudget: cacheBudget,
     );
     await tester.pumpWidget(wrap == null ? view : wrap(view));
   }
@@ -120,6 +130,7 @@ Widget _view(
   required VtCursorStyle? cursorStyle,
   required bool alwaysShowCursor,
   required double backgroundOpacity,
+  required int cacheBudget,
 }) => Align(
   alignment: Alignment.topLeft,
   child: RepaintBoundary(
@@ -136,6 +147,7 @@ Widget _view(
         cursorStyle: cursorStyle,
         alwaysShowCursor: alwaysShowCursor,
         backgroundOpacity: backgroundOpacity,
+        cacheBudget: cacheBudget,
       ),
     ),
   ),
@@ -153,6 +165,7 @@ Future<RenderHarness> pumpRenderer(
   bool focused = true,
   String initial = '',
   VtTerminalTheme theme = VtTerminalTheme.defaultTheme,
+  int cacheBudget = RenderTerminal.defaultCacheBudget,
 }) async {
   tester.view.devicePixelRatio = devicePixelRatio;
   tester.view.physicalSize = const Size(8000, 4000);
@@ -171,7 +184,13 @@ Future<RenderHarness> pumpRenderer(
     rows: rows,
     padding: padding,
   );
-  final harness = RenderHarness._(tester, controller, seams, geometry);
+  final harness = RenderHarness._(
+    tester,
+    controller,
+    seams,
+    geometry,
+    cacheBudget,
+  );
   await harness.rebuild(textStyle: textStyle, focused: focused);
   return harness;
 }

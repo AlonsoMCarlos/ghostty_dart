@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
+import 'package:ghostty_dart_flutter/src/render/row_recorder.dart';
 
 import '../support/fonts.dart';
 import 'render_harness.dart';
@@ -65,8 +66,98 @@ String _randomOutput(math.Random random, int length) {
   return b.toString();
 }
 
+/// One row of words in random faces and colours, with gaps, a wide
+/// character and decorations now and then.
+String _mixedRow(math.Random random) {
+  const sgrs = ['0', '1', '3', '1;3', '31', '1;32', '3;94', '4', '9', '7'];
+  final b = StringBuffer();
+  var cols = 0;
+  while (cols < 34) {
+    final word = String.fromCharCodes([
+      for (var i = 0; i < 1 + random.nextInt(5); i++) 0x41 + random.nextInt(58),
+    ]).replaceAll(RegExp(r'[\[\\\]^_`]'), 'x');
+    b.write('\x1b[${sgrs[random.nextInt(sgrs.length)]}m$word\x1b[0m');
+    cols += word.length;
+    if (random.nextInt(6) == 0) {
+      b.write('中');
+      cols += 2;
+    }
+    final gap = 1 + random.nextInt(2);
+    b.write(' ' * gap);
+    cols += gap;
+  }
+  return b.toString();
+}
+
 void main() {
   setUpAll(loadJetBrainsMono);
+
+  testWidgets('a full picture cache evicts only what is off screen', (
+    tester,
+  ) async {
+    // A budget of about 40 short rows, then 100 frames of 5 new rows: the
+    // cache stays within its budget and the screen still paints what a
+    // cold renderer paints.
+    const budget = 160 << 10;
+    const pictureBudget = budget - budget ~/ 4;
+    final h = await pumpRenderer(
+      tester,
+      cols: 20,
+      rows: 5,
+      cacheBudget: budget,
+    );
+    for (var frame = 0; frame < 100; frame++) {
+      await h.write(
+        [
+          for (var row = 0; row < 5; row++)
+            '\x1b[${row + 1};1H\x1b[3${row % 8}mframe $frame\x1b[1m row $row',
+        ].join(),
+      );
+      expect(h.render.debugPictureBytes, lessThanOrEqualTo(pictureBudget));
+    }
+    expect(h.render.debugCachedPictures, lessThan(100 * 5));
+    expect(h.render.debugCachedPictures, greaterThan(5));
+    await _expectSameAsCold(h, 'after eviction');
+  });
+
+  testWidgets('row paragraphs paint what per-run paragraphs paint', (
+    tester,
+  ) async {
+    // The same screens through both text paths: one paragraph per row
+    // (the default), and every run on its own (the fallback). Mixed faces,
+    // colours, gaps, clusters and decorations.
+    addTearDown(() => RowRecorder.debugForcePerRun = false);
+    final h = await pumpRenderer(
+      tester,
+      cols: 40,
+      rows: 8,
+      devicePixelRatio: 2,
+      initial: '\x1b[2 q',
+    );
+    final random = math.Random(7);
+    for (var step = 0; step < 8; step++) {
+      await h.write(
+        '\x1b[H\x1b[2J'
+        '${List.generate(8, (row) => '\x1b[${row + 1};1H'
+            '${_mixedRow(random)}').join()}',
+      );
+      RowRecorder.debugForcePerRun = false;
+      h.render.debugDropCaches();
+      await tester.pump();
+      final rowPath = await h.pixels();
+      final rowParagraphs = h.render.debugRowParagraphs;
+      RowRecorder.debugForcePerRun = true;
+      h.render.debugDropCaches();
+      await tester.pump();
+      final runPath = await h.pixels();
+      expect(rowParagraphs, greaterThan(0), reason: 'step $step');
+      var differing = 0;
+      for (var i = 0; i < rowPath.length; i++) {
+        if (rowPath[i] != runPath[i]) differing++;
+      }
+      expect(differing, 0, reason: 'step $step: $differing bytes differ');
+    }
+  });
 
   testWidgets('warm caches paint what a cold renderer paints', (tester) async {
     final h = await pumpRenderer(

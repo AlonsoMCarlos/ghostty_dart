@@ -18,7 +18,11 @@ String _slug(String s) => s
 const targets = <String, (double ui, double raster)>{
   'idle': (0.5, 1.0),
   '3 dirty rows': (1.0, 2.0),
-  'full screen, warm': (4.0, 4.0),
+  // ADR 0011 states "full screen, warm cache": caches warmed by the same
+  // kind of output, which the fresh stream is after its warm-up. The
+  // replay scenario gets the same target for comparison only.
+  'full screen, fresh': (4.0, 4.0),
+  'full screen, warm (cache replay)': (4.0, 4.0),
 };
 
 /// The device pixel ratio the ADR 0011 targets are stated for.
@@ -128,14 +132,30 @@ double median(List<double> values) {
       : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/// The renderer a timeline shows: Impeller records events in the
-/// `impeller` category, Skia's rasterizer records `SkCanvas::Flush`.
+/// The renderer a timeline shows, from engine event names (the VM files
+/// every engine event under the `Embedder` stream category, so categories
+/// say nothing about the renderer).
+///
+/// Verified on Linux only (Flutter 3.47.9, Impeller's OpenGL ES backend,
+/// 2026-11-10): every traced frame has `ReactorGLES::React` and
+/// `RenderPassGLES::EncodeCommandsInReactor`, which also name the backend,
+/// and frames that draw text have the typographer's `CreateGlyphAtlas`.
+/// Metal and Vulkan event names are not known yet (no run on those
+/// backends): such a run reads `Impeller` only through `CreateGlyphAtlas`.
+/// Skia's rasterizer records `SkCanvas::Flush`, but only with
+/// `--trace-skia`, so a Skia run usually reads `unknown`.
 String rendererOf(List<Map<String, Object?>> traceEvents) {
+  var impeller = false;
   var skia = false;
   for (final event in traceEvents) {
-    if (event['cat'] == 'impeller') return 'Impeller';
-    if (event['name'] == 'SkCanvas::Flush') skia = true;
+    final name = '${event['name']}';
+    if (name.startsWith('ReactorGLES') || name.startsWith('RenderPassGLES')) {
+      return 'Impeller (OpenGL ES)';
+    }
+    if (name == 'CreateGlyphAtlas') impeller = true;
+    if (name == 'SkCanvas::Flush') skia = true;
   }
+  if (impeller) return 'Impeller';
   return skia ? 'Skia' : 'unknown';
 }
 
@@ -221,8 +241,13 @@ String markdownReport(
     var verdict = '–';
     if (pair.subject.startsWith('ghostty') && target != null) {
       if (atTarget) {
-        final ok = writeAvg + uiAvg <= target.$1 && rasterAvg <= target.$2;
-        verdict = '${ok ? 'met' : 'missed'} (≤ ${target.$1} / ≤ ${target.$2})';
+        final uiOk = writeAvg + uiAvg <= target.$1;
+        final rasterOk = rasterAvg <= target.$2;
+        final which = uiOk == rasterOk
+            ? (uiOk ? 'met' : 'missed')
+            : 'UI ${uiOk ? 'met' : 'missed'}, raster '
+                  '${rasterOk ? 'met' : 'missed'}';
+        verdict = '$which (≤ ${target.$1} / ≤ ${target.$2})';
       } else {
         verdict = 'n/a (DPR $devicePixelRatio)';
       }
@@ -237,6 +262,30 @@ String markdownReport(
       '| ${_f(rasterAvg)} | ${_f(raster.p90)} | ${_f(raster.p99)} '
       '| ${_f(raster.worst)} | ${_f(writeAvg)} | ${_f(write.p99)} '
       '| ${_f(writeAvg + uiAvg)} | $verdict |',
+    );
+  }
+  final passes = runs.fold(0, (most, r) => r.pass > most ? r.pass : most);
+  out
+    ..writeln()
+    ..writeln('### Write + UI average per pass (ms)')
+    ..writeln()
+    ..writeln(
+      '| Scenario | Widget | '
+      '${[for (var p = 1; p <= passes; p++) 'Pass $p'].join(' | ')} |',
+    )
+    ..writeln('|---|---|${'---:|' * passes}');
+  for (final pair in pairs.values) {
+    final cells = [
+      for (var p = 1; p <= passes; p++)
+        switch (pair.runs.where((r) => r.pass == p).firstOrNull) {
+          null => '–',
+          final run => _f(
+            Stats.of(run.writeTimes).average + Stats.of(run.buildTimes).average,
+          ),
+        },
+    ];
+    out.writeln(
+      '| ${pair.scenario} | ${pair.subject} | ${cells.join(' | ')} |',
     );
   }
   if (!atTarget) {

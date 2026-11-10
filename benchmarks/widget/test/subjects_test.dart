@@ -43,7 +43,12 @@ void main() {
       }
 
       final reference = screens.values.first;
-      expect(reference.every((row) => row.length == benchCols), isTrue);
+      if (scenario != Scenario.scroll) {
+        // Every other scenario writes whole rows; scroll writes text lines.
+        expect(reference.every((row) => row.length == benchCols), isTrue);
+      } else {
+        expect(reference.where((row) => row.isNotEmpty), isNotEmpty);
+      }
       for (final MapEntry(:key, :value) in screens.entries) {
         expect(value, reference, reason: key);
       }

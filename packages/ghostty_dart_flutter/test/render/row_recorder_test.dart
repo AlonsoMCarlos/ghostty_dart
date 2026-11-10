@@ -4,7 +4,10 @@
 // selection and decorations are resolved here. Runs on every OS (no
 // pixels).
 
-import 'package:flutter/painting.dart';
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
@@ -212,10 +215,145 @@ void main() {
           expect(recorder.scanMatches(contents[2]), isFalse);
           recorder.scan(row, state2.colors, const Color(0xFF00FF00));
           expect(recorder.scanMatches(contents[0]), isTrue);
+          // The same rule as a map key (the renderer's picture cache).
+          final copy = recorder.takeScan();
+          expect(copy, contents[0]);
+          expect(copy.hashCode, contents[0].hashCode);
+          expect(copy, isNot(contents[2]));
         }
       }
       seams.endFrame();
     });
+  });
+
+  group('row paragraph', () {
+    /// Records row 0 of a 20 × 1 terminal showing [data] with [recorder].
+    void record(RowRecorder recorder, String data) {
+      final controller = VtTerminalController(cols: 20, rows: 1);
+      addTearDown(controller.dispose);
+      controller.write(data);
+      final seams = ControllerSeams(controller);
+      final state = seams.updateFrame();
+      recorder.scan(state.allRows.first, state.colors, _selection);
+      seams.endFrame();
+      recorder.record(recorder.takeScan()).dispose();
+    }
+
+    test('a row of several runs is laid out as one paragraph', () {
+      final recorder = _recorder();
+      addTearDown(recorder.paragraphs.clear);
+      record(recorder, 'ab \x1b[1mcd\x1b[0;31m ef  \x1b[3mgh');
+      expect(recorder.debugRowParagraphs, 1);
+      expect(recorder.debugRowParagraphFallbacks, 0);
+      // No run went through the run cache.
+      expect(recorder.paragraphs.misses, 0);
+    });
+
+    test('a single run uses the run cache', () {
+      final recorder = _recorder();
+      addTearDown(recorder.paragraphs.clear);
+      record(recorder, 'hello world');
+      expect(recorder.debugRowParagraphs, 0);
+      expect(recorder.paragraphs.misses, 1);
+    });
+
+    testWidgets('runs shifted by faces whose errors cancel out fall back', (
+      tester,
+    ) async {
+      // JetBrains Mono's faces all advance 600 units, so a family whose
+      // bold face is Roboto Bold (proportional, from the pinned Flutter
+      // SDK) provides the wider and narrower glyphs: one bold run of
+      // wide letters, one of narrow letters, sized so the row's total
+      // width is within tolerance while every run between them is off.
+      final root = Platform.environment['FLUTTER_ROOT'];
+      final roboto = File(
+        '$root/bin/cache/artifacts/material_fonts/Roboto-Bold.ttf',
+      );
+      final jbm = File('test/fonts/JetBrainsMono-Regular.ttf');
+      if (root == null || !roboto.existsSync() || !jbm.existsSync()) {
+        fail('Roboto Bold or JetBrains Mono is missing');
+      }
+      const family = 'T6 Mixed';
+      await tester.runAsync(() async {
+        final loader = FontLoader(family)
+          ..addFont(Future.value(ByteData.sublistView(jbm.readAsBytesSync())))
+          ..addFont(
+            Future.value(ByteData.sublistView(roboto.readAsBytesSync())),
+          );
+        await loader.load();
+      });
+      final style = gridStyle.copyWith(fontFamily: family);
+      final metrics = VtCellMetrics.measure(style, devicePixelRatio: 1);
+      double error(String char) {
+        final paragraph =
+            (ui.ParagraphBuilder(
+                    ui.ParagraphStyle(textDirection: TextDirection.ltr),
+                  )
+                  ..pushStyle(
+                    style
+                        .copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: metrics.letterSpacing,
+                        )
+                        .getTextStyle(),
+                  )
+                  ..addText(char))
+                .build()
+              ..layout(const ui.ParagraphConstraints(width: 1e6));
+        final width = paragraph.maxIntrinsicWidth;
+        paragraph.dispose();
+        return width - metrics.width;
+      }
+
+      // Find n1 × c1 (wider) and n2 × c2 (narrower) that cancel.
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+      final errors = {for (final c in letters.split('')) c: error(c)};
+      (String, int, String, int)? pick;
+      search:
+      for (final MapEntry(key: wide, value: up) in errors.entries) {
+        if (up < 1) continue;
+        for (final MapEntry(key: narrow, value: down) in errors.entries) {
+          if (down > -1) continue;
+          for (var n1 = 1; n1 <= 6; n1++) {
+            for (var n2 = 1; n2 <= 6; n2++) {
+              if ((n1 * up + n2 * down).abs() < 0.2) {
+                pick = (wide, n1, narrow, n2);
+                break search;
+              }
+            }
+          }
+        }
+      }
+      expect(pick, isNotNull, reason: 'no cancelling pair in $errors');
+      final (wide, n1, narrow, n2) = pick!;
+      final recorder = RowRecorder(
+        metrics: metrics,
+        textStyle: style,
+        paragraphs: ParagraphCache(),
+      );
+      addTearDown(recorder.paragraphs.clear);
+      record(
+        recorder,
+        'a\x1b[1m${wide * n1}\x1b[0mb\x1b[1m${narrow * n2}\x1b[0mc',
+      );
+      expect(recorder.debugRowParagraphs, 0);
+      expect(recorder.debugRowParagraphFallbacks, 1);
+    }, skip: skipWithoutBundledFonts);
+
+    test('an off-grid row falls back to its runs', () {
+      // Cells measured with JetBrains Mono, text drawn in FlutterTest
+      // (one em per glyph): the row paragraph is too wide.
+      final recorder = RowRecorder(
+        metrics: VtCellMetrics.measure(gridStyle, devicePixelRatio: 1),
+        textStyle: gridStyle.copyWith(fontFamily: 'FlutterTest'),
+        paragraphs: ParagraphCache(),
+      );
+      addTearDown(recorder.paragraphs.clear);
+      record(recorder, 'ab \x1b[1mcd');
+      expect(recorder.debugRowParagraphs, 0);
+      expect(recorder.debugRowParagraphFallbacks, 1);
+      expect(recorder.paragraphs.misses, greaterThan(0));
+    }, skip: skipWithoutBundledFonts);
   });
 
   test('readCell copies the cell under the cursor', () {

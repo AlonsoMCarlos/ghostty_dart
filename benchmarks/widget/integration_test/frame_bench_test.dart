@@ -53,6 +53,15 @@ Future<void> _loadFont() async {
   await loader.load();
 }
 
+/// The timeline streams traced: frame phases (`Dart`), engine and raster
+/// events (`Embedder`, including the `impeller` category) and `GC`. Not
+/// `all`: the `API` stream logs every embedder API call (tens of thousands
+/// of `Dart_StringToUTF8` per full-screen run), which costs time inside the
+/// measured frames and, in the VM's default ring buffer, evicted the frame
+/// events (a 2026-11-10 run lost all of them). The mise task also passes
+/// `--endless-trace-buffer`.
+const _traceStreams = ['Dart', 'Embedder', 'GC'];
+
 /// Requests a frame even when nothing changed, and waits until it is done.
 Future<void> _nextFrame() {
   SchedulerBinding.instance.scheduleForcedFrame();
@@ -142,19 +151,23 @@ void main() {
           final writeMicros = <int>[];
           final stopwatch = Stopwatch();
           final key = reportKey(scenario.label, name, pass);
-          await binding.traceAction(() async {
-            for (final bytes in measured) {
-              if (bytes.isNotEmpty) {
-                stopwatch
-                  ..reset()
-                  ..start();
-                subject.write(bytes);
-                stopwatch.stop();
-                writeMicros.add(stopwatch.elapsedMicroseconds);
+          await binding.traceAction(
+            () async {
+              for (final bytes in measured) {
+                if (bytes.isNotEmpty) {
+                  stopwatch
+                    ..reset()
+                    ..start();
+                  subject.write(bytes);
+                  stopwatch.stop();
+                  writeMicros.add(stopwatch.elapsedMicroseconds);
+                }
+                await _nextFrame();
               }
-              await _nextFrame();
-            }
-          }, reportKey: key);
+            },
+            streams: _traceStreams,
+            reportKey: key,
+          );
           runs[key] = {
             'scenario': scenario.label,
             'subject': name,

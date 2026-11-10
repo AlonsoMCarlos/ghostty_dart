@@ -86,4 +86,61 @@ void main() {
       ...dirty.measured,
     ], frameWrites(Scenario.dirtyRows, 10));
   });
+
+  test('full screen, fresh rewrites all rows and never repeats a row', () {
+    final frames = frameWrites(Scenario.fullScreenFresh, 40);
+    final seen = <String>{};
+    for (final bytes in frames) {
+      final rows = _rows(utf8.decode(bytes));
+      expect(rows, hasLength(benchRows));
+      for (final row in rows.values) {
+        expect(row.length, benchCols);
+        expect(seen.add(row), isTrue, reason: 'a row repeated: $row');
+      }
+    }
+    // The measured frames are not in the warm-up either.
+    final (:warmUp, :measured) = warmUpAndMeasured(
+      Scenario.fullScreenFresh,
+      warmUp: 32,
+      count: 10,
+    );
+    for (final frame in measured) {
+      expect(warmUp, isNot(contains(frame)));
+    }
+  });
+
+  test('scroll appends plain lines at the bottom, none wider than 160', () {
+    for (final bytes in frameWrites(Scenario.scroll, 50)) {
+      final text = utf8.decode(bytes);
+      expect(text, isNot(contains('\x1b')));
+      final lines = text.split('\r\n');
+      expect(lines.first, isEmpty); // starts with CR LF: scrolls first
+      expect(lines.skip(1), hasLength(scrollLinesPerFrame));
+      for (final line in lines.skip(1)) {
+        expect(line.length, lessThanOrEqualTo(160));
+        expect(line.codeUnits.every((c) => c >= 0x20 && c < 0x7f), isTrue);
+      }
+    }
+  });
+
+  test('htop-like rewrites 20 % of the cells, in every row', () {
+    final fieldAt = RegExp(r'\x1b\[(\d+);(\d+)H\x1b\[[0-9;]*m([ 0-9]+)');
+    final columns = htopFieldColumns;
+    for (final bytes in frameWrites(Scenario.htop, 10)) {
+      final fields = fieldAt.allMatches(utf8.decode(bytes)).toList();
+      expect(fields, hasLength(benchRows * htopFieldsPerRow));
+      final cells = fields.fold(0, (sum, m) => sum + m.group(3)!.length);
+      expect(cells / (benchRows * benchCols), 0.2);
+      expect({
+        for (final m in fields) int.parse(m.group(1)!),
+      }, hasLength(benchRows));
+      for (final m in fields) {
+        expect(columns, contains(int.parse(m.group(2)!)));
+        expect(
+          int.parse(m.group(2)!) + htopFieldWidth - 1,
+          lessThan(benchCols),
+        );
+      }
+    }
+  });
 }

@@ -56,19 +56,32 @@ void main() {
     expect(Stats.of(const []).average, 0);
   });
 
-  test('rendererOf reads the timeline categories', () {
+  test('rendererOf reads the engine event names', () {
+    // A category alone names no renderer.
     expect(
       rendererOf([
-        {'cat': 'flutter', 'name': 'GPURasterizer::Draw'},
         {'cat': 'impeller', 'name': 'Render'},
       ]),
-      'Impeller',
+      'unknown',
     );
     expect(
       rendererOf([
         {'cat': 'flutter', 'name': 'SkCanvas::Flush'},
       ]),
       'Skia',
+    );
+    expect(
+      rendererOf([
+        {'cat': 'Embedder', 'name': 'GPURasterizer::Draw'},
+        {'cat': 'Embedder', 'name': 'ReactorGLES::React'},
+      ]),
+      'Impeller (OpenGL ES)',
+    );
+    expect(
+      rendererOf([
+        {'cat': 'Embedder', 'name': 'CreateGlyphAtlas'},
+      ]),
+      'Impeller',
     );
     expect(rendererOf(const []), 'unknown');
   });
@@ -106,9 +119,43 @@ void main() {
       ),
     );
     // 0.6 UI + 0.5 write = 1.1 > 1.0: the write counts against the target.
-    expect(report, contains('| 0.50 | 0.50 | 1.10 | missed (≤ 1.0 / ≤ 2.0) |'));
+    expect(
+      report,
+      contains(
+        '| 0.50 | 0.50 | 1.10 | UI missed, raster met (≤ 1.0 / ≤ 2.0) |',
+      ),
+    );
     expect(report, isNot(contains('⚠')));
     expect(report, isNot(contains('no verdict')));
+    // Per pass: write average + UI average of that pass alone.
+    expect(
+      report,
+      contains('| Scenario | Widget | Pass 1 | Pass 2 | Pass 3 |'),
+    );
+    expect(
+      report,
+      contains('| idle | ghostty_dart_flutter | 0.30 | 0.40 | 0.90 |'),
+    );
+    expect(
+      report,
+      contains('| 3 dirty rows | ghostty_dart_flutter | 1.10 | – | – |'),
+    );
+  });
+
+  test('the verdict says which thread missed', () {
+    final report = markdownReport(
+      [
+        _run(
+          'idle',
+          'ghostty_dart_flutter',
+          build: [300, 300],
+          raster: [5000, 5000],
+        ),
+      ],
+      environment: const {},
+      devicePixelRatio: 2,
+    );
+    expect(report, contains('| UI met, raster missed (≤ 0.5 / ≤ 1.0) |'));
   });
 
   test('no verdict away from DPR 2; other widgets never get one', () {

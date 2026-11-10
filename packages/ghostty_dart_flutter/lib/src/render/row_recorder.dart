@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
@@ -79,6 +80,48 @@ final class RowContent {
   final List<String> _texts;
   final int _hash;
 
+  /// Equal content draws equal pixels with the same [RowRecorder], so
+  /// content is also the key of the renderer's picture cache.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! RowContent ||
+        other._hash != _hash ||
+        other._ops.length != _ops.length ||
+        other._texts.length != _texts.length) {
+      return false;
+    }
+    final ops = other._ops;
+    for (var i = 0; i < ops.length; i++) {
+      if (ops[i] != _ops[i]) return false;
+    }
+    final texts = other._texts;
+    for (var i = 0; i < texts.length; i++) {
+      if (texts[i] != _texts[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => _hash;
+
+  /// A rough size of the picture recorded from this content, for the
+  /// renderer's cache budget: a 200-column row with ~25 runs and 10
+  /// rectangles measured 21-29 KiB of RSS (2026-11-10, Linux, Impeller).
+  /// About 1 KiB plus 96 bytes per character of text and 256 bytes per
+  /// draw call; an estimate, never exact.
+  late final int estimatedBytes = () {
+    var chars = 0;
+    for (final text in _texts) {
+      chars += text.length;
+    }
+    var calls = 0;
+    for (var i = 0; i < _ops.length; i += RowRecorder._opLength(_ops[i])) {
+      calls++;
+    }
+    return 1024 + 96 * chars + 256 * calls;
+  }();
+
   /// A readable list of the operations, for tests: `bg 0+3 #ffcd3131`,
   /// `sel 1+2 #aaaeafad`, `run 4 "abc" #ffcccccc f0`, `cluster 7 "中" …
   /// span 2`, `deco 0-5 underline:curly strike #ff000000 #ffcccccc`.
@@ -124,8 +167,8 @@ final class RowContent {
 
 /// Scans terminal rows into [RowContent] and records content into a
 /// [ui.Picture] (ADR 0011 "Rendering (v1)"): merged background spans, the
-/// selection, one paragraph per style run and hand-drawn decorations.
-/// Never exported.
+/// selection, the row's style runs as one paragraph (one per run as a
+/// fallback, see [record]) and hand-drawn decorations. Never exported.
 ///
 /// The picture is drawn at the row's top-left grid corner (x = 0 is column
 /// 0, y = 0 the row's top).
@@ -134,8 +177,8 @@ final class RowContent {
 /// scripts monospace fonts cover (Latin, Greek, Cyrillic, without format
 /// or combining characters); they are laid out with
 /// `letterSpacing = metrics.letterSpacing`, so glyph *i* advances by
-/// exactly one cell width. Every run is measured once, when it is laid
-/// out: if its width is not its cell count times the cell width (a glyph
+/// exactly one cell width. A row paragraph is measured as a whole; every
+/// run paragraph is measured once, when it is laid out: if its width is not its cell count times the cell width (a glyph
 /// from a fallback font, or a face with another advance), it is drawn cell
 /// by cell instead. Everything else (wide characters, grapheme clusters,
 /// emoji, symbols that may come from a fallback font) is laid out on its
@@ -259,25 +302,52 @@ final class RowRecorder {
       RowContent._(Uint32List.fromList(_ops), List.unmodifiable(_texts), _hash);
 
   /// Records [content] into a picture.
+  ///
+  /// When the row has two or more text runs, they are laid out together as
+  /// one paragraph with a style span per run (blank gaps become spaces),
+  /// which costs a fraction of one paragraph per run: building and laying
+  /// out ~1400 run paragraphs took 46 ms per 200 × 60 frame on the
+  /// benchmark VM, 60 row paragraphs 25 ms (2026-11-10). The row paragraph
+  /// is used only if it measures exactly its cells (within
+  /// [gridTolerancePx]); otherwise each run is drawn on its own, from
+  /// [paragraphs], and checked as before. Row paragraphs are not cached:
+  /// the picture is (the renderer keeps pictures by content), and a
+  /// 200-column row paragraph holds ~70 KiB.
   ui.Picture record(RowContent content) {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final ops = content._ops;
     final texts = content._texts;
+    ui.Paragraph? row;
+    var textStarted = false;
     for (var i = 0; i < ops.length;) {
-      switch (ops[i]) {
+      final op = ops[i];
+      if (!textStarted && op != _opBackground && op != _opSelection) {
+        // Backgrounds and the selection come first; the text goes on top.
+        textStarted = true;
+        row = _rowParagraph(ops, texts);
+        if (row != null) {
+          canvas.drawParagraph(
+            row,
+            Offset(0, metrics.baseline - row.alphabeticBaseline),
+          );
+        }
+      }
+      switch (op) {
         case _opBackground || _opSelection:
           _paint.color = Color(ops[i + 3]);
           canvas.drawRect(_cells(ops[i + 1], ops[i + 2]), _paint);
           i += 4;
         case _opRun:
-          _drawRun(
-            canvas,
-            texts[ops[i + 2]],
-            ops[i + 1],
-            ops[i + 3],
-            ops[i + 4],
-          );
+          if (row == null) {
+            _drawRun(
+              canvas,
+              texts[ops[i + 2]],
+              ops[i + 1],
+              ops[i + 3],
+              ops[i + 4],
+            );
+          }
           i += 5;
         case _opCluster:
           _drawCluster(
@@ -299,7 +369,126 @@ final class RowRecorder {
           i += 6;
       }
     }
-    return recorder.endRecording();
+    final picture = recorder.endRecording();
+    row?.dispose();
+    return picture;
+  }
+
+  /// Rows drawn as one paragraph since creation (tests and the renderer's
+  /// debug counters).
+  int debugRowParagraphs = 0;
+
+  /// Rows whose row paragraph did not measure its cells and were drawn run
+  /// by run instead, since creation (tests).
+  @visibleForTesting
+  int debugRowParagraphFallbacks = 0;
+
+  // The text runs of [ops] laid out as one paragraph, or null when there
+  // are fewer than two runs or the paragraph is off the grid.
+  ui.Paragraph? _rowParagraph(Uint32List ops, List<String> texts) {
+    var runs = 0;
+    for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
+      if (ops[i] == _opRun) runs++;
+    }
+    if (runs < 2 || debugForcePerRun) return null;
+    final builder = ui.ParagraphBuilder(_paragraphStyle);
+    var col = 0;
+    for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
+      if (ops[i] != _opRun) continue;
+      final start = ops[i + 1];
+      final text = texts[ops[i + 2]];
+      builder.pushStyle(_uiStyle(ops[i + 3], ops[i + 4]));
+      // The blank cells before the run, in its style: spaces draw nothing,
+      // and the width check covers their advance too.
+      if (start > col) builder.addText(' ' * (start - col));
+      builder
+        ..addText(text)
+        ..pop();
+      col = start + text.length;
+    }
+    final paragraph = builder.build()
+      ..layout(const ui.ParagraphConstraints(width: double.infinity));
+    if (!_rowOnGrid(paragraph, ops, col)) {
+      paragraph.dispose();
+      debugRowParagraphFallbacks++;
+      return null;
+    }
+    debugRowParagraphs++;
+    return paragraph;
+  }
+
+  // Whether every run of [paragraph] starts at its cell and the whole text
+  // ends at [end] cells, within [gridTolerancePx]. The total alone is not
+  // enough: a wider face before a narrower one can cancel out and shift
+  // every run between them. The paragraph has one UTF-16 code unit per
+  // cell, so a run's text offset is its column.
+  bool _rowOnGrid(ui.Paragraph paragraph, Uint32List ops, int end) {
+    final dpr = metrics.devicePixelRatio;
+    if ((paragraph.maxIntrinsicWidth - end * metrics.width).abs() * dpr >
+        gridTolerancePx) {
+      return false;
+    }
+    // Glyph boxes may start a fixed distance into their cell (letter
+    // spacing, side bearing): compare every run with the first.
+    double? origin;
+    for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
+      if (ops[i] != _opRun) continue;
+      final start = ops[i + 1];
+      final boxes = paragraph.getBoxesForRange(start, start + 1);
+      if (boxes.isEmpty) return false;
+      final offset = boxes.first.left - start * metrics.width;
+      origin ??= offset;
+      if ((offset - origin).abs() * dpr > gridTolerancePx) return false;
+    }
+    return true;
+  }
+
+  /// Draws every row run by run, as rows that fail the grid check are
+  /// drawn (tests compare both paths).
+  @visibleForTesting
+  static bool debugForcePerRun = false;
+
+  static int _opLength(int op) => switch (op) {
+    _opBackground || _opSelection => 4,
+    _opRun => 5,
+    _ => 6,
+  };
+
+  // Engine text styles of the row paragraphs by colour and faces. Bounded:
+  // a program can use any number of truecolor colours.
+  final _uiStyles = <int, ui.TextStyle>{};
+
+  ui.TextStyle _uiStyle(int color, int faces) {
+    final key = color << 3 | faces;
+    final cached = _uiStyles[key];
+    if (cached != null) return cached;
+    if (_uiStyles.length >= 1024) _uiStyles.clear();
+    return _uiStyles[key] = _textStyleOf(
+      color,
+      faces,
+    ).getTextStyle(textScaler: textScaler);
+  }
+
+  TextStyle _textStyleOf(int color, int faces) {
+    final base = textStyle;
+    final cluster = faces & TextFace.cluster != 0;
+    return TextStyle(
+      color: Color(color),
+      fontFamily: base.fontFamily,
+      fontFamilyFallback: base.fontFamilyFallback,
+      fontSize: base.fontSize ?? kDefaultFontSize,
+      fontWeight: faces & TextFace.bold != 0
+          ? FontWeight.bold
+          : base.fontWeight,
+      fontStyle: faces & TextFace.italic != 0
+          ? FontStyle.italic
+          : base.fontStyle,
+      letterSpacing: cluster ? 0 : metrics.letterSpacing,
+      fontFeatures: [...?base.fontFeatures, ..._noLigatures],
+      fontVariations: base.fontVariations,
+      locale: base.locale,
+      textBaseline: TextBaseline.alphabetic,
+    );
   }
 
   /// A copy of cell [x] of [row] for the cursor overlay. [x] is the first
@@ -564,25 +753,8 @@ final class RowRecorder {
 
   CachedParagraph _build(ParagraphKey key) {
     final (text, color, faces) = key;
-    final base = textStyle;
     final cluster = faces & TextFace.cluster != 0;
-    final style = TextStyle(
-      color: Color(color),
-      fontFamily: base.fontFamily,
-      fontFamilyFallback: base.fontFamilyFallback,
-      fontSize: base.fontSize ?? kDefaultFontSize,
-      fontWeight: faces & TextFace.bold != 0
-          ? FontWeight.bold
-          : base.fontWeight,
-      fontStyle: faces & TextFace.italic != 0
-          ? FontStyle.italic
-          : base.fontStyle,
-      letterSpacing: cluster ? 0 : metrics.letterSpacing,
-      fontFeatures: [...?base.fontFeatures, ..._noLigatures],
-      fontVariations: base.fontVariations,
-      locale: base.locale,
-      textBaseline: TextBaseline.alphabetic,
-    );
+    final style = _textStyleOf(color, faces);
     final builder = ui.ParagraphBuilder(_paragraphStyle)
       ..pushStyle(style.getTextStyle(textScaler: textScaler))
       ..addText(text);

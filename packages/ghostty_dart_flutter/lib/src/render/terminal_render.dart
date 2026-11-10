@@ -37,6 +37,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     this.alwaysShowCursor = false,
     this.backgroundOpacity = 1.0,
     this.cursorHidden,
+    this.cacheBudget = RenderTerminal.defaultCacheBudget,
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
@@ -83,6 +84,10 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
   /// tree is being built (a connection closed from `didUpdateWidget`).
   final ValueListenable<bool>? cursorHidden;
 
+  /// About how many bytes of row pictures and paragraphs the view keeps
+  /// cached (see [RenderTerminal.cacheBudget]).
+  final int cacheBudget;
+
   @override
   RenderTerminal createRenderObject(BuildContext context) => RenderTerminal(
     source: source,
@@ -96,6 +101,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     backgroundOpacity: backgroundOpacity,
     cursorHidden: cursorHidden,
     blinkEnabled: TickerMode.valuesOf(context).enabled,
+    cacheBudget: cacheBudget,
   );
 
   @override
@@ -111,18 +117,19 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
       ..alwaysShowCursor = alwaysShowCursor
       ..backgroundOpacity = backgroundOpacity
       ..cursorHidden = cursorHidden
-      ..blinkEnabled = TickerMode.valuesOf(context).enabled;
+      ..blinkEnabled = TickerMode.valuesOf(context).enabled
+      ..cacheBudget = cacheBudget;
   }
 }
 
-/// A cached row: its picture and the content it was recorded from.
+/// A recorded row picture and the content it was recorded from.
 final class _CachedRow {
   _CachedRow(this.picture, this.content, this.frame);
 
   final ui.Picture picture;
   final RowContent content;
 
-  /// The last frame that showed this row.
+  /// The last frame that showed this picture.
   int frame;
 }
 
@@ -148,7 +155,7 @@ final class _CachedRow {
 /// **Pixel alignment.** Cell edges fall on device pixels relative to this
 /// box. The box itself is not snapped: placed at a fractional device-pixel
 /// offset by its parent, its layer is resampled and text blurs.
-class RenderTerminal extends RenderBox {
+class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   /// Creates the render box; see [TerminalRenderWidget].
   RenderTerminal({
     required TerminalFrameSource source,
@@ -162,6 +169,7 @@ class RenderTerminal extends RenderBox {
     double backgroundOpacity = 1.0,
     ValueListenable<bool>? cursorHidden,
     bool blinkEnabled = true,
+    int cacheBudget = defaultCacheBudget,
   }) : _source = source,
        _cursorHidden = cursorHidden,
        _geometry = geometry,
@@ -172,7 +180,9 @@ class RenderTerminal extends RenderBox {
        _cursorStyle = cursorStyle,
        _alwaysShowCursor = alwaysShowCursor,
        _backgroundOpacity = backgroundOpacity,
-       _blinkEnabled = blinkEnabled;
+       _blinkEnabled = blinkEnabled,
+       _cacheBudget = cacheBudget,
+       _paragraphs = ParagraphCache(maxBytes: cacheBudget ~/ 4);
 
   /// How long the cursor stays on, then off, while it blinks: Ghostty's
   /// `CURSOR_BLINK_INTERVAL` (600 ms, `src/renderer/Thread.zig:20` at
@@ -182,6 +192,13 @@ class RenderTerminal extends RenderBox {
   /// The width of a bar cursor and the height of an underline cursor, as
   /// a fraction of the cell width (at least one device pixel). A heuristic.
   static const cursorThicknessFraction = 1 / 8;
+
+  /// How long after its tickers are muted a view that is no longer
+  /// composited releases its caches.
+  static const hiddenReleaseDelay = Duration(seconds: 5);
+
+  /// The default [cacheBudget]: 16 MiB per view.
+  static const defaultCacheBudget = 16 << 20;
 
   TerminalFrameSource _source;
   TerminalGeometry _geometry;
@@ -194,6 +211,7 @@ class RenderTerminal extends RenderBox {
   bool _alwaysShowCursor;
   double _backgroundOpacity;
   bool _blinkEnabled;
+  int _cacheBudget;
 
   /// See [TerminalRenderWidget.source].
   TerminalFrameSource get source => _source;
@@ -293,14 +311,72 @@ class RenderTerminal extends RenderBox {
   set blinkEnabled(bool value) {
     if (value == _blinkEnabled) return;
     _blinkEnabled = value;
-    if (!value) _stopBlink();
+    // Pausing or resuming the blink always shows the cursor: a blink
+    // stopped in its "off" half would otherwise leave it hidden.
     _blinkOn = true;
+    _releaseTimer?.cancel();
+    _releaseTimer = null;
+    if (!value) {
+      _stopBlink();
+      // Muted tickers may mean a hidden view (an offstage tab, a covered
+      // route) or only paused animations around a view still on screen.
+      // Check later whether the view is still composited.
+      _releaseTimer = Timer(hiddenReleaseDelay, _releaseIfHidden);
+    }
     markNeedsPaint();
   }
 
+  /// About how many bytes of row pictures and paragraphs this view keeps,
+  /// by estimate (`RowContent.estimatedBytes`,
+  /// `ParagraphCache.estimatedBytes`): three quarters for pictures, one
+  /// quarter for paragraphs. Pictures shown in the current frame are kept
+  /// even beyond it.
+  ///
+  /// Pictures are kept by content: a row whose new content was shown
+  /// recently (a program redrawing the screen shifted by a line, or
+  /// switching back to a screen it drew before) reuses its picture
+  /// instead of laying its text out again. A 200-column row of ~25 styled
+  /// runs is estimated at ~27 KiB, so the default keeps about 450 of them.
+  ///
+  /// The caches are released when the box is detached; when its tickers
+  /// are muted ([blinkEnabled] false) and, [hiddenReleaseDelay] later, it
+  /// is no longer composited (a hidden tab, a covered route; a muted view
+  /// still on screen keeps them); on memory pressure (all but the visible
+  /// rows); and when the system fonts change.
+  int get cacheBudget => _cacheBudget;
+  set cacheBudget(int value) {
+    if (value == _cacheBudget) return;
+    _cacheBudget = value;
+    _paragraphs
+      ..maxBytes = value ~/ 4
+      ..trim();
+    _evictPictures(_frame);
+  }
+
+  Timer? _releaseTimer;
+
+  // Releases the caches if the view is not on screen: a repaint boundary
+  // whose layer is no longer in the layer tree (an offstage ancestor
+  // stopped painting it). A muted view that is still painted keeps them.
+  void _releaseIfHidden() {
+    _releaseTimer = null;
+    if (_blinkEnabled || !attached) return;
+    if (layer?.attached ?? false) return;
+    _dropAll();
+  }
+
+  int get _pictureBudget => _cacheBudget - _cacheBudget ~/ 4;
+
   // Row cache.
-  final _paragraphs = ParagraphCache();
+  final ParagraphCache _paragraphs;
+  // The picture each visible row shows. Every value is also in _pictures,
+  // which owns (and disposes) the pictures.
   final _rows = <RenderRowId, _CachedRow>{};
+  // Pictures by content, least recently used first (a map literal keeps
+  // insertion order; a use re-inserts).
+  final _pictures = <RowContent, _CachedRow>{};
+  int _pictureBytes = 0;
+  int _pictureHits = 0;
   List<RenderRowId?> _visibleRowIds = const [];
   bool _visibleRowsComplete = false;
   int _rowCols = 0;
@@ -333,9 +409,27 @@ class RenderTerminal extends RenderBox {
   @visibleForTesting
   int get debugRowScans => _rowScans;
 
-  /// How many row pictures are cached.
+  /// How many visible rows have a picture.
   @visibleForTesting
   int get debugCachedRows => _rows.length;
+
+  /// How many pictures the content cache holds (visible rows included).
+  @visibleForTesting
+  int get debugCachedPictures => _pictures.length;
+
+  /// The estimated bytes of the cached pictures.
+  @visibleForTesting
+  int get debugPictureBytes => _pictureBytes;
+
+  /// Rows the current recorder drew as one paragraph (see
+  /// `RowRecorder.debugRowParagraphs`); resets when the caches drop.
+  @visibleForTesting
+  int get debugRowParagraphs => _recorder?.debugRowParagraphs ?? 0;
+
+  /// How many times a changed row found its new content's picture in the
+  /// content cache instead of recording it, since creation.
+  @visibleForTesting
+  int get debugPictureHits => _pictureHits;
 
   /// The paragraph cache (tests check its size and that it is cleared).
   @visibleForTesting
@@ -377,18 +471,41 @@ class RenderTerminal extends RenderBox {
     super.attach(owner);
     _source.addListener(_onSourceChanged);
     _cursorHidden?.addListener(markNeedsPaint);
+    WidgetsBinding.instance.addObserver(this);
+    PaintingBinding.instance.systemFonts.addListener(_onSystemFonts);
   }
 
   @override
   void detach() {
     _source.removeListener(_onSourceChanged);
     _cursorHidden?.removeListener(markNeedsPaint);
+    WidgetsBinding.instance.removeObserver(this);
+    _releaseTimer?.cancel();
+    _releaseTimer = null;
+    PaintingBinding.instance.systemFonts.removeListener(_onSystemFonts);
     _stopBlink();
+    // A detached box paints nothing; reattaching records the screen once.
+    _dropAll();
     super.detach();
   }
 
   @override
+  void didHaveMemoryPressure() {
+    // Keep what the screen shows, drop everything else.
+    _paragraphs.clear();
+    _evictPictures(_frame, budget: 0);
+  }
+
+  // A font was installed or removed: glyphs drawn with a fallback may now
+  // have their own font (as RenderParagraph does on this notification).
+  void _onSystemFonts() {
+    _dropAll();
+    markNeedsPaint();
+  }
+
+  @override
   void dispose() {
+    _releaseTimer?.cancel();
     _stopBlink();
     _dropAll();
     super.dispose();
@@ -536,17 +653,22 @@ class RenderTerminal extends RenderBox {
             _rowScans++;
             if (cached == null || !recorder.scanMatches(cached.content)) {
               final content = recorder.takeScan();
-              // Record before disposing the old picture, so an exception
-              // never leaves a disposed picture in the cache.
-              final picture = recorder.record(content);
-              _rowRecordings++;
-              _rows[id] = _CachedRow(picture, content, frame);
-              cached?.picture.dispose();
+              var entry = _pictures.remove(content);
+              if (entry == null) {
+                entry = _CachedRow(recorder.record(content), content, frame);
+                _pictureBytes += content.estimatedBytes;
+                _rowRecordings++;
+              } else {
+                _pictureHits++;
+                entry.frame = frame;
+              }
+              _pictures[content] = entry;
+              _rows[id] = entry;
             } else {
-              cached.frame = frame;
+              _touch(cached, frame);
             }
           } else {
-            cached.frame = frame;
+            _touch(cached, frame);
           }
           ids[y] = id;
           if (y == cursorY && cursorX >= 0 && cursorX < row.length) {
@@ -560,11 +682,11 @@ class RenderTerminal extends RenderBox {
       for (final id in ids) {
         if (id == null) complete = false;
       }
-      _rows.removeWhere((id, row) {
-        if (row.frame == frame) return false;
-        row.picture.dispose();
-        return true;
-      });
+      // By id, not by the entry's frame: rows with equal content share an
+      // entry, so a row that left keeps the stamp of a visible twin.
+      final visible = {for (final id in ids) ?id};
+      _rows.removeWhere((id, _) => !visible.contains(id));
+      _evictPictures(frame);
       _visibleRowIds = ids;
       _visibleRowsComplete = complete;
       _cursorCell = cursorCell;
@@ -687,10 +809,44 @@ class RenderTerminal extends RenderBox {
     _blinkTimer = null;
   }
 
+  // Marks [entry] as shown in [frame] and moves it to the most recently
+  // used end, so a row that stayed on screen is not the first to go once
+  // it leaves.
+  void _touch(_CachedRow entry, int frame) {
+    if (entry.frame == frame) return;
+    entry.frame = frame;
+    _pictures
+      ..remove(entry.content)
+      ..[entry.content] = entry;
+  }
+
+  /// Disposes the least recently used pictures until the rest fit
+  /// [budget] (the picture share of [cacheBudget]), never one shown in
+  /// [frame].
+  void _evictPictures(int frame, {int? budget}) {
+    final limit = budget ?? _pictureBudget;
+    if (_pictureBytes <= limit) return;
+    final evicted = <_CachedRow>[];
+    var bytes = _pictureBytes;
+    for (final entry in _pictures.values) {
+      if (bytes <= limit) break;
+      if (entry.frame == frame) continue;
+      evicted.add(entry);
+      bytes -= entry.content.estimatedBytes;
+    }
+    for (final entry in evicted) {
+      _pictures.remove(entry.content);
+      entry.picture.dispose();
+    }
+    _pictureBytes = bytes;
+  }
+
   void _dropRows() {
-    for (final row in _rows.values) {
+    for (final row in _pictures.values) {
       row.picture.dispose();
     }
+    _pictures.clear();
+    _pictureBytes = 0;
     _rows.clear();
     _visibleRowIds = const [];
     _visibleRowsComplete = false;

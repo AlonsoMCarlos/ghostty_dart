@@ -74,17 +74,24 @@ void main() {
         'glyphs stay on the device-pixel grid at dpr $dpr, size $fontSize',
         (tester) async {
           final style = gridStyle.copyWith(fontSize: fontSize);
+          // Rows 0-2: one run each (regular, bold, italic). Row 3: 25 runs
+          // of 8 cells, regular and bold in light colours, laid out as one
+          // row paragraph.
+          final mixed = [
+            for (var i = 0; i < _cols ~/ 8; i++)
+              '\x1b[0;${const ['', '1', '93', '1;97'][i % 4]}m${'|' * 8}',
+          ].join();
           final h = await pumpRenderer(
             tester,
             cols: _cols,
-            rows: 3,
+            rows: 4,
             devicePixelRatio: dpr,
             textStyle: style,
             initial:
                 '${'|' * _cols}\x1b[1m${'|' * _cols}'
-                '\x1b[0;3m${'|' * _cols}\x1b[?25l',
+                '\x1b[0;3m${'|' * _cols}$mixed\x1b[?25l',
           );
-          final rows = await _firstLitPixels(tester, h, 3);
+          final rows = await _firstLitPixels(tester, h, 4);
           var worst = 0;
           var drift = 0;
           for (final (index, firsts) in rows.indexed) {
@@ -131,6 +138,36 @@ void main() {
     for (var col = 0; col < cols - 1; col++) {
       if (col.isEven) {
         expect(firsts[col], firsts[0], reason: 'letter cell $col: $firsts');
+      } else {
+        expect(firsts[col], -1, reason: 'blank cell $col: $firsts');
+      }
+    }
+  }, skip: skipWithoutBundledFonts);
+
+  testWidgets('an off-grid row of several runs is placed cell by cell', (
+    tester,
+  ) async {
+    // As above, with a style change every other letter: the row paragraph
+    // measures off the grid, so the row falls back to its runs, which
+    // fall back to cells.
+    const cols = 24;
+    final h = await pumpRenderer(
+      tester,
+      cols: cols,
+      rows: 1,
+      initial:
+          '${List.generate(cols ~/ 2, (i) => i.isEven ? 'a' : '\x1b[1ma\x1b[0m').join(' ')}'
+          '\x1b[?25l',
+    );
+    await h.rebuild(textStyle: gridStyle.copyWith(fontFamily: 'FlutterTest'));
+    final firsts = (await _firstLitPixels(tester, h, 1, cols: cols)).single;
+    for (var col = 0; col < cols - 1; col++) {
+      if (col.isEven) {
+        expect(
+          (firsts[col] - firsts[0]).abs(),
+          lessThanOrEqualTo(1),
+          reason: 'letter cell $col: $firsts',
+        );
       } else {
         expect(firsts[col], -1, reason: 'blank cell $col: $firsts');
       }

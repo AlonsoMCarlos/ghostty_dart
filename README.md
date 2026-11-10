@@ -19,7 +19,7 @@ we can support.
 | Package | What it is | Status |
 |---|---|---|
 | [`ghostty_dart`](packages/ghostty_dart) | Pure Dart bindings: the whole libghostty-vt 1.0 C API, with prebuilt, pinned and attested native binaries | [![pub package](https://img.shields.io/pub/v/ghostty_dart.svg)](https://pub.dev/packages/ghostty_dart) |
-| `ghostty_dart_flutter` | A Flutter terminal widget: rendering, keyboard, mouse, IME, selection and scrolling | Planned |
+| [`ghostty_dart_flutter`](packages/ghostty_dart_flutter) | A Flutter terminal widget: rendering, keyboard, mouse, IME, selection and scrolling | In this repository, not published yet |
 | `ghostty_dart_xterm` | An adapter with the public API of [`xterm`](https://pub.dev/packages/xterm) 4.0.0 | Planned |
 
 Web support (a wasm backend) is planned too. Until it exists, the packages
@@ -29,8 +29,10 @@ run on native platforms only; see the
 ## Repository
 
 - [`packages/`](packages): the packages above.
+- [`apps/demo/`](apps/demo): a Flutter app that runs your shell in
+  `ghostty_dart_flutter`'s terminal view (Linux, macOS, Windows).
 - [`benchmarks/`](benchmarks): reproducible benchmarks against xterm 4.0.0
-  and xterm2_core.
+  and xterm2: parser throughput, and frame times of the widgets.
 - [`native/`](native) and [`tool/native/`](tool/native): the pinned
   upstream version and the scripts that build the native binaries in CI.
 - [`docs/internal/`](docs/internal): architecture decision records and

@@ -81,4 +81,30 @@ void main() {
     expect(cache.hits, 0);
     expect(cache.misses, 0);
   });
+
+  test('evicts the oldest paragraphs to stay within the byte budget', () {
+    // Room for two 1-character paragraphs, not three.
+    final cache = ParagraphCache(
+      maxBytes: ParagraphCache.estimatedBytes('a') * 2,
+    );
+    final a = _FakeParagraph('a');
+    final b = _FakeParagraph('b');
+    final c = _FakeParagraph('c');
+    cache
+      ..get(('a', 0, 0), () => CachedParagraph(a, onGrid: true))
+      ..get(('b', 0, 0), () => CachedParagraph(b, onGrid: true))
+      ..get(('c', 0, 0), () => CachedParagraph(c, onGrid: true));
+    expect(cache.length, 2);
+    expect(a.disposed, isTrue);
+    expect(cache.bytes, ParagraphCache.estimatedBytes('a') * 2);
+
+    cache
+      ..maxBytes = ParagraphCache.estimatedBytes('a')
+      ..trim();
+    expect(cache.length, 1);
+    expect(b.disposed, isTrue);
+    expect(c.disposed, isFalse);
+    cache.clear();
+    expect(cache.bytes, 0);
+  });
 }

@@ -44,10 +44,15 @@ void main() {
   setUpAll(loadJetBrainsMono);
 
   group('row picture cache', () {
-    testWidgets('the first frame records every row once', (tester) async {
+    testWidgets('the first frame records each distinct row once', (
+      tester,
+    ) async {
+      // "hello", "world" and one picture shared by the three blank rows.
       final h = await pumpRenderer(tester, initial: 'hello\r\nworld');
-      expect(h.render.debugRowRecordings, 5);
+      expect(h.render.debugRowRecordings, 3);
       expect(h.render.debugCachedRows, 5);
+      expect(h.render.debugCachedPictures, 3);
+      expect(h.render, paintsExactlyCountTimes(#drawPicture, 5));
     });
 
     testWidgets('frames without changes record nothing', (tester) async {
@@ -138,7 +143,8 @@ void main() {
           rows: 5,
         ),
       );
-      expect(h.render.debugRowRecordings, recorded + 5);
+      // "hello" and the blank rows' picture.
+      expect(h.render.debugRowRecordings, recorded + 2);
       expect(h.render.debugParagraphs.misses, 1); // "hello", laid out again
     });
 
@@ -146,7 +152,7 @@ void main() {
       final h = await pumpRenderer(tester, initial: 'hello');
       final recorded = h.render.debugRowRecordings;
       await h.rebuild(textScaler: const TextScaler.linear(2));
-      expect(h.render.debugRowRecordings, recorded + 5);
+      expect(h.render.debugRowRecordings, recorded + 2);
     });
 
     testWidgets('a metrics change drops every picture', (tester) async {
@@ -156,7 +162,7 @@ void main() {
       await h.rebuild(
         geometry: TerminalGeometry(metrics: metrics, cols: 20, rows: 5),
       );
-      expect(h.render.debugRowRecordings, recorded + 5);
+      expect(h.render.debugRowRecordings, recorded + 2);
     });
 
     testWidgets('a padding change records nothing', (tester) async {
@@ -246,13 +252,184 @@ void main() {
       expect(h.render.debugRowScans, scanned + 60);
       expect(h.render.debugRowRecordings, recorded + 1);
 
-      // The viewport scrolled back by one line.
+      // The viewport scrolled back by one line: the row that comes back
+      // was shown a frame ago, so its picture is still in the cache.
       recorded = h.render.debugRowRecordings;
       scanned = h.render.debugRowScans;
+      final hits = h.render.debugPictureHits;
       h.controller.scrollViewport(const ViewportScroll.delta(-1));
       await tester.pump();
       expect(h.render.debugRowScans, scanned + 60);
+      expect(h.render.debugRowRecordings, recorded);
+      expect(h.render.debugPictureHits, hits + 1);
+    });
+
+    testWidgets('a full-screen stream of repeated screens records each '
+        'row once', (tester) async {
+      // Every row is rewritten each frame, cycling through three screens
+      // (the warm full-screen benchmark in small): after the first cycle
+      // every row comes from the content cache.
+      final h = await pumpRenderer(tester, cols: 20, rows: 5);
+      String screen(int n) => [
+        for (var row = 0; row < 5; row++)
+          '\x1b[${row + 1};1H\x1b[3${(n + row) % 8}mscreen $n\x1b[1m'
+              ' row $row\x1b[0m',
+      ].join();
+      final recorded = h.render.debugRowRecordings;
+      for (var n = 0; n < 3; n++) {
+        await h.write(screen(n));
+      }
+      expect(h.render.debugRowRecordings, recorded + 15);
+      final hits = h.render.debugPictureHits;
+      for (var cycle = 0; cycle < 4; cycle++) {
+        for (var n = 0; n < 3; n++) {
+          await h.write(screen(n));
+        }
+      }
+      expect(h.render.debugRowRecordings, recorded + 15);
+      expect(h.render.debugPictureHits, hits + 4 * 15);
+    });
+
+    testWidgets('a redraw shifted by one line records one row', (tester) async {
+      // A program that scrolls by redrawing every line one row up (no
+      // scroll region): the moved rows' content was just on screen.
+      final h = await pumpRenderer(tester, cols: 20, rows: 5);
+      String lines(int first) => [
+        for (var row = 0; row < 5; row++)
+          '\x1b[${row + 1};1H\x1b[2K\x1b[3${(first + row) % 8}mline'
+              ' ${first + row}\x1b[0m',
+      ].join();
+      await h.write(lines(0));
+      final recorded = h.render.debugRowRecordings;
+      await h.write(lines(1));
       expect(h.render.debugRowRecordings, recorded + 1);
+    });
+
+    testWidgets('rows that scrolled away leave the row map', (tester) async {
+      // Blank lines share one picture with the blank rows still on screen;
+      // their ids must still leave the map once they scroll out.
+      final h = await pumpRenderer(tester, cols: 20, rows: 5);
+      for (var i = 0; i < 200; i++) {
+        await h.write('line $i\r\n\r\n');
+        expect(h.render.debugCachedRows, lessThanOrEqualTo(5));
+      }
+    });
+
+    testWidgets('a row that stayed on screen is evicted last', (tester) async {
+      // Row 0 shows the same status line for many frames while rows 1-4
+      // churn through new content and the cache evicts. Once the status
+      // line changes, its old picture is recent, not the oldest.
+      final h = await pumpRenderer(
+        tester,
+        cols: 20,
+        rows: 5,
+        cacheBudget: 160 << 10,
+      );
+      Future<void> churn(int frame) => h.write(
+        [
+          for (var row = 2; row <= 5; row++)
+            '\x1b[$row;1H\x1b[2Kframe $frame row $row',
+        ].join(),
+      );
+      await h.write('\x1b[1;1Hstatus: ok');
+      for (var frame = 0; frame < 60; frame++) {
+        await churn(frame);
+      }
+      final recorded = h.render.debugRowRecordings;
+      expect(h.render.debugCachedPictures, lessThan(60 * 4));
+      await h.write('\x1b[1;1H\x1b[2Kstatus: busy');
+      await churn(60);
+      await h.write('\x1b[1;1H\x1b[2Kstatus: ok');
+      // "status: busy" and frame 60's rows were recorded; "status: ok"
+      // came back from the cache.
+      expect(h.render.debugRowRecordings, recorded + 5);
+    });
+
+    testWidgets('detaching releases the caches', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final key = GlobalKey();
+      await h.rebuild(
+        wrap: (view) => KeyedSubtree(key: key, child: view),
+      );
+      final render = h.render;
+      expect(render.debugCachedPictures, greaterThan(0));
+      // Move the subtree: the render box is detached and reattached.
+      await h.rebuild(
+        wrap: (view) => Padding(
+          padding: EdgeInsets.zero,
+          child: KeyedSubtree(key: key, child: view),
+        ),
+      );
+      expect(h.render, same(render));
+      expect(render.debugCachedPictures, 0);
+      expect(render.debugParagraphs.length, 0);
+      // The next change records the screen again.
+      final recorded = render.debugRowRecordings;
+      await h.write('!');
+      expect(render.debugRowRecordings, recorded + 2);
+    });
+
+    testWidgets('a hidden view releases its caches', (tester) async {
+      // As IndexedStack and Navigator hide a child: offstage, tickers off.
+      Widget Function(Widget) visibility(bool visible) =>
+          (view) =>
+              Visibility(visible: visible, maintainState: true, child: view);
+      final h = await pumpRenderer(tester, initial: 'hello');
+      await h.rebuild(wrap: visibility(true));
+      final render = h.render;
+      expect(render.debugCachedPictures, 2);
+      await h.rebuild(wrap: visibility(false));
+      expect(render.attached, isTrue);
+      expect(render.blinkEnabled, isFalse);
+      await tester.pump(RenderTerminal.hiddenReleaseDelay);
+      expect(render.debugCachedPictures, 0);
+      expect(render.debugParagraphs.length, 0);
+      await h.rebuild(wrap: visibility(true));
+      expect(h.render, same(render));
+      expect(render.debugCachedPictures, 2);
+    });
+
+    testWidgets('a muted view still on screen keeps its caches', (
+      tester,
+    ) async {
+      // TickerMode off around a subtree that is still painted (a route
+      // transition, paused animations).
+      Widget Function(Widget) tickers(bool enabled) =>
+          (view) => TickerMode(enabled: enabled, child: view);
+      final h = await pumpRenderer(tester, initial: 'hello');
+      await h.rebuild(wrap: tickers(true));
+      final render = h.render;
+      await h.rebuild(wrap: tickers(false));
+      expect(render.blinkEnabled, isFalse);
+      await tester.pump(RenderTerminal.hiddenReleaseDelay * 2);
+      expect(render.debugCachedPictures, 2);
+      final recorded = render.debugRowRecordings;
+      await h.rebuild(wrap: tickers(true));
+      expect(render.debugRowRecordings, recorded);
+    });
+
+    testWidgets('memory pressure keeps only the visible pictures', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      await h.write('\x1b[1;1Hworld');
+      await h.write('\x1b[1;1Hagain');
+      expect(h.render.debugCachedPictures, 4); // hello, world, again, blank
+      expect(h.render.debugParagraphs.length, greaterThan(0));
+      tester.binding.handleMemoryPressure();
+      expect(h.render.debugCachedPictures, 2); // again, blank
+      expect(h.render.debugParagraphs.length, 0);
+      expect(h.render.debugCachedRows, 5);
+    });
+
+    testWidgets('a system font change drops every picture', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'hello');
+      final recorded = h.render.debugRowRecordings;
+      await tester.binding.handleSystemMessage(<String, Object?>{
+        'type': 'fontsChange',
+      });
+      await tester.pump();
+      expect(h.render.debugRowRecordings, recorded + 2);
     });
 
     testWidgets('a selection change re-records the rows it marks dirty', (
@@ -279,7 +456,10 @@ void main() {
       addTearDown(other.dispose);
       final recorded = h.render.debugRowRecordings;
       await h.rebuild(source: ControllerSeams(other));
-      expect(h.render.debugRowRecordings, recorded + 5);
+      // One picture for the five blank rows: nothing came from the old
+      // source's cache, although its blank rows had the same content.
+      expect(h.render.debugRowRecordings, recorded + 1);
+      expect(h.render.debugCachedPictures, 1);
     });
   });
 
@@ -322,7 +502,7 @@ void main() {
 
       h.controller.write('\x1b[?2026l');
       await h.rebuild(textStyle: gridStyle.copyWith(fontSize: 14));
-      expect(h.render.debugRowRecordings, recorded + 5);
+      expect(h.render.debugRowRecordings, recorded + 2);
     });
   });
 
@@ -431,6 +611,23 @@ void main() {
       expect(h.render.debugPaintedCursor, VtCursorStyle.block);
       await tester.pump(RenderTerminal.blinkInterval * 3);
       expect(h.render.debugBlinking, isFalse);
+    });
+
+    testWidgets('muting the blink in its off half shows the cursor', (
+      tester,
+    ) async {
+      Widget Function(Widget) tickers(bool enabled) =>
+          (view) => TickerMode(enabled: enabled, child: view);
+      final h = await pumpRenderer(tester, initial: 'hi\x1b[1 q');
+      await h.rebuild(wrap: tickers(true));
+      await tester.pump(RenderTerminal.blinkInterval);
+      expect(h.render.debugPaintedCursor, isNull); // the off half
+      await h.rebuild(wrap: tickers(false));
+      expect(h.render.debugBlinking, isFalse);
+      expect(h.render.debugBlinkOn, isTrue);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+      await h.rebuild(wrap: tickers(true));
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
     });
 
     testWidgets('stops blinking while the view is not painted', (tester) async {

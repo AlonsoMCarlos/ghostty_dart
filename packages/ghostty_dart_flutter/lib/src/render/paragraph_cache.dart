@@ -20,8 +20,8 @@ final class CachedParagraph {
   final bool onGrid;
 }
 
-/// A least-recently-used cache of laid-out paragraphs (ADR 0011: one
-/// paragraph per style run). Never exported.
+/// A least-recently-used cache of laid-out paragraphs of single style runs
+/// and clusters (ADR 0011). Never exported.
 ///
 /// Laying a paragraph out is the expensive part of drawing text; drawing a
 /// cached one is cheap. Paragraphs are native objects, so every paragraph
@@ -33,16 +33,37 @@ final class CachedParagraph {
 /// (engine `lib/ui/text/paragraph.cc`, `Paragraph::paint`, Flutter 3.47.9),
 /// so the picture does not keep the paragraph alive.
 class ParagraphCache {
-  /// A cache that keeps at most [capacity] paragraphs.
-  ParagraphCache({this.capacity = defaultCapacity})
-    : assert(capacity > 0, 'capacity must be positive');
+  /// A cache that keeps at most [capacity] paragraphs and about
+  /// [maxBytes] of them (see [estimatedBytes]).
+  ParagraphCache({this.capacity = defaultCapacity, int? maxBytes})
+    : assert(capacity > 0, 'capacity must be positive'),
+      maxBytes = maxBytes ?? defaultMaxBytes;
 
-  /// The default size: a few full screens of style runs (a 200 × 60 screen
-  /// with ten runs per row holds 1200).
-  static const defaultCapacity = 4096;
+  /// The default entry limit. Rows with two or more runs are laid out as
+  /// one paragraph and kept as pictures (see `RowRecorder.record`), so this
+  /// cache holds single-run rows, clusters and the cursor's glyph; the byte
+  /// budget ([maxBytes]) usually binds first.
+  static const defaultCapacity = 1024;
 
   /// The largest number of paragraphs kept.
   final int capacity;
+
+  /// The default byte budget: 4 MiB.
+  static const defaultMaxBytes = 4 << 20;
+
+  /// About how many bytes of paragraphs are kept. Lowering it takes effect
+  /// on the next miss, or at once with [trim].
+  int maxBytes;
+
+  /// A rough size of the paragraph of [text]: an 8-character run measured
+  /// about 9 KiB of RSS (2026-11-10, Linux, Impeller), and the size grows
+  /// with the text. An estimate, used only for the budget.
+  static int estimatedBytes(String text) => 4096 + 640 * text.length;
+
+  int _bytes = 0;
+
+  /// The estimated bytes of the cached paragraphs ([estimatedBytes]).
+  int get bytes => _bytes;
 
   // A map literal is a LinkedHashMap, which iterates in insertion order;
   // re-inserting on every hit keeps the least recently used entry first.
@@ -72,13 +93,29 @@ class ParagraphCache {
     }
     _misses++;
     final built = build();
+    final size = estimatedBytes(key.$1);
     // Evict before inserting, so the paragraph just built never goes first.
-    while (_entries.length >= capacity) {
-      final oldest = _entries.keys.first;
-      _entries.remove(oldest)!.paragraph.dispose();
+    while (_entries.isNotEmpty &&
+        (_entries.length >= capacity || _bytes + size > maxBytes)) {
+      _evictOldest();
     }
     _entries[key] = built;
+    _bytes += size;
     return built;
+  }
+
+  /// Evicts the least recently used paragraphs until the cache fits
+  /// [maxBytes].
+  void trim() {
+    while (_entries.isNotEmpty && _bytes > maxBytes) {
+      _evictOldest();
+    }
+  }
+
+  void _evictOldest() {
+    final oldest = _entries.keys.first;
+    _entries.remove(oldest)!.paragraph.dispose();
+    _bytes -= estimatedBytes(oldest.$1);
   }
 
   /// Disposes every cached paragraph and resets the counters.
@@ -87,6 +124,7 @@ class ParagraphCache {
       entry.paragraph.dispose();
     }
     _entries.clear();
+    _bytes = 0;
     _hits = 0;
     _misses = 0;
   }

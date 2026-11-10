@@ -53,7 +53,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
   - Checksums are recorded in `mise.lock`. Commit both files.
   - `minimum_release_age = "3d"` enforces the cooldown for tools.
   - Never install project tools globally or via ad-hoc downloads. Add them to `mise.toml`.
-  - System packages mise cannot provide: `libclang-dev` (ffigen only, from the distro), plus the Android SDK and Xcode for mobile app builds. Release builds pin the NDK sysroot (`tool/native/fetch_ndk.sh`) and the Xcode version (`native/toolchain.json`).
+  - System packages mise cannot provide: `libclang-dev` (ffigen only, from the distro), `webp` (pana's screenshot check), the Linux desktop toolchain (`clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev`, for the demo and the widget benchmark; on Debian 13 the default `g++` 14 already brings `libstdc++-14-dev`, which is enough there, see CI below), plus the Android SDK and Xcode for mobile app builds. Release builds pin the NDK sysroot (`tool/native/fetch_ndk.sh`) and the Xcode version (`native/toolchain.json`).
 - Dart SDK constraint `^3.11.0`. `package:test` and workspace globs need 3.11.
 - CI runs on the minimum and on the mise-pinned stable.
 - Pub workspaces: the root `pubspec.yaml` has `publish_to: none` and `workspace:`; members have `resolution: workspace`. No melos unless a real need appears.
@@ -67,7 +67,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 - Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
 - Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` with `path: .native-cache/host/`. A directory `path` makes the hook pick the target OS's bundled library name inside it, so the same pubspec works on every host.
-- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. A Linux `pana` job runs `deps`, `pana` and `publish:dry-run`. `dco.yml` checks every PR commit's `Signed-off-by` (`tool/check_dco.sh`).
+- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. On ubuntu the `check` job also installs the GTK desktop toolchain with apt (from the runner image's Ubuntu archive) and runs `demo:build-linux`. It installs `libstdc++-12-dev` because Flutter's Linux setup page lists exactly that package (checked 2026-11-10); clang uses the C++ headers of the newest GCC installation it finds, so on Debian 13 (GCC 14 default) `libstdc++-14-dev` is the one that matters and is already installed with `g++`. The two `apt-get` steps (this one and `webp` in the `pana` job) are the one exception to "every workflow step has a mise task": they install system packages with `sudo`, which mise does not manage and which must not run unattended on a developer machine (sudo asks for a password on purpose). A Linux `pana` job runs `deps`, `pana` and `publish:dry-run` for both published packages (`ghostty_dart`, `ghostty_dart_flutter`). The frame benchmark (`bench:widget`) and the device pixel check (`test:grid-pixels`) are **not** in CI: shared runners have no GPU, so their numbers would be noise; run them on a real machine and record the environment. `dco.yml` checks every PR commit's `Signed-off-by` (`tool/check_dco.sh`).
 - Package releases (ADR 0010): `release-please.yml` (manifest mode, `GITHUB_TOKEN`) opens release PRs and, because its tags do not trigger workflows, dispatches `ci.yml` on the release PR and `publish.yml` on the new tag. `publish.yml` validates the tag against pubspec and CHANGELOG, builds the archive offline (`--to-archive`), and uploads exactly that archive via OIDC from the protected `pub.dev` environment. Steps of `release-please.yml` and `dco.yml` that install no tools call their scripts directly; each script still has a mirror mise task for local use.
 - Native releases: `.github/workflows/native-release.yml` (tag `native-v<version>-r<n>`, manual dry run, or any PR touching the native pipeline) calls the reusable `native-build.yml` (read-only build jobs, no caches, a/b reproducibility check, format checks, attestation job), smoke-tests on six real runners, and publishes only after approval in the `native-release` environment. PRs never attest or publish. A `secrets` job runs gitleaks (pinned release binary, sha256 verified) over the full history and the working tree.
 
@@ -90,8 +90,8 @@ mise run test:goldens:update  # regenerate the widget goldens + doc/screenshot.p
 mise run deps:no-flutter  # resolve without the Flutter members, exactly as locked (arm64 smoke runners)
 mise run cooldown       # no locked dependency younger than 3 days
 mise run check          # everything CI runs (analyze, test, test:flutter, demo:test, bench:widget:test, test:tool, test:release, cooldown, lint:ci, docs:translations)
-mise run pana           # pub.dev score of the publish archive, pinned pana + dartdoc; must be 160/160 (network)
-mise run publish:dry-run  # validate the publish archive (run on committed changes)
+mise run pana [pkg...]  # pub.dev score of each publish archive (default: ghostty_dart, ghostty_dart_flutter), pinned pana + dartdoc; must be 160/160 (network)
+mise run publish:dry-run  # validate both publish archives (run on committed changes)
 mise run docs:translations  # Spanish translations in sync with their English source
 mise run lint:ci        # actionlint + shellcheck
 mise run test:tool      # tests of the release tools and repo hygiene (nothing ignored, secret or >1 MiB is tracked)
@@ -102,13 +102,14 @@ mise run native:pin <tag>              # pin a published release into prebuilt.d
 mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchmarks/README.md)
 mise run bench:widget [device] [--frames=n] [--passes=n] [--renderer=impeller|skia]  # frame times vs xterm/xterm2; needs a display
 mise run bench:widget:test  # the frame benchmark harness, headless
+mise run test:grid-pixels [device] [--renderer=impeller|skia]  # glyphs on the device-pixel grid on the real renderer; needs a display (xvfb-run on headless Linux)
 mise run demo:test      # demo app tests (fake shell, wiring)
 mise run demo:run [device] [--fake]  # run the demo (default linux; --fake: the web's fake shell)
-mise run demo:build-linux   # needs clang, cmake, ninja-build, pkg-config, libgtk-3-dev
+mise run demo:build-linux   # needs clang, cmake, ninja-build, pkg-config, libgtk-3-dev, libstdc++-12-dev (or 14 on Debian 13)
 mise run demo:build-web     # stops with a message until ghostty_dart has a wasm backend
 ```
 
-When you add a workflow step, add a mise task for it. A task listed here must work.
+When you add a workflow step, add a mise task for it (exception: the `sudo apt-get` steps that install system packages, see CI above). A task listed here must work.
 
 Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`, `benchmarks/widget`, and `benchmarks/` (it depends on `xterm` 4.0.0, whose pubspec requires Flutter). Resolving the workspace therefore needs Flutter's Dart (the one mise installs); `mise run deps:no-flutter` drops those four members where only plain Dart exists. Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
 
@@ -139,7 +140,7 @@ Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`,
 
 ### `ghostty_dart_flutter` (widget)
 - Repaint only dirty rows, using the render state's `next_dirty`.
-- Draw style runs, not cells. Cache paragraphs per run.
+- Draw one paragraph per row of style runs (per run, then per cell, when it does not measure the grid), never per cell. Cache row pictures by content, within a byte budget.
 - A `drawRawAtlas` glyph atlas is the planned v2 path. Land it only with benchmark evidence.
 - Must work on Skia and Impeller, and on the web renderers (CanvasKit, skwasm) once `ghostty_dart` has its wasm backend; until then the package declares native platforms only.
 - Input:
@@ -210,7 +211,7 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 
 ## Publishing and releases
 
-- pana target: **160/160 for every package**. `mise run pana` scores the extracted publish archive with pana and dartdoc pinned in `tool/pana/` (`--dartdoc-command`, never an unpinned global dartdoc), with `--exit-code-threshold 0`.
+- pana target: **160/160 for every package**. `mise run pana` scores each package's extracted publish archive with pana and dartdoc pinned in `tool/pana/` (`--dartdoc-command`, never an unpinned global dartdoc), with `--exit-code-threshold 0`. A package with pubspec `screenshots` also needs libwebp's tools (`webp` from the distro or Homebrew; pana converts the images with them), which the CI pana job installs with apt.
 - pubspec:
   - `description` of 60–180 ASCII characters;
   - `repository` pointing at the package subdirectory;

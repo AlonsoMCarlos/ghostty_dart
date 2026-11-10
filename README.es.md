@@ -1,4 +1,4 @@
-<!-- source: README.md@82137ca1c6d074dc5784e30fde624cadb96c9e2b -->
+<!-- source: README.md@0432701acb496f0bd6774ec1e5d6e77656c8c9ce -->
 [English](README.md) | **Español**
 
 # ghostty_dart
@@ -20,7 +20,7 @@ todas las plataformas que podamos soportar.
 | Paquete | Qué es | Estado |
 |---|---|---|
 | [`ghostty_dart`](packages/ghostty_dart/README.es.md) | *Bindings* en Dart puro: toda la API en C de libghostty-vt 1.0, con binarios nativos precompilados, fijados y con atestación | [![pub package](https://img.shields.io/pub/v/ghostty_dart.svg)](https://pub.dev/packages/ghostty_dart) |
-| `ghostty_dart_flutter` | Un *widget* de terminal para Flutter: renderizado, teclado, ratón, IME, selección y desplazamiento | Previsto |
+| [`ghostty_dart_flutter`](packages/ghostty_dart_flutter/README.es.md) | Un *widget* de terminal para Flutter: renderizado, teclado, ratón, IME, selección y desplazamiento | En este repositorio, aún sin publicar |
 | `ghostty_dart_xterm` | Un adaptador con la API pública de [`xterm`](https://pub.dev/packages/xterm) 4.0.0 | Previsto |
 
 También está previsto el soporte web (un *backend* wasm). Mientras no
@@ -30,8 +30,11 @@ exista, los paquetes solo funcionan en plataformas nativas; consulta la
 ## Repositorio
 
 - [`packages/`](packages): los paquetes anteriores.
+- [`apps/demo/`](apps/demo): una aplicación de Flutter que ejecuta tu shell
+  en la vista de terminal de `ghostty_dart_flutter` (Linux, macOS, Windows).
 - [`benchmarks/`](benchmarks): *benchmarks* reproducibles frente a xterm
-  4.0.0 y xterm2_core.
+  4.0.0 y xterm2: rendimiento del *parser* y tiempos de fotograma de los
+  *widgets*.
 - [`native/`](native) y [`tool/native/`](tool/native): la versión fijada de
   upstream y los scripts que compilan los binarios nativos en CI.
 - [`docs/internal/`](docs/internal): registros de decisiones de arquitectura
