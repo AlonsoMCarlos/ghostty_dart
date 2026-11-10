@@ -19,9 +19,13 @@ dependencies:
   hooks: ^2.2.0
 
 dev_dependencies:
-  analyzer: ^14.7.0
+  # analyzer 13 and test 1.31: flutter_test (Flutter 3.47.9) pins
+  # test_api 0.7.12, which test >= 1.32 and analyzer 14 exclude; the
+  # workspace also holds ghostty_dart_flutter. Raise both together with the
+  # pinned Flutter (2026-11-10).
+  analyzer: ^13.3.0
   ffigen: ^23.0.0
   # analysis_options.yaml includes package:lints; pana keeps hosted
   # dev_dependencies when it analyses the archive.
   lints: ^6.1.0
-  test: ^1.33.0
+  test: ^1.31.1  # see analyzer above

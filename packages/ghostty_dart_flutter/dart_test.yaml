@@ -1,0 +1,4 @@
+# `spike`: measurements on unpinned host fonts (test/spike/). Excluded from
+# `mise run test:flutter` and CI; run them with `mise run test:spike`.
+tags:
+  spike:

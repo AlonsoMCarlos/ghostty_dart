@@ -81,8 +81,11 @@ mise run ffigen         # regenerate bindings
 mise run format
 mise run analyze        # format check + dart analyze --fatal-infos
 mise run test           # runs inside packages/ghostty_dart, so the build hook runs
+mise run test:flutter   # flutter test in packages/ghostty_dart_flutter (spike tag excluded)
+mise run test:spike     # letterSpacing/metrics spikes on host fonts (manual, not in CI)
+mise run deps:no-flutter  # resolve without the Flutter members, exactly as locked (arm64 smoke runners)
 mise run cooldown       # no locked dependency younger than 3 days
-mise run check          # everything CI runs (analyze, test, test:tool, test:release, cooldown, lint:ci, docs:translations)
+mise run check          # everything CI runs (analyze, test, test:flutter, test:tool, test:release, cooldown, lint:ci, docs:translations)
 mise run pana           # pub.dev score of the publish archive, pinned pana + dartdoc; must be 160/160 (network)
 mise run publish:dry-run  # validate the publish archive (run on committed changes)
 mise run docs:translations  # Spanish translations in sync with their English source
@@ -97,7 +100,7 @@ mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchm
 
 When you add a workflow step, add a mise task for it. A task listed here must work.
 
-The `benchmarks/` member depends on `xterm` 4.0.0, whose pubspec requires the Flutter SDK, so resolving the workspace needs Flutter's Dart (the one mise installs). Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
+Two members need the Flutter SDK: `packages/ghostty_dart_flutter`, and `benchmarks/` (it depends on `xterm` 4.0.0, whose pubspec requires Flutter). Resolving the workspace therefore needs Flutter's Dart (the one mise installs); `mise run deps:no-flutter` drops both members where only plain Dart exists. Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
 
 ## Code rules
 
@@ -158,6 +161,7 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 - Do not adopt any dependency version published less than 3 days ago (cooldown).
   - `mise run cooldown` checks every committed lockfile, and fails closed if it parses no or too few entries.
   - Hold back a too-new transitive version with a root `dependency_overrides` entry, with a dated comment. Remove it once the version has aged.
+  - Prefer fixing an SDK pin conflict without an override. Flutter's `flutter_test` pins exact versions (Flutter 3.47.9: `test_api 0.7.12`), and every workspace member resolves together, so `ghostty_dart`'s dev dependencies stay on `test ^1.31.1` and `analyzer ^13.3.0` (`test` 1.32 and later and `analyzer` 14 need a newer `test_api`). Raise them together with the pinned Flutter.
 - Prefer zero dependencies in `ghostty_dart`. Every new dependency needs a justification in the PR.
 - Before using a library's API, read its source in `~/.pub-cache`. Do not create throwaway projects that compile unpinned code.
 - Pin GitHub Actions by commit SHA.

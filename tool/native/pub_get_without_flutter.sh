@@ -2,12 +2,12 @@
 # Resolves the workspace with a plain Dart SDK (no Flutter), for the arm64
 # smoke tests, without trusting the resolver to pick versions.
 #
-# `mise run deps` uses `flutter pub get` because the benchmarks member
-# depends on xterm, which needs the Flutter SDK. Where there is no Flutter
-# SDK, this script drops that member from the root pubspec, runs
-# `dart pub get`, and then fails unless every resolved package version is
-# exactly the one in the committed pubspec.lock. Dropping a member only
-# removes constraints, so the locked versions still satisfy everything; the
+# `mise run deps` uses `flutter pub get` because some members need the
+# Flutter SDK: benchmarks (it depends on xterm) and ghostty_dart_flutter.
+# Where there is no Flutter SDK, this script drops those members from the
+# root pubspec, runs `dart pub get`, and then fails unless every resolved
+# package version is exactly the one in the committed pubspec.lock.
+# Dropping a member only removes constraints, so the locked versions still satisfy everything; the
 # check proves nothing new or different came in (AGENTS.md cooldown policy):
 # every package's whole lock entry (version, source, sha256, hosted url) must
 # be unchanged, which is what --enforce-lockfile would prove if it allowed
@@ -16,7 +16,9 @@
 # Then it runs the given command, if any, while the trimmed pubspec is still
 # in place: restoring pubspec.yaml makes it newer than the resolution, and
 # `dart test` would then re-resolve with the Flutter-only member and fail.
-# pubspec.yaml and pubspec.lock are restored on exit either way.
+# pubspec.yaml and pubspec.lock are restored on exit either way, but
+# .dart_tool/package_config.json keeps the resolution without the Flutter
+# members: run `mise run deps` before working on them again.
 #
 # Usage: tool/native/pub_get_without_flutter.sh [command...]   (`dart` on PATH)
 set -euo pipefail
@@ -45,8 +47,14 @@ locked_stanzas() {
     END { flush() }' | LC_ALL=C sort
 }
 
-grep -qE '^  - benchmarks$' "$root/pubspec.yaml" || { echo "error: root pubspec has no '  - benchmarks' workspace entry" >&2; exit 1; }
-sed '/^  - benchmarks$/d' "$backup/pubspec.yaml" >"$root/pubspec.yaml"
+flutter_members=(benchmarks packages/ghostty_dart_flutter)
+cp "$backup/pubspec.yaml" "$root/pubspec.yaml"
+for member in "${flutter_members[@]}"; do
+  grep -qxF "  - $member" "$root/pubspec.yaml" || { echo "error: root pubspec has no '  - $member' workspace entry" >&2; exit 1; }
+  # grep exits 1 when no line is left (fine) and 2 on an I/O error (not).
+  grep -vxF "  - $member" "$root/pubspec.yaml" >"$backup/trimmed" || [[ $? -eq 1 ]]
+  cp "$backup/trimmed" "$root/pubspec.yaml"
+done
 
 (cd "$root" && dart pub get)
 

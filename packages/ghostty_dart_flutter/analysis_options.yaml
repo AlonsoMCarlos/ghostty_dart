@@ -1,0 +1,28 @@
+# Self-contained on purpose: this file ships in the published archive, where
+# the repo root's analysis_options.yaml does not exist, so pub.dev (pana)
+# analyses the package with exactly these rules (ADR 0010). It must equal the
+# root file plus the package-only rules at the end; `mise run test:tool`
+# (tool/test/analysis_options_test.dart) fails if they drift.
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  exclude:
+    - "**/*.g.dart"
+    # Package-only: `flutter pub get` adds it to every Flutter package
+    # (flutter_tools AnalysisOptionsMigration) and would re-add it if removed.
+    - build/**
+
+linter:
+  rules:
+    - prefer_final_locals
+    - prefer_final_in_for_each
+    - unawaited_futures
+    - avoid_dynamic_calls
+    - always_declare_return_types
+    - directives_ordering
+    # Package-only: every public member of a published package is documented.
+    - public_member_api_docs

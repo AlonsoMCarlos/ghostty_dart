@@ -145,7 +145,7 @@ shell = "bash -c"
 run = 'bash tool/native/fetch_dart_sdk.sh "$usage_platform" "$usage_dest"'
 
 [tasks."deps:no-flutter"]
-description = "Resolve the workspace with plain Dart (no benchmarks member), failing on any change from pubspec.lock"
+description = "Resolve the workspace with plain Dart (no Flutter members: benchmarks, ghostty_dart_flutter), failing on any change from pubspec.lock"
 shell = "bash -c"
 run = "bash tool/native/pub_get_without_flutter.sh"
 
@@ -205,6 +205,18 @@ description = "Run all tests"
 # run the package's build hook, so the native library would be missing.
 dir = "{{config_root}}/packages/ghostty_dart"
 run = "dart test"
+
+# The Flutter widget package: `flutter test` runs the build hook too.
+# Spikes on unpinned host fonts are tagged `spike` and left out.
+[tasks."test:flutter"]
+description = "Run the ghostty_dart_flutter tests (flutter test, without the spike tag)"
+dir = "{{config_root}}/packages/ghostty_dart_flutter"
+run = "flutter test --exclude-tags spike"
+
+[tasks."test:spike"]
+description = "Run the ghostty_dart_flutter measurement spikes (unpinned host fonts; manual, not in CI)"
+dir = "{{config_root}}/packages/ghostty_dart_flutter"
+run = "flutter test --tags spike"
 
 [tasks.cooldown]
 description = "Fail if any locked dependency was published less than 3 days ago"
@@ -302,6 +314,7 @@ description = "Everything CI runs locally"
 depends = [
   "analyze",
   "test",
+  "test:flutter",
   "test:tool",
   "test:release",
   "cooldown",

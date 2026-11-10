@@ -1,0 +1,31 @@
+name: ghostty_dart_flutter
+description: >-
+  Flutter terminal widget on top of ghostty_dart (libghostty-vt): dirty-row
+  rendering, keyboard, IME, mouse and scrollback input, pty-agnostic.
+# Not published yet (plan 20261109-flutter-widget): wave 2 sets the first
+# release version once the maintainer approves.
+version: 0.0.1-dev
+repository: https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_flutter
+issue_tracker: https://github.com/AlonsoMCarlos/ghostty_dart/issues
+topics: [terminal, terminal-emulator, widget, console, ghostty]
+
+environment:
+  sdk: ^3.11.0
+  # The only Flutter CI tests (mise.toml pins 3.47.9, with Dart 3.13). The
+  # APIs used need much less (TextScaler, Color.toARGB32, Paragraph
+  # glyph info); lower this only together with a CI job on that Flutter.
+  flutter: ">=3.47.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ghostty_dart: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # analysis_options.yaml includes package:lints; pana keeps hosted
+  # dev_dependencies when it analyses the archive.
+  lints: ^6.1.0

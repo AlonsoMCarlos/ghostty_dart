@@ -6,6 +6,7 @@ environment:
 
 workspace:
   - packages/ghostty_dart
+  - packages/ghostty_dart_flutter
   - benchmarks
 
 hooks:
