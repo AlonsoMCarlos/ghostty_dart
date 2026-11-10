@@ -1,4 +1,4 @@
-<!-- source: README.md@f38a142f89fe338becd9764bcd21a93f4a5493ac -->
+<!-- source: README.md@7dcd0e72f4269f7424a0113d7862ed44ba11a533 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -90,8 +90,15 @@ Widget build(BuildContext context) => VtTerminalView(
   que funciona sin pty.
 - [`apps/demo`](https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/apps/demo)
   conecta tu shell real mediante
-  [`flutter_pty`](https://pub.dev/packages/flutter_pty), con cambio de
-  tamaño, título y reinicio al salir.
+  [`flutter_pty2`](https://pub.dev/packages/flutter_pty2) (bytes de
+  entrada y salida, escrituras que no bloquean, un `close()` real), con
+  cambio de tamaño, título y reinicio al salir. `ghostty_dart_flutter` no
+  depende de ningún paquete de pty. flutter_pty2 es joven (tres versiones
+  mayores en 2026, pocos usuarios) y compila su propio código C en tu
+  máquina mediante un build hook, así que necesita clang (Linux), Xcode
+  (macOS) o Visual Studio (Windows); fija su versión y revísalo como
+  cualquier otra dependencia nativa. El README de la demo enumera lo que
+  comprobamos y lo que queda pendiente.
 
 Incluye una fuente monoespaciada en tu aplicación: Flutter no tiene una
 familia monoespaciada portable, y las celdas se miden con la fuente que

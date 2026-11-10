@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
 	<!-- A terminal runs the user's shell and its programs, which the App
-	     Sandbox would confine to the app's container (flutter_pty's example
-	     app is not sandboxed either). -->
+	     Sandbox would confine to the app's container (terminal apps such as
+	     Ghostty and iTerm2 are not sandboxed either). -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 </dict>

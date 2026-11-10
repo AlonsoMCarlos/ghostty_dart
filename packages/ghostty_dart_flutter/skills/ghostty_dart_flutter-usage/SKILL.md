@@ -100,12 +100,18 @@ class _TerminalPageState extends State<TerminalPage> {
 
 ## Connecting a real shell
 
-The package has no pty dependency. On desktop, `flutter_pty` works:
-`Pty.start(shell, columns: cols, rows: rows)`, `pty.output` to
-`controller.writeBytes`, `onOutput` to `pty.write`, `onResize` to
-`pty.resize(rows, cols)`. Mind the order: flutter_pty's `resize` takes rows
-first, while `onResize` gives `cols` first; swapping them is silent. The repository's `apps/demo` does exactly this,
-including restart on exit and the known limitations of `flutter_pty`.
+The package has no pty dependency. On desktop, `flutter_pty2` (pin an
+exact version; its build hook compiles C, so it needs clang, Xcode or MSVC)
+works: `session = await Pty.spawn(PtySpawnOptions(executable: shell,
+size: PtySize(columns: cols, rows: rows)))`, `session.output` to
+`controller.writeBytes`, `onOutput` to `session.input.tryWrite` (or the
+asynchronous `session.input.write` when it reports `backpressured`),
+`onResize` to `session.resize(PtySize(columns: cols, rows: rows))`, and
+`session.done` for the exit. `close()` sends SIGKILL; to hang up a shell
+the way closing a terminal does, send `PosixSignal.hup` to
+`PosixSignalTarget.shellProcessGroup` first (Unix only). The repository's
+`apps/demo` (`lib/src/shell/pty_shell.dart`) does exactly this, including
+restart on exit and the fallback when no pty can be started.
 
 ## Native library
 

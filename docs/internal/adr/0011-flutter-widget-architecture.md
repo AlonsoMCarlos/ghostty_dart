@@ -9,7 +9,7 @@
   - a batched `RenderState` with dirty rows, style runs and a stable `RenderRowId`;
   - a key encoder (legacy and Kitty, including release events), a mouse encoder, and selection gestures;
   - a viewport whose scroll position stays anchored while output arrives.
-- Every local pty package (`flutter_pty`, `pty2`, `portable_pty`) compiles native code on the user's machine.
+- Every local pty package (`flutter_pty`, `flutter_pty2`, `pty2`, `portable_pty`) runs native build code on the user's machine. `portable_pty` 0.0.5 is ruled out: its own build hook downloads a prebuilt binary and otherwise builds Rust crates with `native_toolchain_rust` (not `native_prebuilt`, as first noted).
 - xterm 4.0.0 binds Ctrl+V and Ctrl+A on Linux, Windows and Android, so the shell never receives them. AGENTS.md forbids that.
 
 ## Decision
@@ -59,7 +59,8 @@
 **Accessibility (v1).** A `Semantics` node with the visible text, computed only while accessibility is on, plus an opt-in announcement of new output (`sendAnnouncement`). Full screen-reader navigation is deferred.
 
 **Demo app** (`apps/demo`, `publish_to: none`):
-- native platforms use `flutter_pty`, with a committed lockfile and its native build reviewed;
+- native platforms use `flutter_pty2` 3.0.0, pinned exactly, with a committed lockfile and its build hook and C sources reviewed;
+- *amendment (2026-11-10):* it replaced `flutter_pty` 0.4.2, which is unmaintained since 2025-01 and leaks descriptors and a thread per shell, blocks the UI thread on writes, has no close call and lets a failed `exec` return into the app. `flutter_pty2` fixes all of these, adds no lockfile entry besides itself, and needs a C compiler wherever the demo's dependencies are built (`demo:test` included). Research: `docs/internal/research/2026-11-10-pty-packages.md`;
 - web uses a fake shell in pure Dart, deployed as the live demo.
 - the web demo waits for `ghostty_dart`'s wasm backend; until it exists, `mise run demo:build-web` stops with that message.
 

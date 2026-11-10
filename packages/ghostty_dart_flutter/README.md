@@ -85,8 +85,14 @@ Widget build(BuildContext context) => VtTerminalView(
   without a pty.
 - [`apps/demo`](https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/apps/demo)
   connects your real shell through
-  [`flutter_pty`](https://pub.dev/packages/flutter_pty), with resize,
-  title and restart on exit.
+  [`flutter_pty2`](https://pub.dev/packages/flutter_pty2) (bytes in and
+  out, non-blocking writes, a real `close()`), with resize, title and
+  restart on exit. `ghostty_dart_flutter` does not depend on any pty
+  package. flutter_pty2 is young (three major versions in 2026, few users)
+  and compiles its own C code on your machine through a build hook, so it
+  needs clang (Linux), Xcode (macOS) or Visual Studio (Windows); pin it and
+  review it as you would any native dependency. The demo's README lists
+  what we checked and what is left.
 
 Bundle a monospace font with your app: Flutter has no portable monospace
 family, and the cells are measured from the font you pass.

@@ -9,19 +9,24 @@ environment:
 
 resolution: workspace
 
-# flutter_pty compiles a small C library on the user's machine (forkpty on
-# Unix, ConPTY on Windows) and downloads nothing at build time; reviewed
-# 2026-11-10 (ADR 0011, "Demo app"). Exact pin: a newer release must be
-# reviewed again before it is adopted.
+# flutter_pty2 is a native-assets package: its hook/build.dart compiles its
+# own C sources (forkpty/posix on Unix, ConPTY on Windows) with
+# native_toolchain_c, and downloads and runs nothing else at build time
+# (archive sha256 9802f793..., read 2026-11-10; ADR 0011, "Demo app").
+# Building it needs a C compiler: clang on Linux, Xcode on macOS, MSVC on
+# Windows. Exact pin: a newer release must be reviewed again before it is
+# adopted.
 dependencies:
   flutter:
     sdk: flutter
-  flutter_pty: 0.4.2
+  flutter_pty2: 3.0.0
   ghostty_dart: any
   ghostty_dart_flutter: any
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   lints: ^6.1.0
 

@@ -3,5 +3,5 @@ import 'demo_shell.dart';
 
 /// Starts the shell of this platform: the fake shell, because there is no
 /// pty (the web).
-DemoShell startDefaultShell(int cols, int rows) =>
-    FakeShell(cols: cols, rows: rows);
+Future<DemoShell> startDefaultShell(int cols, int rows) =>
+    Future.value(FakeShell(cols: cols, rows: rows));

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ final class _SpyShell implements DemoShell {
 
   final FakeShell _inner;
   var writes = 0;
+  var disposed = false;
 
   @override
   String get name => _inner.name;
@@ -40,16 +42,19 @@ final class _SpyShell implements DemoShell {
   @override
   void resize(int cols, int rows) => _inner.resize(cols, rows);
   @override
-  void dispose() => _inner.dispose();
+  void dispose() {
+    disposed = true;
+    _inner.dispose();
+  }
 }
 
 void main() {
   late List<FakeShell> shells;
 
-  DemoShell start(int cols, int rows) {
+  Future<DemoShell> start(int cols, int rows) {
     final shell = FakeShell(cols: cols, rows: rows);
     shells.add(shell);
-    return shell;
+    return Future.value(shell);
   }
 
   setUp(() => shells = []);
@@ -123,7 +128,7 @@ void main() {
     await tester.pumpWidget(
       DemoApp(
         startShell: (cols, rows) =>
-            spy = _SpyShell(FakeShell(cols: cols, rows: rows)),
+            Future.value(spy = _SpyShell(FakeShell(cols: cols, rows: rows))),
       ),
     );
     await tester.pump();
@@ -136,6 +141,40 @@ void main() {
     final before = spy.writes;
     controller.sendText('ls\r');
     expect(spy.writes, before);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a shell that starts after the app is gone is disposed', (
+    tester,
+  ) async {
+    final pending = Completer<DemoShell>();
+    await tester.pumpWidget(DemoApp(startShell: (_, _) => pending.future));
+    await tester.pump();
+    expect(find.text('ghostty_dart · '), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+
+    final late = _SpyShell(FakeShell());
+    pending.complete(late);
+    await tester.pump();
+    expect(late.disposed, isTrue);
+  });
+
+  testWidgets('a failing factory leaves a message, not a red screen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      DemoApp(startShell: (_, _) => Future.error(StateError('boom'))),
+    );
+    await tester.pump();
+    final controller = tester
+        .state<DemoAppState>(find.byType(DemoApp))
+        .controller;
+    expect(
+      _screen(controller),
+      contains('[could not start a shell: Bad state: boom]'),
+    );
+    expect(find.byIcon(Icons.refresh), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

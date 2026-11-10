@@ -60,17 +60,38 @@ class DemoAppState extends State<DemoApp> {
   String _title = '';
   int? _exitCode;
 
+  /// Bumped by every start and stop, so a shell whose spawn finishes after
+  /// a newer start, a stop or the app's disposal is disposed at once
+  /// instead of being connected.
+  var _epoch = 0;
+
   @override
   void initState() {
     super.initState();
-    _start();
+    unawaited(_start());
   }
 
-  void _start() {
-    final shell = widget.startShell(controller.cols, controller.rows);
-    _shell = shell;
+  Future<void> _start() async {
+    final epoch = ++_epoch;
     _exitCode = null;
+    final DemoShell shell;
+    try {
+      shell = await widget.startShell(controller.cols, controller.rows);
+    } on Object catch (error) {
+      if (!mounted || epoch != _epoch) return;
+      controller.write('\r\n[could not start a shell: $error]\r\n');
+      // Offer Restart, as after an exit.
+      setState(() => _exitCode = -1);
+      return;
+    }
+    if (!mounted || epoch != _epoch) {
+      shell.dispose();
+      return;
+    }
+    setState(() => _shell = shell);
     _output = shell.output.listen(controller.writeBytes);
+    // The terminal may have been resized while the shell was starting.
+    shell.resize(controller.cols, controller.rows);
     unawaited(
       shell.exitCode.then((code) {
         if (!mounted || !identical(_shell, shell)) return;
@@ -84,10 +105,12 @@ class DemoAppState extends State<DemoApp> {
     _stop();
     // RIS: a fresh screen and modes for the new program.
     controller.write('\x1bc');
-    setState(_start);
+    setState(() => _exitCode = null);
+    unawaited(_start());
   }
 
   void _stop() {
+    _epoch++;
     unawaited(_output?.cancel());
     _output = null;
     _shell?.dispose();

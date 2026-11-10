@@ -27,4 +27,8 @@ abstract interface class DemoShell {
 }
 
 /// Starts a [DemoShell] for a [cols] × [rows] terminal.
-typedef DemoShellFactory = DemoShell Function(int cols, int rows);
+///
+/// Asynchronous because spawning a process in a pty is: the pty package
+/// reports a failed spawn (missing shell, bad working directory) as an
+/// error of the returned future.
+typedef DemoShellFactory = Future<DemoShell> Function(int cols, int rows);

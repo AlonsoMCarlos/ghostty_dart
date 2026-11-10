@@ -16,7 +16,7 @@ packages/
                         wasm backend (web) behind one interface. hook/build.dart ships the library.
   ghostty_dart_flutter/   Flutter widget: renderer, keyboard/mouse/IME input, selection, scrolling.
   ghostty_dart_xterm/        API-compatible adapter for package:xterm 4.0.0 on top of the two above.
-apps/demo/              Flutter app: flutter_pty on desktop, a fake shell on the web. The live web demo
+apps/demo/              Flutter app: flutter_pty2 on desktop, a fake shell on the web. The live web demo
                         (GitHub Pages, --wasm) waits for ghostty_dart's wasm backend.
 benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm. benchmarks/widget/ is the
                         Flutter frame-time benchmark (integration_test + flutter drive --profile).
@@ -53,7 +53,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
   - Checksums are recorded in `mise.lock`. Commit both files.
   - `minimum_release_age = "3d"` enforces the cooldown for tools.
   - Never install project tools globally or via ad-hoc downloads. Add them to `mise.toml`.
-  - System packages mise cannot provide: `libclang-dev` (ffigen only, from the distro), `webp` (pana's screenshot check), the Linux desktop toolchain (`clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev`, for the demo and the widget benchmark; on Debian 13 the default `g++` 14 already brings `libstdc++-14-dev`, which is enough there, see CI below), plus the Android SDK and Xcode for mobile app builds. Release builds pin the NDK sysroot (`tool/native/fetch_ndk.sh`) and the Xcode version (`native/toolchain.json`).
+  - System packages mise cannot provide: `libclang-dev` (ffigen only, from the distro), a C compiler for the demo's pty package (`flutter_pty2` compiles its C in a build hook, already during `demo:test`: `clang` on PATH on Linux, as native_toolchain_c has no gcc fallback; Xcode on macOS; MSVC on Windows), `webp` (pana's screenshot check), the Linux desktop toolchain (`clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev`, for the demo and the widget benchmark; on Debian 13 the default `g++` 14 already brings `libstdc++-14-dev`, which is enough there, see CI below), plus the Android SDK and Xcode for mobile app builds. Release builds pin the NDK sysroot (`tool/native/fetch_ndk.sh`) and the Xcode version (`native/toolchain.json`).
 - Dart SDK constraint `^3.11.0`. `package:test` and workspace globs need 3.11.
 - CI runs on the minimum and on the mise-pinned stable.
 - Pub workspaces: the root `pubspec.yaml` has `publish_to: none` and `workspace:`; members have `resolution: workspace`. No melos unless a real need appears.
@@ -103,7 +103,8 @@ mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchm
 mise run bench:widget [device] [--frames=n] [--passes=n] [--renderer=impeller|skia]  # frame times vs xterm/xterm2; needs a display
 mise run bench:widget:test  # the frame benchmark harness, headless
 mise run test:grid-pixels [device] [--renderer=impeller|skia]  # glyphs on the device-pixel grid on the real renderer; needs a display (xvfb-run on headless Linux)
-mise run demo:test      # demo app tests (fake shell, wiring)
+mise run demo:test      # demo app tests (fake shell, wiring; fakes instead of a pty)
+mise run demo:integration [device]  # real shell in a real pty (flutter_pty2), needs a display (xvfb-run on headless Linux)
 mise run demo:run [device] [--fake]  # run the demo (default linux; --fake: the web's fake shell)
 mise run demo:build-linux   # needs clang, cmake, ninja-build, pkg-config, libgtk-3-dev, libstdc++-12-dev (or 14 on Debian 13)
 mise run demo:build-web     # stops with a message until ghostty_dart has a wasm backend

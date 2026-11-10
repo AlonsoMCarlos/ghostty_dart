@@ -537,26 +537,32 @@ passes.
 | Package | Version | Published | Why it is here | `hook/` or build-time code |
 |---|---|---|---|---|
 | `xterm2` | 5.4.0 | 2026-10-21 | widget under test | none (no `hook/`, no native code) |
-| `flutter_pty` | 0.4.2 | 2025-01-06 | demo app (`apps/demo`) | a small C library built by the Flutter plugin build, no downloads (below) |
+| `flutter_pty2` | 3.0.0 | 2026-10-21 | demo app (`apps/demo`); replaced `flutter_pty` 0.4.2 on 2026-11-10 | a build hook that compiles its own C with `native_toolchain_c`, no downloads (below) |
 | `integration_test`, `flutter_driver`, `fuchsia_remote_debug_protocol` | SDK | – | the harness | none |
 | `webdriver` | 3.2.0 | 2026-09-09 | flutter_driver | none |
 | `sync_http` | 0.3.1 | 2022-06-15 | webdriver | none |
 
 `xterm` 4.0.0 was already locked for the parser benchmark.
 
-**flutter_pty 0.4.2 native build**, read 2026-11-10:
-- `linux/CMakeLists.txt` and `windows/CMakeLists.txt` only
-  `add_subdirectory(../src)`. That builds one shared library from
-  `src/flutter_pty.c`, which includes Dart's `dart_api_dl.c`, then
-  `forkpty.c` + `flutter_pty_unix.c` on Unix or `flutter_pty_win.c`
-  (ConPTY) on Windows.
-- The macOS and iOS podspecs compile a forwarder of the same file, so the
-  macOS demo needs CocoaPods.
-- There is no `ExternalProject`, `FetchContent`, `file(DOWNLOAD)`,
-  `execute_process` or network access anywhere, and no build hook.
-- The Android `build.gradle` declares the Android Gradle Plugin 8.1.0 from
-  Google's Maven repository, as every Android plugin does. The demo does not
-  build for Android.
+**flutter_pty2 3.0.0 native build**, read 2026-11-10 (archive sha256
+`9802f793109fe7241cc172780571d501e50db6b247624a6b7c4df889bb9cbfe6`, equal to
+the pub.dev API's `archive_sha256` and to `pubspec.lock`):
+- `hook/build.dart` (54 lines) only calls `CBuilder.library` of
+  `native_toolchain_c` 0.19.5 (already locked) on the package's own C files:
+  Dart's `dart_api_dl.c`, `src/common/*.c`, then `src/unix/*.c` or
+  `src/windows/*.c` (ConPTY). Every `#include` is a system header or one of
+  its own.
+- There is no network access, no `Process` and no download in the hook or
+  the sources. `src/CMakeLists.txt` only builds the same library for the
+  package's own native tests and is not used by the hook.
+- It is not a Flutter plugin, so the macOS demo no longer needs CocoaPods.
+  Building it needs clang on Linux (native_toolchain_c has no gcc
+  fallback), Xcode on macOS and MSVC on Windows.
+- At run time it honours `FLUTTER_PTY2_LIBRARY`, which makes it load a
+  library from that path instead of the bundled one (the same class of risk
+  as `LD_PRELOAD`).
+- The full comparison with `flutter_pty`, `pty2` and `portable_pty`:
+  `docs/internal/research/2026-11-10-pty-packages.md`.
 
 Its runtime defects and what the demo does about them are listed under
 "Known limitations" in `apps/demo/README.md`.

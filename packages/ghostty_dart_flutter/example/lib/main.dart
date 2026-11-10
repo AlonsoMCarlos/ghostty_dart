@@ -1,10 +1,10 @@
 // A minimal, self-contained ghostty_dart_flutter app: a terminal view whose
 // "program" is a tiny local echo written in Dart, so it runs without a pty.
 //
-// In a real app, connect the controller to a pty (flutter_pty), a socket or
+// In a real app, connect the controller to a pty (flutter_pty2), a socket or
 // an SSH channel instead: write the program's output with `writeBytes` and
 // send `onOutput` to the program's input. The demo app in the repository
-// (apps/demo) does that with flutter_pty.
+// (apps/demo) does that with flutter_pty2.
 import 'dart:convert';
 import 'dart:typed_data';
 

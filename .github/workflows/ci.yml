@@ -82,15 +82,15 @@ jobs:
       - name: Check the host build (format, arch, exports, deps)
         run: mise run native:check --host
 
-      - name: Check
-        run: mise run check
-
-      # Linux only: the demo app's release build (flutter_pty's C library and
-      # the GTK runner). Flutter's Linux toolchain is not in mise: clang,
-      # cmake, ninja, pkg-config and the GTK 3 headers come from the runner
-      # image's own Ubuntu archive (the list of the Flutter Linux setup page,
+      # Linux only: Flutter's Linux toolchain is not in mise: clang, cmake,
+      # ninja, pkg-config and the GTK 3 headers come from the runner image's
+      # own Ubuntu archive (the list of the Flutter Linux setup page,
       # docs.flutter.dev/platform-integration/linux/setup, checked
-      # 2026-11-10). Nothing else is installed or downloaded here.
+      # 2026-11-10). Nothing else is installed or downloaded here. It runs
+      # before `check` because `demo:test` already runs the build hook of the
+      # demo's pty package (flutter_pty2), which compiles C with
+      # native_toolchain_c and on Linux looks only for clang. macOS uses
+      # Xcode's clang and Windows MSVC, both in the runner images.
       - name: Install the Linux desktop toolchain (apt)
         if: runner.os == 'Linux'
         timeout-minutes: 10
@@ -99,6 +99,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev
 
+      - name: Check
+        run: mise run check
+
+      # Linux only: the demo app's release build (flutter_pty2's C library
+      # and the GTK runner).
       - name: Build the demo for Linux
         if: runner.os == 'Linux'
         timeout-minutes: 15
