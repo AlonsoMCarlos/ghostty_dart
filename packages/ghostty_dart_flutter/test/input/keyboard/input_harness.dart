@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,6 +62,15 @@ final class InputHarness {
     bool focus = true,
   }) async {
     final controller = VtTerminalController(cols: 20, rows: 5);
+    // libghostty-vt built for a macOS host applies its own Option-as-Alt
+    // setting to Alt (key_encode.zig); elsewhere it always sends ESC. Match
+    // it to the simulated platform so every host yields the same bytes.
+    final apple =
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    controller.macosOptionAsAlt = apple
+        ? (macosOptionAsAlt?.call() ?? OptionAsAlt.none)
+        : OptionAsAlt.both;
     final harness = InputHarness._(controller, ControllerSeams(controller));
     controller.onOutput = (bytes) =>
         harness.output.add(utf8.decode(bytes, allowMalformed: true));
