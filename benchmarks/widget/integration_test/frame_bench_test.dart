@@ -46,8 +46,15 @@ const _outDir = String.fromEnvironment('BENCH_OUT_DIR');
 const _fontDir = String.fromEnvironment('BENCH_FONT_DIR');
 
 const _fontFamily = 'JetBrains Mono';
-const _fontSize = 12.0;
-const _style = TextStyle(fontFamily: _fontFamily, fontSize: _fontSize);
+
+/// Font size in logical px (`--dart-define=BENCH_FONT_SIZE`, default 12).
+/// Smaller only where the display cannot hold the 200 x 60 grid at 12 px,
+/// such as GitHub's 1024 x 768 macOS runners: the cell count, and so the
+/// per-cell work, stays the same.
+final _fontSize = double.parse(
+  const String.fromEnvironment('BENCH_FONT_SIZE', defaultValue: '12'),
+);
+final _style = TextStyle(fontFamily: _fontFamily, fontSize: _fontSize);
 
 Future<void> _loadFont() async {
   if (_fontDir.isEmpty) {

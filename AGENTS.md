@@ -101,7 +101,7 @@ mise run native:check <asset> [file]   # verify a release asset
 mise run native:ndk     # pinned Android NDK sysroot (Linux only)
 mise run native:pin <tag>              # pin a published release into prebuilt.dart (verifies attestations)
 mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchmarks/README.md)
-mise run bench:widget [device] [--frames=n] [--passes=n] [--renderer=impeller|skia]  # frame times vs xterm/xterm2; needs a display
+mise run bench:widget [device] [--frames=n] [--passes=n] [--font-size=px] [--renderer=impeller|skia]  # frame times vs xterm/xterm2; needs a display
 mise run bench:widget:test  # the frame benchmark harness, headless
 mise run test:grid-pixels [device] [--renderer=impeller|skia]  # glyphs on the device-pixel grid on the real renderer; needs a display (xvfb-run on headless Linux)
 mise run demo:test      # demo app tests (fake shell, wiring; fakes instead of a pty)

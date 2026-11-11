@@ -93,7 +93,8 @@ jobs:
         timeout-minutes: 110
         run: |
           [[ "$PASSES" =~ ^[1-9]$ ]] || { echo "::error::passes must be 1-9"; exit 1; }
-          mise run bench:widget macos --passes="$PASSES"
+          # The runner's display is 1024 x 768: the 200 x 60 grid fits at 7 px.
+          mise run bench:widget macos --passes="$PASSES" --font-size=7
 
       - name: Add the report to the summary
         if: always()

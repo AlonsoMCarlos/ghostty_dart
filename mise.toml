@@ -294,6 +294,7 @@ usage = '''
 arg "[device]" default="linux" help="desktop device id: linux or macos"
 flag "--frames <n>" default="300" help="traced frames per run"
 flag "--passes <n>" default="3" help="passes over every scenario and widget (widget order rotates)"
+flag "--font-size <px>" default="12" help="font size in logical px (smaller only if the display cannot hold the grid)"
 flag "--renderer <renderer>" default="impeller" help="impeller or skia" {
   choices "impeller" "skia"
 }
@@ -308,6 +309,7 @@ flutter drive --profile -d "$usage_device" "$impeller" --endless-trace-buffer \
   --target integration_test/frame_bench_test.dart \
   --dart-define=BENCH_FRAMES="$usage_frames" \
   --dart-define=BENCH_PASSES="$usage_passes" \
+  --dart-define=BENCH_FONT_SIZE="$usage_font_size" \
   --dart-define=BENCH_RENDERER="$usage_renderer" \
   --dart-define=BENCH_OUT_DIR="{{config_root}}/benchmarks/widget/build" \
   --dart-define=BENCH_FONT_DIR="{{config_root}}/packages/ghostty_dart_flutter/test/fonts"
