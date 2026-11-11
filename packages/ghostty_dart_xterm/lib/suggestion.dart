@@ -2,5 +2,13 @@
 /// at the terminal's cursor, for command suggestions and completions
 /// (`SuggestionPortal`, `SuggestionPortalController`).
 ///
-/// Work in progress: nothing is exported yet (ADR 0013).
+/// Place the popup with the view's cursor rectangle:
+///
+/// ```dart
+/// final viewKey = GlobalKey<TerminalViewState>();
+/// // TerminalView(terminal, key: viewKey)
+/// suggestionController.update(viewKey.currentState!.globalCursorRect);
+/// ```
 library;
+
+export 'src/suggestion/suggestion.dart';

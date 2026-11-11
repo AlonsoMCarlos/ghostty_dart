@@ -20,13 +20,13 @@ Symbols and members per library (a symbol counts once, plus one per member).
 | Library | ✅ | ⚠️ | ❌ | 🚫 | Total |
 |---|---:|---:|---:|---:|---:|
 | `core.dart` | 747 | 51 | 0 | 109 | 907 |
-| `ui.dart` | 0 | 0 | 133 | 1 | 134 |
+| `ui.dart` | 120 | 13 | 0 | 1 | 134 |
 | `zmodem.dart` | 0 | 0 | 35 | 0 | 35 |
-| `suggestion.dart` | 0 | 0 | 26 | 0 | 26 |
+| `suggestion.dart` | 26 | 0 | 0 | 0 | 26 |
 | `utils.dart` | 0 | 0 | 0 | 25 | 25 |
-| **All** | **747** | **51** | **194** | **135** | **1127** |
+| **All** | **893** | **64** | **35** | **135** | **1127** |
 
-Additions beyond xterm: 3.
+Additions beyond xterm: 5.
 
 ## `core.dart`
 
@@ -897,218 +897,218 @@ variable, `src/core/mouse/handler.dart`. ✅ same.
 
 ### `KeyboardVisibilty`
 
-class, `src/ui/keyboard_visibility.dart`. ❌ missing: planned.
+class, `src/ui/keyboard_visibility.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `KeyboardVisibilty()` | constructor | ❌ | planned |
-| `child` | property | ❌ | planned |
-| `createState()` | method | ❌ | planned |
-| `onKeyboardHide` | property | ❌ | planned |
-| `onKeyboardShow` | property | ❌ | planned |
+| `KeyboardVisibilty()` | constructor | ✅ |  |
+| `child` | property | ✅ |  |
+| `createState()` | method | ✅ |  |
+| `onKeyboardHide` | property | ✅ |  |
+| `onKeyboardShow` | property | ✅ |  |
 
 ### `KeyboardVisibiltyState`
 
-class, `src/ui/keyboard_visibility.dart`. ❌ missing: planned.
+class, `src/ui/keyboard_visibility.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `KeyboardVisibiltyState()` | constructor | ❌ | planned |
-| `build()` | method | ❌ | planned |
-| `didChangeMetrics()` | method | ❌ | planned |
-| `dispose()` | method | ❌ | planned |
-| `initState()` | method | ❌ | planned |
+| `KeyboardVisibiltyState()` | constructor | ✅ |  |
+| `build()` | method | ✅ |  |
+| `didChangeMetrics()` | method | ✅ |  |
+| `dispose()` | method | ✅ |  |
+| `initState()` | method | ✅ |  |
 
 ### `PointerInput`
 
-enum, `src/ui/pointer_input.dart`. ❌ missing: planned.
+enum, `src/ui/pointer_input.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `tap` | value | ❌ | planned |
-| `scroll` | value | ❌ | planned |
-| `drag` | value | ❌ | planned |
-| `move` | value | ❌ | planned |
+| `tap` | value | ✅ |  |
+| `scroll` | value | ✅ |  |
+| `drag` | value | ✅ |  |
+| `move` | value | ✅ |  |
 
 ### `PointerInputs`
 
-class, `src/ui/pointer_input.dart`. ❌ missing: planned.
+class, `src/ui/pointer_input.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `PointerInputs()` | constructor | ❌ | planned |
-| `PointerInputs.all()` | constructor | ❌ | planned |
-| `PointerInputs.none()` | constructor | ❌ | planned |
-| `inputs` | property | ❌ | planned |
+| `PointerInputs()` | constructor | ✅ |  |
+| `PointerInputs.all()` | constructor | ✅ |  |
+| `PointerInputs.none()` | constructor | ✅ |  |
+| `inputs` | property | ✅ |  |
 
 ### `SelectionMode`
 
-enum, `src/ui/selection_mode.dart`. ❌ missing: planned.
+enum, `src/ui/selection_mode.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `line` | value | ❌ | planned |
-| `block` | value | ❌ | planned |
+| `line` | value | ✅ |  |
+| `block` | value | ✅ |  |
 
 ### `TerminalController`
 
-class, `src/ui/controller.dart`. ❌ missing: planned.
+class, `src/ui/controller.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalController()` | constructor | ❌ | planned |
-| `clearSelection()` | method | ❌ | planned |
-| `highlight()` | method | ❌ | planned |
-| `highlights` | property | ❌ | planned |
-| `pointerInput` | property | ❌ | planned |
-| `selection` | property | ❌ | planned |
-| `selectionMode` | property | ❌ | planned |
-| `setPointerInputs()` | method | ❌ | planned |
-| `setSelection()` | method | ❌ | planned |
-| `setSelectionMode()` | method | ❌ | planned |
-| `setSuspendPointerInput()` | method | ❌ | planned |
-| `shouldSendPointerInput()` | method | ❌ | planned |
-| `suspendedPointerInputs` | property | ❌ | planned |
+| `TerminalController()` | constructor | ✅ |  |
+| `clearSelection()` | method | ✅ |  |
+| `highlight()` | method | ⚠️ | painted by ghostty_dart_flutter over the text and over the selection (xterm paints the selection last; only the blend order of translucent colours differs), and only while the screen (primary or alternate) it was made on is active |
+| `highlights` | property | ✅ |  |
+| `pointerInput` | property | ✅ |  |
+| `selection` | property | ⚠️ | while a TerminalView shows the controller it is the selection on the screen (mouse selections included), read from libghostty-vt; a selection set with setSelection keeps xterm's anchors until the user changes it |
+| `selectionMode` | property | ✅ |  |
+| `setPointerInputs()` | method | ⚠️ | drag and move, when enabled, are reported as motion (xterm 4.0.0 never reports them); the wheel is reported whatever the set says, as in xterm |
+| `setSelection()` | method | ⚠️ | also selects the range on the screen of the view that shows the controller; an empty range shows nothing there |
+| `setSelectionMode()` | method | ✅ |  |
+| `setSuspendPointerInput()` | method | ⚠️ | suspending also stops wheel reports (xterm 4.0.0 still reports the wheel) |
+| `shouldSendPointerInput()` | method | ✅ | xterm: @internal |
+| `suspendedPointerInputs` | property | ✅ |  |
 
 ### `TerminalCursorType`
 
-enum, `src/ui/cursor_type.dart`. ❌ missing: planned.
+enum, `src/ui/cursor_type.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `block` | value | ❌ | planned |
-| `underline` | value | ❌ | planned |
-| `verticalBar` | value | ❌ | planned |
+| `block` | value | ✅ |  |
+| `underline` | value | ✅ |  |
+| `verticalBar` | value | ✅ |  |
 
 ### `TerminalHighlight`
 
-class, `src/ui/controller.dart`. ❌ missing: planned.
+class, `src/ui/controller.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalHighlight()` | constructor | ❌ | planned |
-| `color` | property | ❌ | planned |
-| `dispose()` | method | ❌ | planned |
-| `disposed` | property | ❌ | planned |
-| `onDisposed` | property | ❌ | planned |
-| `owner` | property | ❌ | planned |
-| `p1` | property | ❌ | planned |
-| `p2` | property | ❌ | planned |
-| `range` | property | ❌ | planned |
-| `register()` | method | ❌ | planned |
-| `registerCallback()` | method | ❌ | planned |
+| `TerminalHighlight()` | constructor | ✅ |  |
+| `color` | property | ✅ |  |
+| `dispose()` | method | ✅ |  |
+| `disposed` | property | ✅ |  |
+| `onDisposed` | property | ✅ |  |
+| `owner` | property | ✅ |  |
+| `p1` | property | ✅ |  |
+| `p2` | property | ✅ |  |
+| `range` | property | ✅ |  |
+| `register()` | method | ✅ |  |
+| `registerCallback()` | method | ✅ |  |
 
 ### `TerminalStyle`
 
-class, `src/ui/terminal_text_style.dart`. ❌ missing: planned.
+class, `src/ui/terminal_text_style.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalStyle()` | constructor | ❌ | planned |
-| `TerminalStyle.fromTextStyle()` | constructor | ❌ | planned |
-| `copyWith()` | method | ❌ | planned |
-| `fontFamily` | property | ❌ | planned |
-| `fontFamilyFallback` | property | ❌ | planned |
-| `fontSize` | property | ❌ | planned |
-| `height` | property | ❌ | planned |
-| `toTextStyle()` | method | ❌ | planned |
+| `TerminalStyle()` | constructor | ✅ |  |
+| `TerminalStyle.fromTextStyle()` | constructor | ✅ |  |
+| `copyWith()` | method | ✅ |  |
+| `fontFamily` | property | ✅ |  |
+| `fontFamilyFallback` | property | ✅ |  |
+| `fontSize` | property | ✅ |  |
+| `height` | property | ✅ |  |
+| `toTextStyle()` | method | ✅ |  |
 
 ### `TerminalTheme`
 
-class, `src/ui/terminal_theme.dart`. ❌ missing: planned.
+class, `src/ui/terminal_theme.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalTheme()` | constructor | ❌ | planned |
-| `background` | property | ❌ | planned |
-| `black` | property | ❌ | planned |
-| `blue` | property | ❌ | planned |
-| `brightBlack` | property | ❌ | planned |
-| `brightBlue` | property | ❌ | planned |
-| `brightCyan` | property | ❌ | planned |
-| `brightGreen` | property | ❌ | planned |
-| `brightMagenta` | property | ❌ | planned |
-| `brightRed` | property | ❌ | planned |
-| `brightWhite` | property | ❌ | planned |
-| `brightYellow` | property | ❌ | planned |
-| `cursor` | property | ❌ | planned |
-| `cyan` | property | ❌ | planned |
-| `foreground` | property | ❌ | planned |
-| `green` | property | ❌ | planned |
-| `magenta` | property | ❌ | planned |
-| `red` | property | ❌ | planned |
-| `searchHitBackground` | property | ❌ | planned |
-| `searchHitBackgroundCurrent` | property | ❌ | planned |
-| `searchHitForeground` | property | ❌ | planned |
-| `selection` | property | ❌ | planned |
-| `white` | property | ❌ | planned |
-| `yellow` | property | ❌ | planned |
+| `TerminalTheme()` | constructor | ✅ |  |
+| `background` | property | ✅ |  |
+| `black` | property | ✅ |  |
+| `blue` | property | ✅ |  |
+| `brightBlack` | property | ✅ |  |
+| `brightBlue` | property | ✅ |  |
+| `brightCyan` | property | ✅ |  |
+| `brightGreen` | property | ✅ |  |
+| `brightMagenta` | property | ✅ |  |
+| `brightRed` | property | ✅ |  |
+| `brightWhite` | property | ✅ |  |
+| `brightYellow` | property | ✅ |  |
+| `cursor` | property | ✅ |  |
+| `cyan` | property | ✅ |  |
+| `foreground` | property | ✅ |  |
+| `green` | property | ✅ |  |
+| `magenta` | property | ✅ |  |
+| `red` | property | ✅ |  |
+| `searchHitBackground` | property | ✅ |  |
+| `searchHitBackgroundCurrent` | property | ✅ |  |
+| `searchHitForeground` | property | ✅ |  |
+| `selection` | property | ✅ |  |
+| `white` | property | ✅ |  |
+| `yellow` | property | ✅ |  |
 
 ### `TerminalThemes`
 
-class, `src/ui/themes.dart`. ❌ missing: planned.
+class, `src/ui/themes.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalThemes()` | constructor | ❌ | planned |
-| `defaultTheme` | static property | ❌ | planned |
-| `whiteOnBlack` | static property | ❌ | planned |
+| `TerminalThemes()` | constructor | ✅ |  |
+| `defaultTheme` | static property | ✅ |  |
+| `whiteOnBlack` | static property | ✅ |  |
 
 ### `TerminalView`
 
-class, `src/terminal_view.dart`. ❌ missing: planned; will differ: keys typed into the view are encoded by libghostty-vt (Kitty protocol, key releases) while terminal.inputHandler is defaultInputHandler; mouse reports come from libghostty-vt's encoder; one TerminalView per Terminal (ADR 0013).
+class, `src/terminal_view.dart`. ⚠️ differs: keys typed into the view are encoded by libghostty-vt (Kitty protocol, key releases) while terminal.inputHandler is defaultInputHandler; mouse reports come from libghostty-vt's encoder; one TerminalView per Terminal (ADR 0013).
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalView()` | constructor | ❌ | planned |
-| `alwaysShowCursor` | property | ❌ | planned |
-| `autoResize` | property | ❌ | planned |
-| `autofocus` | property | ❌ | planned |
-| `backgroundOpacity` | property | ❌ | planned |
-| `controller` | property | ❌ | planned |
-| `createState()` | method | ❌ | planned |
-| `cursorType` | property | ❌ | planned |
-| `deleteDetection` | property | ❌ | planned |
-| `focusNode` | property | ❌ | planned |
-| `hardwareKeyboardOnly` | property | ❌ | planned |
-| `keyboardAppearance` | property | ❌ | planned |
-| `keyboardType` | property | ❌ | planned |
-| `mouseCursor` | property | ❌ | planned |
-| `onKeyEvent` | property | ❌ | planned |
-| `onSecondaryTapDown` | property | ❌ | planned |
-| `onSecondaryTapUp` | property | ❌ | planned |
-| `onTapUp` | property | ❌ | planned |
-| `padding` | property | ❌ | planned |
-| `readOnly` | property | ❌ | planned |
-| `scrollController` | property | ❌ | planned; will differ: accepted and ignored: libghostty-vt owns scrolling (ADR 0011, ADR 0013) |
-| `shortcuts` | property | ❌ | planned |
-| `simulateScroll` | property | ❌ | planned |
-| `terminal` | property | ❌ | planned |
-| `textScaler` | property | ❌ | planned |
-| `textStyle` | property | ❌ | planned |
-| `theme` | property | ❌ | planned |
+| `TerminalView()` | constructor | ✅ |  |
+| `alwaysShowCursor` | property | ✅ |  |
+| `autoResize` | property | ✅ |  |
+| `autofocus` | property | ✅ |  |
+| `backgroundOpacity` | property | ✅ |  |
+| `controller` | property | ✅ |  |
+| `createState()` | method | ✅ |  |
+| `cursorType` | property | ✅ |  |
+| `deleteDetection` | property | ✅ |  |
+| `focusNode` | property | ✅ |  |
+| `hardwareKeyboardOnly` | property | ✅ |  |
+| `keyboardAppearance` | property | ✅ |  |
+| `keyboardType` | property | ✅ |  |
+| `mouseCursor` | property | ✅ |  |
+| `onKeyEvent` | property | ✅ |  |
+| `onSecondaryTapDown` | property | ✅ |  |
+| `onSecondaryTapUp` | property | ✅ |  |
+| `onTapUp` | property | ⚠️ | called for a click that selected nothing and was not reported to the program (xterm calls it for every tap) |
+| `padding` | property | ✅ |  |
+| `readOnly` | property | ✅ |  |
+| `scrollController` | property | ⚠️ | accepted and ignored: libghostty-vt owns scrolling (ADR 0011, ADR 0013) |
+| `shortcuts` | property | ⚠️ | the select-all action (Ctrl+A, Cmd+A) selects the whole buffer, scrollback included (xterm: the screen); paste never asks before pasting, as in xterm |
+| `simulateScroll` | property | ⚠️ | sets the default of DEC mode 1007 (alternate scroll): a program that turns 1007 on still gets arrow keys when it is false |
+| `terminal` | property | ✅ |  |
+| `textScaler` | property | ✅ |  |
+| `textStyle` | property | ⚠️ | cells are measured from the font and snapped to device pixels, so a cell can be slightly larger or smaller than xterm's for the same font |
+| `theme` | property | ✅ |  |
 
 ### `TerminalViewState`
 
-class, `src/terminal_view.dart`. ❌ missing: planned.
+class, `src/terminal_view.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `TerminalViewState()` | constructor | ❌ | planned |
-| `build()` | method | ❌ | planned |
-| `closeKeyboard()` | method | ❌ | planned |
-| `cursorRect` | property | ❌ | planned |
-| `didUpdateWidget()` | method | ❌ | planned |
-| `dispose()` | method | ❌ | planned |
-| `globalCursorRect` | property | ❌ | planned |
-| `hasInputConnection` | property | ❌ | planned |
-| `initState()` | method | ❌ | planned |
+| `TerminalViewState()` | constructor | ✅ |  |
+| `build()` | method | ✅ |  |
+| `closeKeyboard()` | method | ✅ |  |
+| `cursorRect` | property | ⚠️ | relative to the view's top-left corner, padding included (xterm: inside TerminalView.padding); Rect.zero before the first layout (xterm throws) |
+| `didUpdateWidget()` | method | ✅ |  |
+| `dispose()` | method | ✅ |  |
+| `globalCursorRect` | property | ⚠️ | Rect.zero before the first layout or while the cursor is scrolled out of view (xterm throws or returns an off-screen rectangle) |
+| `hasInputConnection` | property | ✅ |  |
+| `initState()` | method | ✅ |  |
 | `renderTerminal` | property | 🚫 | xterm's render object (RenderTerminal, not exported); the view renders through ghostty_dart_flutter (ADR 0011) |
-| `requestKeyboard()` | method | ❌ | planned |
+| `requestKeyboard()` | method | ✅ |  |
 
 ### `defaultTerminalShortcuts`
 
-variable, `src/ui/shortcut/shortcuts.dart`. ❌ missing: planned.
+variable, `src/ui/shortcut/shortcuts.dart`. ✅ same.
 
 ## `zmodem.dart`
 
@@ -1190,53 +1190,53 @@ typedef, `zmodem.dart`. ❌ missing: needs package:zmodem as a new dependency, a
 
 ### `RenderCompletionLayout`
 
-class, `suggestion.dart`. ❌ missing: planned.
+class, `suggestion.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `RenderCompletionLayout()` | constructor | ❌ | planned |
-| `attach()` | method | ❌ | planned |
-| `cursorMargin` | property | ❌ | planned |
-| `cursorRect` | property | ❌ | planned |
-| `detach()` | method | ❌ | planned |
-| `padding` | property | ❌ | planned |
-| `performLayout()` | method | ❌ | planned |
+| `RenderCompletionLayout()` | constructor | ✅ |  |
+| `attach()` | method | ✅ |  |
+| `cursorMargin` | property | ✅ |  |
+| `cursorRect` | property | ✅ |  |
+| `detach()` | method | ✅ |  |
+| `padding` | property | ✅ |  |
+| `performLayout()` | method | ✅ |  |
 
 ### `SuggestionLayout`
 
-class, `suggestion.dart`. ❌ missing: planned.
+class, `suggestion.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `SuggestionLayout()` | constructor | ❌ | planned |
-| `createRenderObject()` | method | ❌ | planned |
-| `cursorMargin` | property | ❌ | planned |
-| `cursorRect` | property | ❌ | planned |
-| `padding` | property | ❌ | planned |
-| `updateRenderObject()` | method | ❌ | planned |
+| `SuggestionLayout()` | constructor | ✅ |  |
+| `createRenderObject()` | method | ✅ |  |
+| `cursorMargin` | property | ✅ |  |
+| `cursorRect` | property | ✅ |  |
+| `padding` | property | ✅ |  |
+| `updateRenderObject()` | method | ✅ |  |
 
 ### `SuggestionPortal`
 
-class, `suggestion.dart`. ❌ missing: planned.
+class, `suggestion.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `SuggestionPortal()` | constructor | ❌ | planned |
-| `child` | property | ❌ | planned |
-| `controller` | property | ❌ | planned |
-| `createState()` | method | ❌ | planned |
-| `cursorMargin` | property | ❌ | planned |
-| `overlayBuilder` | property | ❌ | planned |
-| `padding` | property | ❌ | planned |
+| `SuggestionPortal()` | constructor | ✅ |  |
+| `child` | property | ✅ |  |
+| `controller` | property | ✅ |  |
+| `createState()` | method | ✅ |  |
+| `cursorMargin` | property | ✅ |  |
+| `overlayBuilder` | property | ✅ |  |
+| `padding` | property | ✅ |  |
 
 ### `SuggestionPortalController`
 
-class, `suggestion.dart`. ❌ missing: planned.
+class, `suggestion.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `SuggestionPortalController()` | constructor | ❌ | planned |
-| `update()` | method | ❌ | planned |
+| `SuggestionPortalController()` | constructor | ✅ |  |
+| `update()` | method | ✅ |  |
 
 ## `utils.dart`
 
@@ -1290,3 +1290,5 @@ class, `src/utils/debugger_view.dart`. 🚫 won't support: the debugger is built
 | `Terminal.dispose` | method |
 | `Terminal.onOutputBytes` | property |
 | `Terminal.writeBytes` | method |
+| `TerminalController.dispose` | method |
+| `TerminalViewState.didChangeDependencies` | method |
