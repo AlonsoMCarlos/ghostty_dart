@@ -95,7 +95,12 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 10
         run: |
-          sudo apt-get update
+          # The runner image points apt at Azure's regional Ubuntu mirror,
+          # which stalls or stops resolving from time to time
+          # (actions/runner-images #6894, #7048; three failed runs on
+          # 2026-11-11). Use the canonical archive instead.
+          sudo grep -rlF azure.archive.ubuntu.com /etc/apt | xargs -r sudo sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g'
+          sudo apt-get -o Acquire::Retries=3 update
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev
 
@@ -149,7 +154,12 @@ jobs:
       - name: Install libwebp tools (apt)
         timeout-minutes: 5
         run: |
-          sudo apt-get update
+          # The runner image points apt at Azure's regional Ubuntu mirror,
+          # which stalls or stops resolving from time to time
+          # (actions/runner-images #6894, #7048; three failed runs on
+          # 2026-11-11). Use the canonical archive instead.
+          sudo grep -rlF azure.archive.ubuntu.com /etc/apt | xargs -r sudo sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g'
+          sudo apt-get -o Acquire::Retries=3 update
           sudo apt-get install -y --no-install-recommends webp
 
       - name: Score with pana (160/160 required, every package)
