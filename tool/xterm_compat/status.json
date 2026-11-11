@@ -31,15 +31,15 @@
     },
     "Terminal.onIconChange": {
       "status": "differs",
-      "reason": "never called for OSC 1 (icon name): libghostty-vt 1.0.0 does not report it (ADR 0013 known limits)"
+      "reason": "only setIconName calls it: libghostty-vt 1.0.0 does not report the icon name of OSC 0 and OSC 1 (ADR 0013 known limits)"
     },
     "Terminal.mainBuffer": {
       "status": "differs",
-      "reason": "cannot be read while the alternate screen is active: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits)"
+      "reason": "while the alternate screen is active it reads as blank lines (cursor at 0, 0) and its mutators throw StateError: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits)"
     },
     "Terminal.reflowEnabled": {
       "status": "differs",
-      "reason": "has no effect: libghostty-vt 1.0.0 always reflows on resize (ADR 0013 known limits)"
+      "reason": "applies to Terminal.resize only (a TerminalView's resizes always reflow), and without reflow libghostty-vt drops the cells beyond a narrower width instead of keeping them for a later, wider resize (ADR 0013 known limits)"
     },
     "Terminal.onPrivateOSC": {
       "status": "differs",
@@ -47,15 +47,15 @@
     },
     "Terminal.onResize": {
       "status": "differs",
-      "reason": "the pixel arguments are xterm's cell size in logical pixels, computed from the view's device pixel ratio; 0 without a TerminalView (ADR 0013)"
+      "reason": "Terminal.resize passes its own arguments, as in xterm; when a TerminalView resizes the terminal, the pixel arguments are the cell size in logical pixels from the view's device pixel ratio, and it is called only when the size changed (ADR 0013)"
     },
     "Terminal.unknownCSI": {
       "status": "differs",
-      "reason": "no-op: there is no sequence to emulate it with (ADR 0013)"
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
     },
     "Terminal.unsupportedStyle": {
       "status": "differs",
-      "reason": "no-op: there is no sequence to emulate it with (ADR 0013)"
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
     },
     "Buffer.marginTop": {
       "status": "differs",
@@ -92,6 +92,154 @@
     "TerminalView.scrollController": {
       "status": "differs",
       "reason": "accepted and ignored: libghostty-vt owns scrolling (ADR 0011, ADR 0013)"
+    },
+    "Terminal.altBuffer": {
+      "status": "differs",
+      "reason": "while the main screen is active it reads as blank lines (cursor at 0, 0) and its mutators throw StateError: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits)"
+    },
+    "Terminal.unknownSBC": {
+      "status": "differs",
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
+    },
+    "Terminal.unkownEscape": {
+      "status": "differs",
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
+    },
+    "Terminal.setUnknownMode": {
+      "status": "differs",
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
+    },
+    "Terminal.setUnknownDecMode": {
+      "status": "differs",
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
+    },
+    "Terminal.setColumnMode": {
+      "status": "differs",
+      "reason": "no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013)"
+    },
+    "Terminal.maxLines": {
+      "status": "differs",
+      "reason": "approximate: libghostty-vt drops scrollback in whole pages, so more lines are kept (about 300 at 80 columns with maxLines: 30); there is no byte limit"
+    },
+    "Terminal.cursor": {
+      "status": "differs",
+      "reason": "a new copy of the SGR pen on every read: changing it does not change the terminal; palette colours 0-15 read as named colours (libghostty-vt does not tell SGR 31 from SGR 38;5;1)"
+    },
+    "Terminal.write": {
+      "status": "differs",
+      "reason": "events the output raises (onBell, onTitleChange, onOutput replies, onPrivateOSC, onResize) are delivered in order after the chunk is parsed, not during parsing; replies to queries are libghostty-vt's (ADR 0013)"
+    },
+    "Terminal.onOutput": {
+      "status": "differs",
+      "reason": "bytes from libghostty-vt (keys and mouse reports typed into a TerminalView, replies to queries) are decoded as UTF-8, or Latin-1 for a chunk that is not valid UTF-8; onOutputBytes (an addition) has the exact bytes (ADR 0013)"
+    },
+    "Terminal.lines": {
+      "status": "differs",
+      "reason": "a read-only view: lines are snapshots made on first access (one native read per cell, about 50 us per 80-column line in a debug build) and are no longer attached once the terminal changes (ADR 0013)"
+    },
+    "Terminal.writeChar": {
+      "status": "differs",
+      "reason": "writes the character through libghostty-vt's parser; a control character is dropped (xterm stores it as a glyph)"
+    },
+    "Terminal.setTitle": {
+      "status": "differs",
+      "reason": "writes OSC 2, which calls onTitleChange; control characters in the title are dropped"
+    },
+    "Terminal.moveCursorY": {
+      "status": "differs",
+      "reason": "CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only)"
+    },
+    "Terminal.cursorNextLine": {
+      "status": "differs",
+      "reason": "CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only)"
+    },
+    "Terminal.cursorPrecedingLine": {
+      "status": "differs",
+      "reason": "CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only)"
+    },
+    "Terminal.setMargins": {
+      "status": "differs",
+      "reason": "writes DECSTBM and moves the cursor back; libghostty-vt ignores a one-line region (top == bottom)"
+    },
+    "Buffer": {
+      "status": "differs",
+      "reason": "a view of a libghostty-vt screen: lines are read on demand; the mutators write the equivalent escape sequence (active buffer only, StateError otherwise or while the output stopped inside a sequence); a Buffer created for another TerminalState holds blank lines (ADR 0013)"
+    },
+    "Buffer.lines": {
+      "status": "differs",
+      "reason": "a read-only view: lines are snapshots made on first access (one native read per cell, about 50 us per 80-column line in a debug build) and are no longer attached once the terminal changes (ADR 0013)"
+    },
+    "Buffer.write": {
+      "status": "differs",
+      "reason": "writes through libghostty-vt's parser; control characters are dropped (xterm stores them as glyphs)"
+    },
+    "Buffer.writeChar": {
+      "status": "differs",
+      "reason": "writes through libghostty-vt's parser; control characters are dropped (xterm stores them as glyphs)"
+    },
+    "Buffer.backspace": {
+      "status": "differs",
+      "reason": "BS: does not move back onto a soft-wrapped previous line (xterm does)"
+    },
+    "Buffer.cursorGoForward": {
+      "status": "differs",
+      "reason": "CUF 1: stops at the last column (xterm can enter the pending-wrap state)"
+    },
+    "Buffer.moveCursorY": {
+      "status": "differs",
+      "reason": "CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only)"
+    },
+    "Buffer.moveCursor": {
+      "status": "differs",
+      "reason": "CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only)"
+    },
+    "Buffer.setVerticalMargins": {
+      "status": "differs",
+      "reason": "writes DECSTBM and moves the cursor back; libghostty-vt ignores a one-line region (top == bottom)"
+    },
+    "Buffer.isInVerticalMargin": {
+      "status": "differs",
+      "reason": "always true: libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits)"
+    },
+    "Buffer.clear": {
+      "status": "differs",
+      "reason": "writes ED 2 and ED 3: the erased cells keep the current background colour; the cursor stays and anchors are detached, as in xterm"
+    },
+    "Buffer.resize": {
+      "status": "wont",
+      "reason": "one screen cannot be resized alone in libghostty-vt; Terminal.resize resizes both"
+    },
+    "Buffer.createAnchor": {
+      "status": "differs",
+      "reason": "returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed"
+    },
+    "Buffer.createAnchorFromOffset": {
+      "status": "differs",
+      "reason": "returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed"
+    },
+    "Buffer.createAnchorFromCursor": {
+      "status": "differs",
+      "reason": "returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed"
+    },
+    "BufferLine.createAnchor": {
+      "status": "differs",
+      "reason": "returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed"
+    },
+    "CellAnchor": {
+      "status": "differs",
+      "reason": "an anchor made on a terminal's line is tracked by libghostty-vt: it follows scrolling and reflow, but not lines moved by IL, DL or scroll-region scrolling, and line returns a fresh snapshot; it holds native memory until disposed (ADR 0013)"
+    },
+    "BufferLine": {
+      "status": "differs",
+      "reason": "a line read from a terminal is a snapshot: its setters change the snapshot only; a grapheme cluster keeps its first code point; every underline style reads as underline and overline is dropped (ADR 0013)"
+    },
+    "Terminal.scrollUp": {
+      "status": "differs",
+      "reason": "SU: on the main screen with a full-screen scroll region the lines scrolled off go to the scrollback (libghostty-vt); xterm drops them"
+    },
+    "Buffer.scrollUp": {
+      "status": "differs",
+      "reason": "SU: on the main screen with a full-screen scroll region the lines scrolled off go to the scrollback (libghostty-vt); xterm drops them"
     }
   }
 }

@@ -19,14 +19,14 @@ Symbols and members per library (a symbol counts once, plus one per member).
 
 | Library | ✅ | ⚠️ | ❌ | 🚫 | Total |
 |---|---:|---:|---:|---:|---:|
-| `core.dart` | 505 | 3 | 291 | 108 | 907 |
+| `core.dart` | 747 | 51 | 0 | 109 | 907 |
 | `ui.dart` | 0 | 0 | 133 | 1 | 134 |
 | `zmodem.dart` | 0 | 0 | 35 | 0 | 35 |
 | `suggestion.dart` | 0 | 0 | 26 | 0 | 26 |
 | `utils.dart` | 0 | 0 | 0 | 25 | 25 |
-| **All** | **505** | **3** | **485** | **134** | **1127** |
+| **All** | **747** | **51** | **194** | **135** | **1127** |
 
-Additions beyond xterm: 0.
+Additions beyond xterm: 3.
 
 ## `core.dart`
 
@@ -41,111 +41,111 @@ class, `src/core/input/handler.dart`. ✅ same.
 
 ### `Buffer`
 
-class, `src/core/buffer/buffer.dart`. ❌ missing: planned.
+class, `src/core/buffer/buffer.dart`. ⚠️ differs: a view of a libghostty-vt screen: lines are read on demand; the mutators write the equivalent escape sequence (active buffer only, StateError otherwise or while the output stopped inside a sequence); a Buffer created for another TerminalState holds blank lines (ADR 0013).
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `Buffer()` | constructor | ❌ | planned |
-| `absoluteCursorY` | property | ❌ | planned |
-| `absoluteMarginBottom` | property | ❌ | planned; will differ: libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
-| `absoluteMarginTop` | property | ❌ | planned; will differ: libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
-| `backspace()` | method | ❌ | planned |
+| `Buffer()` | constructor | ✅ |  |
+| `absoluteCursorY` | property | ✅ |  |
+| `absoluteMarginBottom` | property | ⚠️ | libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
+| `absoluteMarginTop` | property | ⚠️ | libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
+| `backspace()` | method | ⚠️ | BS: does not move back onto a soft-wrapped previous line (xterm does) |
 | `charset` | property | 🚫 | charset state lives in libghostty-vt; xterm's Charset type is not exported either |
-| `clear()` | method | ❌ | planned |
-| `clearScrollback()` | method | ❌ | planned |
-| `createAnchor()` | method | ❌ | planned |
-| `createAnchorFromCursor()` | method | ❌ | planned |
-| `createAnchorFromOffset()` | method | ❌ | planned |
-| `currentLine` | property | ❌ | planned |
-| `cursorGoForward()` | method | ❌ | planned |
-| `cursorX` | property | ❌ | planned |
-| `cursorY` | property | ❌ | planned |
-| `defaultWordSeparators` | static property | ❌ | planned |
-| `deleteChars()` | method | ❌ | planned |
-| `deleteLines()` | method | ❌ | planned |
-| `eraseChars()` | method | ❌ | planned |
-| `eraseDisplay()` | method | ❌ | planned |
-| `eraseDisplayFromCursor()` | method | ❌ | planned |
-| `eraseDisplayToCursor()` | method | ❌ | planned |
-| `eraseLine()` | method | ❌ | planned |
-| `eraseLineFromCursor()` | method | ❌ | planned |
-| `eraseLineToCursor()` | method | ❌ | planned |
-| `getText()` | method | ❌ | planned |
-| `getWordBoundary()` | method | ❌ | planned |
-| `height` | property | ❌ | planned |
-| `index()` | method | ❌ | planned |
-| `insertBlankChars()` | method | ❌ | planned |
-| `insertLines()` | method | ❌ | planned |
-| `isAltBuffer` | property | ❌ | planned |
-| `isInVerticalMargin` | property | ❌ | planned |
-| `lineFeed()` | method | ❌ | planned |
-| `lines` | property | ❌ | planned |
-| `marginBottom` | property | ❌ | planned; will differ: libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
-| `marginTop` | property | ❌ | planned; will differ: libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
-| `maxLines` | property | ❌ | planned |
-| `moveCursor()` | method | ❌ | planned |
-| `moveCursorX()` | method | ❌ | planned |
-| `moveCursorY()` | method | ❌ | planned |
-| `resetVerticalMargins()` | method | ❌ | planned |
-| `resize()` | method | ❌ | planned |
-| `restoreCursor()` | method | ❌ | planned |
-| `reverseIndex()` | method | ❌ | planned |
-| `saveCursor()` | method | ❌ | planned |
-| `scrollBack` | property | ❌ | planned |
-| `scrollDown()` | method | ❌ | planned |
-| `scrollUp()` | method | ❌ | planned |
-| `setCursor()` | method | ❌ | planned |
-| `setCursorX()` | method | ❌ | planned |
-| `setCursorY()` | method | ❌ | planned |
-| `setVerticalMargins()` | method | ❌ | planned |
-| `terminal` | property | ❌ | planned |
-| `toString()` | method | ❌ | planned |
-| `viewHeight` | property | ❌ | planned |
-| `viewWidth` | property | ❌ | planned |
-| `wordSeparators` | property | ❌ | planned |
-| `write()` | method | ❌ | planned |
-| `writeChar()` | method | ❌ | planned |
+| `clear()` | method | ⚠️ | writes ED 2 and ED 3: the erased cells keep the current background colour; the cursor stays and anchors are detached, as in xterm |
+| `clearScrollback()` | method | ✅ |  |
+| `createAnchor()` | method | ⚠️ | returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed |
+| `createAnchorFromCursor()` | method | ⚠️ | returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed |
+| `createAnchorFromOffset()` | method | ⚠️ | returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed |
+| `currentLine` | property | ✅ |  |
+| `cursorGoForward()` | method | ⚠️ | CUF 1: stops at the last column (xterm can enter the pending-wrap state) |
+| `cursorX` | property | ✅ |  |
+| `cursorY` | property | ✅ |  |
+| `defaultWordSeparators` | static property | ✅ |  |
+| `deleteChars()` | method | ✅ |  |
+| `deleteLines()` | method | ✅ |  |
+| `eraseChars()` | method | ✅ |  |
+| `eraseDisplay()` | method | ✅ |  |
+| `eraseDisplayFromCursor()` | method | ✅ |  |
+| `eraseDisplayToCursor()` | method | ✅ |  |
+| `eraseLine()` | method | ✅ |  |
+| `eraseLineFromCursor()` | method | ✅ |  |
+| `eraseLineToCursor()` | method | ✅ |  |
+| `getText()` | method | ✅ |  |
+| `getWordBoundary()` | method | ✅ |  |
+| `height` | property | ✅ |  |
+| `index()` | method | ✅ |  |
+| `insertBlankChars()` | method | ✅ |  |
+| `insertLines()` | method | ✅ |  |
+| `isAltBuffer` | property | ✅ |  |
+| `isInVerticalMargin` | property | ⚠️ | always true: libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
+| `lineFeed()` | method | ✅ |  |
+| `lines` | property | ⚠️ | a read-only view: lines are snapshots made on first access (one native read per cell, about 50 us per 80-column line in a debug build) and are no longer attached once the terminal changes (ADR 0013) |
+| `marginBottom` | property | ⚠️ | libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
+| `marginTop` | property | ⚠️ | libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits) |
+| `maxLines` | property | ✅ |  |
+| `moveCursor()` | method | ⚠️ | CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only) |
+| `moveCursorX()` | method | ✅ |  |
+| `moveCursorY()` | method | ⚠️ | CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only) |
+| `resetVerticalMargins()` | method | ✅ |  |
+| `resize()` | method | 🚫 | one screen cannot be resized alone in libghostty-vt; Terminal.resize resizes both |
+| `restoreCursor()` | method | ✅ |  |
+| `reverseIndex()` | method | ✅ |  |
+| `saveCursor()` | method | ✅ |  |
+| `scrollBack` | property | ✅ |  |
+| `scrollDown()` | method | ✅ |  |
+| `scrollUp()` | method | ⚠️ | SU: on the main screen with a full-screen scroll region the lines scrolled off go to the scrollback (libghostty-vt); xterm drops them |
+| `setCursor()` | method | ✅ |  |
+| `setCursorX()` | method | ✅ |  |
+| `setCursorY()` | method | ✅ |  |
+| `setVerticalMargins()` | method | ⚠️ | writes DECSTBM and moves the cursor back; libghostty-vt ignores a one-line region (top == bottom) |
+| `terminal` | property | ✅ |  |
+| `toString()` | method | ✅ |  |
+| `viewHeight` | property | ✅ |  |
+| `viewWidth` | property | ✅ |  |
+| `wordSeparators` | property | ✅ |  |
+| `write()` | method | ⚠️ | writes through libghostty-vt's parser; control characters are dropped (xterm stores them as glyphs) |
+| `writeChar()` | method | ⚠️ | writes through libghostty-vt's parser; control characters are dropped (xterm stores them as glyphs) |
 
 ### `BufferLine`
 
-class, `src/core/buffer/line.dart`. ❌ missing: planned.
+class, `src/core/buffer/line.dart`. ⚠️ differs: a line read from a terminal is a snapshot: its setters change the snapshot only; a grapheme cluster keeps its first code point; every underline style reads as underline and overline is dropped (ADR 0013).
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `BufferLine()` | constructor | ❌ | planned |
-| `anchors` | property | ❌ | planned |
-| `attached` | property | ❌ | planned |
-| `copyFrom()` | method | ❌ | planned |
-| `createAnchor()` | method | ❌ | planned |
-| `createCellData()` | method | ❌ | planned |
-| `data` | property | ❌ | planned |
-| `dispose()` | method | ❌ | planned |
-| `eraseCell()` | method | ❌ | planned |
-| `eraseRange()` | method | ❌ | planned |
-| `getAttributes()` | method | ❌ | planned |
-| `getBackground()` | method | ❌ | planned |
-| `getCellData()` | method | ❌ | planned |
-| `getCodePoint()` | method | ❌ | planned |
-| `getContent()` | method | ❌ | planned |
-| `getForeground()` | method | ❌ | planned |
-| `getText()` | method | ❌ | planned |
-| `getTrimmedLength()` | method | ❌ | planned |
-| `getWidth()` | method | ❌ | planned |
-| `index` | property | ❌ | planned |
-| `insertCells()` | method | ❌ | planned |
-| `isWrapped` | property | ❌ | planned |
-| `length` | property | ❌ | planned |
-| `removeCells()` | method | ❌ | planned |
-| `resetCell()` | method | ❌ | planned |
-| `resize()` | method | ❌ | planned |
-| `setAttributes()` | method | ❌ | planned |
-| `setBackground()` | method | ❌ | planned |
-| `setCell()` | method | ❌ | planned |
-| `setCellData()` | method | ❌ | planned |
-| `setCodePoint()` | method | ❌ | planned |
-| `setContent()` | method | ❌ | planned |
-| `setForeground()` | method | ❌ | planned |
-| `toString()` | method | ❌ | planned |
+| `BufferLine()` | constructor | ✅ |  |
+| `anchors` | property | ✅ |  |
+| `attached` | property | ✅ |  |
+| `copyFrom()` | method | ✅ |  |
+| `createAnchor()` | method | ⚠️ | returns an anchor tracked by libghostty-vt (see CellAnchor); it holds native memory until disposed |
+| `createCellData()` | method | ✅ |  |
+| `data` | property | ✅ |  |
+| `dispose()` | method | ✅ |  |
+| `eraseCell()` | method | ✅ |  |
+| `eraseRange()` | method | ✅ |  |
+| `getAttributes()` | method | ✅ |  |
+| `getBackground()` | method | ✅ |  |
+| `getCellData()` | method | ✅ |  |
+| `getCodePoint()` | method | ✅ |  |
+| `getContent()` | method | ✅ |  |
+| `getForeground()` | method | ✅ |  |
+| `getText()` | method | ✅ |  |
+| `getTrimmedLength()` | method | ✅ |  |
+| `getWidth()` | method | ✅ |  |
+| `index` | property | ✅ |  |
+| `insertCells()` | method | ✅ |  |
+| `isWrapped` | property | ✅ |  |
+| `length` | property | ✅ |  |
+| `removeCells()` | method | ✅ |  |
+| `resetCell()` | method | ✅ |  |
+| `resize()` | method | ✅ |  |
+| `setAttributes()` | method | ✅ |  |
+| `setBackground()` | method | ✅ |  |
+| `setCell()` | method | ✅ |  |
+| `setCellData()` | method | ✅ |  |
+| `setCodePoint()` | method | ✅ |  |
+| `setContent()` | method | ✅ |  |
+| `setForeground()` | method | ✅ |  |
+| `toString()` | method | ✅ |  |
 
 ### `BufferRange`
 
@@ -170,45 +170,45 @@ class, `src/core/buffer/range.dart`. ✅ same.
 
 ### `BufferRangeBlock`
 
-class, `src/core/buffer/range_block.dart`. ❌ missing: planned.
+class, `src/core/buffer/range_block.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `BufferRangeBlock()` | constructor | ❌ | planned |
-| `BufferRangeBlock.collapsed()` | constructor | ❌ | planned |
-| `==()` | operator | ❌ | planned |
-| `begin` | property | ❌ | planned |
-| `contains()` | method | ❌ | planned |
-| `end` | property | ❌ | planned |
-| `extend()` | method | ❌ | planned |
-| `hashCode` | property | ❌ | planned |
-| `isCollapsed` | property | ❌ | planned |
-| `isNormalized` | property | ❌ | planned |
-| `merge()` | method | ❌ | planned |
-| `normalized` | property | ❌ | planned |
-| `toSegments()` | method | ❌ | planned |
-| `toString()` | method | ❌ | planned |
+| `BufferRangeBlock()` | constructor | ✅ |  |
+| `BufferRangeBlock.collapsed()` | constructor | ✅ |  |
+| `==()` | operator | ✅ |  |
+| `begin` | property | ✅ |  |
+| `contains()` | method | ✅ |  |
+| `end` | property | ✅ |  |
+| `extend()` | method | ✅ |  |
+| `hashCode` | property | ✅ |  |
+| `isCollapsed` | property | ✅ |  |
+| `isNormalized` | property | ✅ |  |
+| `merge()` | method | ✅ |  |
+| `normalized` | property | ✅ |  |
+| `toSegments()` | method | ✅ |  |
+| `toString()` | method | ✅ |  |
 
 ### `BufferRangeLine`
 
-class, `src/core/buffer/range_line.dart`. ❌ missing: planned.
+class, `src/core/buffer/range_line.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `BufferRangeLine()` | constructor | ❌ | planned |
-| `BufferRangeLine.collapsed()` | constructor | ❌ | planned |
-| `==()` | operator | ❌ | planned |
-| `begin` | property | ❌ | planned |
-| `contains()` | method | ❌ | planned |
-| `end` | property | ❌ | planned |
-| `extend()` | method | ❌ | planned |
-| `hashCode` | property | ❌ | planned |
-| `isCollapsed` | property | ❌ | planned |
-| `isNormalized` | property | ❌ | planned |
-| `merge()` | method | ❌ | planned |
-| `normalized` | property | ❌ | planned |
-| `toSegments()` | method | ❌ | planned |
-| `toString()` | method | ❌ | planned |
+| `BufferRangeLine()` | constructor | ✅ |  |
+| `BufferRangeLine.collapsed()` | constructor | ✅ |  |
+| `==()` | operator | ✅ |  |
+| `begin` | property | ✅ |  |
+| `contains()` | method | ✅ |  |
+| `end` | property | ✅ |  |
+| `extend()` | method | ✅ |  |
+| `hashCode` | property | ✅ |  |
+| `isCollapsed` | property | ✅ |  |
+| `isNormalized` | property | ✅ |  |
+| `merge()` | method | ✅ |  |
+| `normalized` | property | ✅ |  |
+| `toSegments()` | method | ✅ |  |
+| `toString()` | method | ✅ |  |
 
 ### `BufferSegment`
 
@@ -246,20 +246,20 @@ class, `src/core/mouse/handler.dart`. ✅ same.
 
 ### `CellAnchor`
 
-class, `src/core/buffer/line.dart`. ❌ missing: planned.
+class, `src/core/buffer/line.dart`. ⚠️ differs: an anchor made on a terminal's line is tracked by libghostty-vt: it follows scrolling and reflow, but not lines moved by IL, DL or scroll-region scrolling, and line returns a fresh snapshot; it holds native memory until disposed (ADR 0013).
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `CellAnchor()` | constructor | ❌ | planned |
-| `attached` | property | ❌ | planned |
-| `dispose()` | method | ❌ | planned |
-| `line` | property | ❌ | planned |
-| `offset` | property | ❌ | planned |
-| `reparent()` | method | ❌ | planned |
-| `reposition()` | method | ❌ | planned |
-| `toString()` | method | ❌ | planned |
-| `x` | property | ❌ | planned |
-| `y` | property | ❌ | planned |
+| `CellAnchor()` | constructor | ✅ |  |
+| `attached` | property | ✅ |  |
+| `dispose()` | method | ✅ |  |
+| `line` | property | ✅ |  |
+| `offset` | property | ✅ |  |
+| `reparent()` | method | ✅ |  |
+| `reposition()` | method | ✅ |  |
+| `toString()` | method | ✅ |  |
+| `x` | property | ✅ |  |
+| `y` | property | ✅ |  |
 
 ### `CellAttr`
 
@@ -319,18 +319,18 @@ class, `src/core/cell.dart`. ✅ same.
 
 ### `CellFlags`
 
-class, `src/core/buffer/cell_flags.dart`. ❌ missing: planned.
+class, `src/core/buffer/cell_flags.dart`. ✅ same.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `CellFlags()` | constructor | ❌ | planned |
-| `blink` | static property | ❌ | planned |
-| `bold` | static property | ❌ | planned |
-| `faint` | static property | ❌ | planned |
-| `inverse` | static property | ❌ | planned |
-| `invisible` | static property | ❌ | planned |
-| `italic` | static property | ❌ | planned |
-| `underline` | static property | ❌ | planned |
+| `CellFlags()` | constructor | ✅ |  |
+| `blink` | static property | ✅ |  |
+| `bold` | static property | ✅ |  |
+| `faint` | static property | ✅ |  |
+| `inverse` | static property | ✅ |  |
+| `invisible` | static property | ✅ |  |
+| `italic` | static property | ✅ |  |
+| `underline` | static property | ✅ |  |
 
 ### `CellOffset`
 
@@ -605,155 +605,155 @@ class, `src/core/color.dart`. ✅ same.
 
 ### `Terminal`
 
-class, `src/terminal.dart`. ❌ missing: planned; will differ: not an EscapeHandler: its handler methods write the equivalent sequence while the parser is in its ground state and throw StateError otherwise (ADR 0013).
+class, `src/terminal.dart`. ⚠️ differs: not an EscapeHandler: its handler methods write the equivalent sequence while the parser is in its ground state and throw StateError otherwise (ADR 0013); is not a `EscapeHandler`.
 
 | Member | Kind | Status | Notes |
 |---|---|---|---|
-| `Terminal()` | constructor | ❌ | planned |
-| `addListener()` | method | ❌ | planned |
-| `altBuffer` | property | ❌ | planned |
-| `altBufferMouseScrollMode` | property | ❌ | planned |
-| `appKeypadMode` | property | ❌ | planned |
-| `autoWrapMode` | property | ❌ | planned |
-| `backspaceReturn()` | method | ❌ | planned |
-| `bell()` | method | ❌ | planned |
-| `bracketedPasteMode` | property | ❌ | planned |
-| `buffer` | property | ❌ | planned |
-| `carriageReturn()` | method | ❌ | planned |
-| `charInput()` | method | ❌ | planned |
-| `clearAllTabStops()` | method | ❌ | planned |
-| `clearAltBuffer()` | method | ❌ | planned |
-| `clearTabStopUnderCursor()` | method | ❌ | planned |
-| `cursor` | property | ❌ | planned |
-| `cursorBlinkMode` | property | ❌ | planned |
-| `cursorKeysMode` | property | ❌ | planned |
-| `cursorNextLine()` | method | ❌ | planned |
-| `cursorPrecedingLine()` | method | ❌ | planned |
-| `cursorVisibleMode` | property | ❌ | planned |
-| `deleteChars()` | method | ❌ | planned |
-| `deleteLines()` | method | ❌ | planned |
-| `designateCharset()` | method | ❌ | planned |
-| `eraseChars()` | method | ❌ | planned |
-| `eraseDisplay()` | method | ❌ | planned |
-| `eraseDisplayAbove()` | method | ❌ | planned |
-| `eraseDisplayBelow()` | method | ❌ | planned |
-| `eraseLine()` | method | ❌ | planned |
-| `eraseLineLeft()` | method | ❌ | planned |
-| `eraseLineRight()` | method | ❌ | planned |
-| `eraseScrollbackOnly()` | method | ❌ | planned |
-| `index()` | method | ❌ | planned |
-| `inputHandler` | property | ❌ | planned |
-| `insertBlankChars()` | method | ❌ | planned |
-| `insertLines()` | method | ❌ | planned |
-| `insertMode` | property | ❌ | planned |
-| `isUsingAltBuffer` | property | ❌ | planned |
-| `keyInput()` | method | ❌ | planned |
-| `lineFeed()` | method | ❌ | planned |
-| `lineFeedMode` | property | ❌ | planned |
-| `lines` | property | ❌ | planned |
-| `listeners` | property | ❌ | planned |
-| `mainBuffer` | property | ❌ | planned; will differ: cannot be read while the alternate screen is active: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits) |
-| `maxLines` | property | ❌ | planned |
-| `mouseHandler` | property | ❌ | planned |
-| `mouseInput()` | method | ❌ | planned |
-| `mouseMode` | property | ❌ | planned |
-| `mouseReportMode` | property | ❌ | planned |
-| `moveCursorX()` | method | ❌ | planned |
-| `moveCursorY()` | method | ❌ | planned |
-| `nextLine()` | method | ❌ | planned |
-| `notifyListeners()` | method | ❌ | planned |
-| `onBell` | property | ❌ | planned |
-| `onIconChange` | property | ❌ | planned; will differ: never called for OSC 1 (icon name): libghostty-vt 1.0.0 does not report it (ADR 0013 known limits) |
-| `onOutput` | property | ❌ | planned |
-| `onPrivateOSC` | property | ❌ | planned; will differ: only sees OSC sequences that libghostty-vt does not implement itself (ADR 0013 known limits) |
-| `onResize` | property | ❌ | planned; will differ: the pixel arguments are xterm's cell size in logical pixels, computed from the view's device pixel ratio; 0 without a TerminalView (ADR 0013) |
-| `onTitleChange` | property | ❌ | planned |
-| `originMode` | property | ❌ | planned |
-| `paste()` | method | ❌ | planned |
-| `platform` | property | ❌ | planned |
-| `reflowEnabled` | property | ❌ | planned; will differ: has no effect: libghostty-vt 1.0.0 always reflows on resize (ADR 0013 known limits) |
-| `removeListener()` | method | ❌ | planned |
-| `repeatPreviousCharacter()` | method | ❌ | planned |
-| `reportFocusMode` | property | ❌ | planned |
-| `resetBackground()` | method | ❌ | planned |
-| `resetCursorStyle()` | method | ❌ | planned |
-| `resetForeground()` | method | ❌ | planned |
-| `resize()` | method | ❌ | planned |
-| `restoreCursor()` | method | ❌ | planned |
-| `reverseDisplayMode` | property | ❌ | planned |
-| `reverseIndex()` | method | ❌ | planned |
-| `saveCursor()` | method | ❌ | planned |
-| `scrollDown()` | method | ❌ | planned |
-| `scrollUp()` | method | ❌ | planned |
-| `sendCursorPosition()` | method | ❌ | planned |
-| `sendOperatingStatus()` | method | ❌ | planned |
-| `sendPrimaryDeviceAttributes()` | method | ❌ | planned |
-| `sendSecondaryDeviceAttributes()` | method | ❌ | planned |
-| `sendSize()` | method | ❌ | planned |
-| `sendTertiaryDeviceAttributes()` | method | ❌ | planned |
-| `setAltBufferMouseScrollMode()` | method | ❌ | planned |
-| `setAppKeypadMode()` | method | ❌ | planned |
-| `setAutoWrapMode()` | method | ❌ | planned |
-| `setBackgroundColor16()` | method | ❌ | planned |
-| `setBackgroundColor256()` | method | ❌ | planned |
-| `setBackgroundColorRgb()` | method | ❌ | planned |
-| `setBracketedPasteMode()` | method | ❌ | planned |
-| `setColumnMode()` | method | ❌ | planned |
-| `setCursor()` | method | ❌ | planned |
-| `setCursorBlink()` | method | ❌ | planned |
-| `setCursorBlinkMode()` | method | ❌ | planned |
-| `setCursorBold()` | method | ❌ | planned |
-| `setCursorFaint()` | method | ❌ | planned |
-| `setCursorInverse()` | method | ❌ | planned |
-| `setCursorInvisible()` | method | ❌ | planned |
-| `setCursorItalic()` | method | ❌ | planned |
-| `setCursorKeysMode()` | method | ❌ | planned |
-| `setCursorStrikethrough()` | method | ❌ | planned |
-| `setCursorUnderline()` | method | ❌ | planned |
-| `setCursorVisibleMode()` | method | ❌ | planned |
-| `setCursorX()` | method | ❌ | planned |
-| `setCursorY()` | method | ❌ | planned |
-| `setForegroundColor16()` | method | ❌ | planned |
-| `setForegroundColor256()` | method | ❌ | planned |
-| `setForegroundColorRgb()` | method | ❌ | planned |
-| `setIconName()` | method | ❌ | planned |
-| `setInsertMode()` | method | ❌ | planned |
-| `setLineFeedMode()` | method | ❌ | planned |
-| `setMargins()` | method | ❌ | planned |
-| `setMouseMode()` | method | ❌ | planned |
-| `setMouseReportMode()` | method | ❌ | planned |
-| `setOriginMode()` | method | ❌ | planned |
-| `setReportFocusMode()` | method | ❌ | planned |
-| `setReverseDisplayMode()` | method | ❌ | planned |
-| `setTapStop()` | method | ❌ | planned |
-| `setTitle()` | method | ❌ | planned |
-| `setUnknownDecMode()` | method | ❌ | planned |
-| `setUnknownMode()` | method | ❌ | planned |
-| `shiftIn()` | method | ❌ | planned |
-| `shiftOut()` | method | ❌ | planned |
-| `tab()` | method | ❌ | planned |
-| `textInput()` | method | ❌ | planned |
-| `toString()` | method | ❌ | planned |
-| `unknownCSI()` | method | ❌ | planned; will differ: no-op: there is no sequence to emulate it with (ADR 0013) |
-| `unknownOSC()` | method | ❌ | planned |
-| `unknownSBC()` | method | ❌ | planned |
-| `unkownEscape()` | method | ❌ | planned |
-| `unsetCursorBlink()` | method | ❌ | planned |
-| `unsetCursorBold()` | method | ❌ | planned |
-| `unsetCursorFaint()` | method | ❌ | planned |
-| `unsetCursorInverse()` | method | ❌ | planned |
-| `unsetCursorInvisible()` | method | ❌ | planned |
-| `unsetCursorItalic()` | method | ❌ | planned |
-| `unsetCursorStrikethrough()` | method | ❌ | planned |
-| `unsetCursorUnderline()` | method | ❌ | planned |
-| `unsupportedStyle()` | method | ❌ | planned; will differ: no-op: there is no sequence to emulate it with (ADR 0013) |
-| `useAltBuffer()` | method | ❌ | planned |
-| `useMainBuffer()` | method | ❌ | planned |
-| `viewHeight` | property | ❌ | planned |
-| `viewWidth` | property | ❌ | planned |
-| `wordSeparators` | property | ❌ | planned |
-| `write()` | method | ❌ | planned |
-| `writeChar()` | method | ❌ | planned |
+| `Terminal()` | constructor | ✅ | adds `onOutputBytes` |
+| `addListener()` | method | ✅ |  |
+| `altBuffer` | property | ⚠️ | while the main screen is active it reads as blank lines (cursor at 0, 0) and its mutators throw StateError: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits) |
+| `altBufferMouseScrollMode` | property | ✅ |  |
+| `appKeypadMode` | property | ✅ |  |
+| `autoWrapMode` | property | ✅ |  |
+| `backspaceReturn()` | method | ✅ |  |
+| `bell()` | method | ✅ |  |
+| `bracketedPasteMode` | property | ✅ |  |
+| `buffer` | property | ✅ |  |
+| `carriageReturn()` | method | ✅ |  |
+| `charInput()` | method | ✅ |  |
+| `clearAllTabStops()` | method | ✅ |  |
+| `clearAltBuffer()` | method | ✅ |  |
+| `clearTabStopUnderCursor()` | method | ✅ |  |
+| `cursor` | property | ⚠️ | a new copy of the SGR pen on every read: changing it does not change the terminal; palette colours 0-15 read as named colours (libghostty-vt does not tell SGR 31 from SGR 38;5;1) |
+| `cursorBlinkMode` | property | ✅ |  |
+| `cursorKeysMode` | property | ✅ |  |
+| `cursorNextLine()` | method | ⚠️ | CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only) |
+| `cursorPrecedingLine()` | method | ⚠️ | CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only) |
+| `cursorVisibleMode` | property | ✅ |  |
+| `deleteChars()` | method | ✅ |  |
+| `deleteLines()` | method | ✅ |  |
+| `designateCharset()` | method | ✅ |  |
+| `eraseChars()` | method | ✅ |  |
+| `eraseDisplay()` | method | ✅ |  |
+| `eraseDisplayAbove()` | method | ✅ |  |
+| `eraseDisplayBelow()` | method | ✅ |  |
+| `eraseLine()` | method | ✅ |  |
+| `eraseLineLeft()` | method | ✅ |  |
+| `eraseLineRight()` | method | ✅ |  |
+| `eraseScrollbackOnly()` | method | ✅ |  |
+| `index()` | method | ✅ |  |
+| `inputHandler` | property | ✅ |  |
+| `insertBlankChars()` | method | ✅ |  |
+| `insertLines()` | method | ✅ |  |
+| `insertMode` | property | ✅ |  |
+| `isUsingAltBuffer` | property | ✅ |  |
+| `keyInput()` | method | ✅ |  |
+| `lineFeed()` | method | ✅ |  |
+| `lineFeedMode` | property | ✅ |  |
+| `lines` | property | ⚠️ | a read-only view: lines are snapshots made on first access (one native read per cell, about 50 us per 80-column line in a debug build) and are no longer attached once the terminal changes (ADR 0013) |
+| `listeners` | property | ✅ |  |
+| `mainBuffer` | property | ⚠️ | while the alternate screen is active it reads as blank lines (cursor at 0, 0) and its mutators throw StateError: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits) |
+| `maxLines` | property | ⚠️ | approximate: libghostty-vt drops scrollback in whole pages, so more lines are kept (about 300 at 80 columns with maxLines: 30); there is no byte limit |
+| `mouseHandler` | property | ✅ |  |
+| `mouseInput()` | method | ✅ |  |
+| `mouseMode` | property | ✅ |  |
+| `mouseReportMode` | property | ✅ |  |
+| `moveCursorX()` | method | ✅ |  |
+| `moveCursorY()` | method | ⚠️ | CUU/CUD stop at the scroll region's margins (xterm clamps to the screen only) |
+| `nextLine()` | method | ✅ |  |
+| `notifyListeners()` | method | ✅ |  |
+| `onBell` | property | ✅ |  |
+| `onIconChange` | property | ⚠️ | only setIconName calls it: libghostty-vt 1.0.0 does not report the icon name of OSC 0 and OSC 1 (ADR 0013 known limits) |
+| `onOutput` | property | ⚠️ | bytes from libghostty-vt (keys and mouse reports typed into a TerminalView, replies to queries) are decoded as UTF-8, or Latin-1 for a chunk that is not valid UTF-8; onOutputBytes (an addition) has the exact bytes (ADR 0013) |
+| `onPrivateOSC` | property | ⚠️ | only sees OSC sequences that libghostty-vt does not implement itself (ADR 0013 known limits) |
+| `onResize` | property | ⚠️ | Terminal.resize passes its own arguments, as in xterm; when a TerminalView resizes the terminal, the pixel arguments are the cell size in logical pixels from the view's device pixel ratio, and it is called only when the size changed (ADR 0013) |
+| `onTitleChange` | property | ✅ |  |
+| `originMode` | property | ✅ |  |
+| `paste()` | method | ✅ |  |
+| `platform` | property | ✅ |  |
+| `reflowEnabled` | property | ⚠️ | applies to Terminal.resize only (a TerminalView's resizes always reflow), and without reflow libghostty-vt drops the cells beyond a narrower width instead of keeping them for a later, wider resize (ADR 0013 known limits) |
+| `removeListener()` | method | ✅ |  |
+| `repeatPreviousCharacter()` | method | ✅ |  |
+| `reportFocusMode` | property | ✅ |  |
+| `resetBackground()` | method | ✅ |  |
+| `resetCursorStyle()` | method | ✅ |  |
+| `resetForeground()` | method | ✅ |  |
+| `resize()` | method | ✅ |  |
+| `restoreCursor()` | method | ✅ |  |
+| `reverseDisplayMode` | property | ✅ |  |
+| `reverseIndex()` | method | ✅ |  |
+| `saveCursor()` | method | ✅ |  |
+| `scrollDown()` | method | ✅ |  |
+| `scrollUp()` | method | ⚠️ | SU: on the main screen with a full-screen scroll region the lines scrolled off go to the scrollback (libghostty-vt); xterm drops them |
+| `sendCursorPosition()` | method | ✅ |  |
+| `sendOperatingStatus()` | method | ✅ |  |
+| `sendPrimaryDeviceAttributes()` | method | ✅ |  |
+| `sendSecondaryDeviceAttributes()` | method | ✅ |  |
+| `sendSize()` | method | ✅ |  |
+| `sendTertiaryDeviceAttributes()` | method | ✅ |  |
+| `setAltBufferMouseScrollMode()` | method | ✅ |  |
+| `setAppKeypadMode()` | method | ✅ |  |
+| `setAutoWrapMode()` | method | ✅ |  |
+| `setBackgroundColor16()` | method | ✅ |  |
+| `setBackgroundColor256()` | method | ✅ |  |
+| `setBackgroundColorRgb()` | method | ✅ |  |
+| `setBracketedPasteMode()` | method | ✅ |  |
+| `setColumnMode()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `setCursor()` | method | ✅ |  |
+| `setCursorBlink()` | method | ✅ |  |
+| `setCursorBlinkMode()` | method | ✅ |  |
+| `setCursorBold()` | method | ✅ |  |
+| `setCursorFaint()` | method | ✅ |  |
+| `setCursorInverse()` | method | ✅ |  |
+| `setCursorInvisible()` | method | ✅ |  |
+| `setCursorItalic()` | method | ✅ |  |
+| `setCursorKeysMode()` | method | ✅ |  |
+| `setCursorStrikethrough()` | method | ✅ |  |
+| `setCursorUnderline()` | method | ✅ |  |
+| `setCursorVisibleMode()` | method | ✅ |  |
+| `setCursorX()` | method | ✅ |  |
+| `setCursorY()` | method | ✅ |  |
+| `setForegroundColor16()` | method | ✅ |  |
+| `setForegroundColor256()` | method | ✅ |  |
+| `setForegroundColorRgb()` | method | ✅ |  |
+| `setIconName()` | method | ✅ |  |
+| `setInsertMode()` | method | ✅ |  |
+| `setLineFeedMode()` | method | ✅ |  |
+| `setMargins()` | method | ⚠️ | writes DECSTBM and moves the cursor back; libghostty-vt ignores a one-line region (top == bottom) |
+| `setMouseMode()` | method | ✅ |  |
+| `setMouseReportMode()` | method | ✅ |  |
+| `setOriginMode()` | method | ✅ |  |
+| `setReportFocusMode()` | method | ✅ |  |
+| `setReverseDisplayMode()` | method | ✅ |  |
+| `setTapStop()` | method | ✅ |  |
+| `setTitle()` | method | ⚠️ | writes OSC 2, which calls onTitleChange; control characters in the title are dropped |
+| `setUnknownDecMode()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `setUnknownMode()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `shiftIn()` | method | ✅ |  |
+| `shiftOut()` | method | ✅ |  |
+| `tab()` | method | ✅ |  |
+| `textInput()` | method | ✅ |  |
+| `toString()` | method | ✅ |  |
+| `unknownCSI()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `unknownOSC()` | method | ✅ |  |
+| `unknownSBC()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `unkownEscape()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `unsetCursorBlink()` | method | ✅ |  |
+| `unsetCursorBold()` | method | ✅ |  |
+| `unsetCursorFaint()` | method | ✅ |  |
+| `unsetCursorInverse()` | method | ✅ |  |
+| `unsetCursorInvisible()` | method | ✅ |  |
+| `unsetCursorItalic()` | method | ✅ |  |
+| `unsetCursorStrikethrough()` | method | ✅ |  |
+| `unsetCursorUnderline()` | method | ✅ |  |
+| `unsupportedStyle()` | method | ⚠️ | no-op, as in xterm, and never called by parsing: libghostty-vt parses (ADR 0013) |
+| `useAltBuffer()` | method | ✅ |  |
+| `useMainBuffer()` | method | ✅ |  |
+| `viewHeight` | property | ✅ |  |
+| `viewWidth` | property | ✅ |  |
+| `wordSeparators` | property | ✅ |  |
+| `write()` | method | ⚠️ | events the output raises (onBell, onTitleChange, onOutput replies, onPrivateOSC, onResize) are delivered in order after the chunk is parsed, not during parsing; replies to queries are libghostty-vt's (ADR 0013) |
+| `writeChar()` | method | ⚠️ | writes the character through libghostty-vt's parser; a control character is dropped (xterm stores it as a glyph) |
 
 ### `TerminalInputHandler`
 
@@ -1285,4 +1285,8 @@ class, `src/utils/debugger_view.dart`. 🚫 won't support: the debugger is built
 
 ## Additions beyond xterm
 
-None yet.
+| Member | Kind |
+|---|---|
+| `Terminal.dispose` | method |
+| `Terminal.onOutputBytes` | property |
+| `Terminal.writeBytes` | method |
