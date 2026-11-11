@@ -90,6 +90,12 @@ class _TerminalPageState extends State<TerminalPage> {
   view shown under a scale transform, or to rule the atlas out while
   debugging a rendering difference). Wide characters, emoji, grapheme
   clusters and box drawing are paragraphs on both paths.
+- **Rendering caches are bounded per view** by `cacheBudget` (default
+  `VtTerminalView.defaultCacheBudget`, 16 MiB: cached row pictures, atlas
+  images and laid-out text together). Raise it only for an app that
+  switches between many full screens and wants them all redrawn from the
+  cache; lower it for many small views. Caches are released when the view
+  is hidden, detached or under memory pressure.
 
 ## Input behaviour (differs from package:xterm)
 

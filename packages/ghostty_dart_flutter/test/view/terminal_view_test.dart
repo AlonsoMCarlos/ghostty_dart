@@ -440,6 +440,29 @@ void main() {
   });
 
   group('theme and lifetime', () {
+    testWidgets('cacheBudget reaches the renderer and can change', (
+      tester,
+    ) async {
+      final h = await pumpTerminalView(tester);
+      expect(h.render.cacheBudget, VtTerminalView.defaultCacheBudget);
+      expect(VtTerminalView.defaultCacheBudget, 16 << 20);
+      h.controller.write('kept');
+      await tester.pump();
+      final recordings = h.render.debugRowRecordings;
+      await h.pumpView(
+        VtTerminalView(
+          key: h.viewKey,
+          controller: h.controller,
+          textStyle: viewStyle,
+          autofocus: true,
+          cacheBudget: 4 << 20,
+        ),
+      );
+      expect(h.render.cacheBudget, 4 << 20);
+      // A budget change keeps what fits: nothing is recorded again.
+      expect(h.render.debugRowRecordings, recordings);
+    });
+
     testWidgets('a theme change repaints with the new colours', (tester) async {
       final h = await pumpTerminalView(tester);
       h.controller.write('colours');

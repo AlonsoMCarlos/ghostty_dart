@@ -99,7 +99,6 @@ void main() {
     // cache stays within its budget and the screen still paints what a
     // cold renderer paints.
     const budget = 160 << 10;
-    const pictureBudget = budget - budget ~/ 4;
     // Paragraphs: the atlas would take most of this small budget (see
     // glyph_atlas_test.dart for the atlas's share).
     final h = await pumpRenderer(
@@ -116,7 +115,10 @@ void main() {
             '\x1b[${row + 1};1H\x1b[3${row % 8}mframe $frame\x1b[1m row $row',
         ].join(),
       );
-      expect(h.render.debugPictureBytes, lessThanOrEqualTo(pictureBudget));
+      expect(
+        h.render.debugPictureBytes + h.render.debugParagraphs.bytes,
+        lessThanOrEqualTo(budget),
+      );
     }
     expect(h.render.debugCachedPictures, lessThan(100 * 5));
     expect(h.render.debugCachedPictures, greaterThan(5));

@@ -144,8 +144,10 @@ final class _CachedRow {
   final RowContent content;
   final List<AtlasImage> images;
 
-  /// The picture's estimated size (`RowContent.estimatedBytes` or
-  /// `estimatedAtlasBytes`, by the path that recorded it).
+  /// The picture's estimated size: `RowContent.estimatedBytes` for a
+  /// paragraph-path picture; for an atlas-path picture its display list
+  /// (`ui.Picture.approximateBytesUsed`) plus
+  /// `RowContent.atlasOverheadBytes`.
   final int bytes;
 
   void dispose() {
@@ -374,11 +376,14 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   }
 
   /// About how many bytes of row pictures, glyph atlas images and
-  /// paragraphs this view keeps, by estimate (`RowContent.estimatedBytes`,
-  /// `ParagraphCache.estimatedBytes`; atlas images exactly, 4 bytes per
-  /// pixel): three quarters for pictures and atlas images together, one
-  /// quarter for paragraphs. Pictures shown in the current frame, and the
-  /// atlas images they draw, are kept even beyond it.
+  /// paragraphs this view keeps: pictures, atlas images and paragraphs
+  /// together stay within it, and paragraphs alone within a quarter of it.
+  /// Sizes are estimates (`RowContent.estimatedBytes` for paragraph-path
+  /// pictures; an atlas-path picture's display list plus
+  /// `RowContent.atlasOverheadBytes`; `ParagraphCache.estimatedBytes`) and
+  /// exact for atlas images (4 bytes per pixel, superseded images still
+  /// drawn by cached pictures included). Pictures shown in the current
+  /// frame, and the atlas images they draw, are kept even beyond it.
   ///
   /// The atlas itself may grow to half of the budget; past that (and past
   /// twice what it held after its first frame, so a screen that needs more
@@ -388,8 +393,10 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   /// Pictures are kept by content: a row whose new content was shown
   /// recently (a program redrawing the screen shifted by a line, or
   /// switching back to a screen it drew before) reuses its picture
-  /// instead of laying its text out again. A 200-column row of ~25 styled
-  /// runs is estimated at ~27 KiB, so the default keeps about 450 of them.
+  /// instead of drawing it again. A 200-column row of ~25 styled runs is
+  /// estimated at ~9 KiB with the atlas and ~25 KiB with paragraphs, so
+  /// the default keeps about 1,000 atlas rows next to a heavily coloured
+  /// atlas (~6 MiB), or about 650 paragraph rows.
   ///
   /// The caches are released when the box is detached; when its tickers
   /// are muted ([blinkEnabled] false) and, [hiddenReleaseDelay] later, it
@@ -418,8 +425,6 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     if (layer?.attached ?? false) return;
     _dropAll();
   }
-
-  int get _pictureBudget => _cacheBudget - _cacheBudget ~/ 4;
 
   int get _atlasBudget => _cacheBudget ~/ 2;
 
@@ -834,7 +839,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
         recorder.recordedImages,
         recorder.atlas == null
             ? content.estimatedBytes
-            : content.estimatedAtlasBytes,
+            : picture.approximateBytesUsed + content.atlasOverheadBytes,
       );
       _pictureBytes += entry.bytes;
       _rowRecordings++;
@@ -972,11 +977,11 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   }
 
   /// Disposes the least recently used pictures until the rest, with the
-  /// atlas images, fit [budget] (the picture share of [cacheBudget]),
-  /// never one shown in [frame]. A disposed picture releases its atlas
-  /// images, so superseded pages it pinned are freed with it.
+  /// atlas images, fit [budget] ([cacheBudget] less what the paragraph
+  /// cache holds), never one shown in [frame]. A disposed picture releases
+  /// its atlas images, so superseded pages it pinned are freed with it.
   void _evictPictures(int frame, {int? budget}) {
-    final limit = budget ?? _pictureBudget;
+    final limit = budget ?? _cacheBudget - _paragraphs.bytes;
     if (_pictureBytes + _ledger.bytes <= limit) return;
     final evicted = <_CachedRow>[];
     for (final entry in _pictures.values) {

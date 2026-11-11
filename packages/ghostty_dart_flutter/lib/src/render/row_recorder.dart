@@ -123,27 +123,21 @@ final class RowContent {
     return 1024 + 96 * chars + 256 * calls;
   }();
 
-  /// [estimatedBytes] for a picture recorded with a glyph atlas: run text
-  /// is no paragraph but `drawRawAtlas` sprites, which the display list
-  /// stores as an `RSTransform`, a source rect and a `DlColor`: 52 bytes
-  /// per glyph (`dl_op_records.h`, `DrawAtlasBaseOp`, Flutter 3.47.9),
-  /// counted as 64; clusters are still paragraphs. An estimate.
-  late final int estimatedAtlasBytes = () {
-    var runChars = 0;
+  /// The bytes a picture recorded from this content with a glyph atlas
+  /// holds beyond its display list (`ui.Picture.approximateBytesUsed`,
+  /// which stores the row's `drawRawAtlas` sprites and rectangles but not
+  /// the paragraphs it draws): this content itself, ~1 KiB, plus 96 bytes
+  /// per character of the clusters drawn as paragraphs (wide characters,
+  /// emoji, box drawing). The two together match the RSS of cached
+  /// 200-column atlas rows of the benchmark's styled text: 8.8-9.3 KiB per
+  /// row measured over 6,000 rows, 9.3 KiB estimated (flutter_tester, DPR
+  /// 2, 2026-11-11). An estimate, never exact.
+  late final int atlasOverheadBytes = () {
     var clusterChars = 0;
-    var calls = 2; // the atlas calls of the row (tinted, untinted)
     for (var i = 0; i < _ops.length; i += RowRecorder._opLength(_ops[i])) {
-      switch (_ops[i]) {
-        case _opRun:
-          runChars += _texts[_ops[i + 2]].length;
-        case _opCluster:
-          clusterChars += _texts[_ops[i + 2]].length;
-          calls++;
-        default:
-          calls++;
-      }
+      if (_ops[i] == _opCluster) clusterChars += _texts[_ops[i + 2]].length;
     }
-    return 1024 + 64 * runChars + 96 * clusterChars + 256 * calls;
+    return 1024 + 96 * clusterChars;
   }();
 
   /// A readable list of the operations, for tests: `bg 0+3 #ffcd3131`,

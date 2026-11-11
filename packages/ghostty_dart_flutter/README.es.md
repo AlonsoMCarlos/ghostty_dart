@@ -1,4 +1,4 @@
-<!-- source: README.md@4c706b6561f8936c4ad14004e57a6f1ae4a935b1 -->
+<!-- source: README.md@e07d8ee5195a73c9cf2bbb1bca7f49103e93dc63 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -135,7 +135,7 @@ Comportamiento que difiere a propósito:
 ## Benchmarks
 
 Tiempos de fotograma frente a `xterm` 4.0.0 y `xterm2` 5.4.0, con los
-mismos flujos de bytes en una rejilla de 200 × 60, medidos el 10 de
+mismos flujos de bytes en una rejilla de 200 × 60, medidos el 11 de
 noviembre de 2026 en una sola máquina virtual en la nube (AMD Ryzen 5 3600,
 6 vCPU, **sin GPU**: Xvfb con el rasterizador por software de Mesa),
 Flutter 3.47.9, Impeller (OpenGL ES), relación de píxeles 2, modo
@@ -146,28 +146,28 @@ Flutter 3.47.9, Impeller (OpenGL ES), relación de píxeles 2, modo
 
 | Escenario | ghostty_dart_flutter | (párrafos) | xterm 4.0.0 | xterm2 5.4.0 |
 |---|---:|---:|---:|---:|
-| inactivo (fotograma forzado, sin cambios) | 0,14 | 0,15 | 0,16 | 0,15 |
-| 3 filas reescritas con texto nuevo por fotograma | **0,92** | 2,49 | 19,31 | 24,83 |
-| salida que se desplaza (`cat`, 6 líneas por fotograma) | **1,23** | 1,90 | 6,02 | 6,91 |
-| pantalla completa de texto nuevo por fotograma | **6,52** | 32,70 | 21,84 | 26,88 |
-| tipo htop: cambia el 20 % de las celdas, en todas las filas, por fotograma | **6,19** | 35,43 | 20,51 | 24,61 |
-| pantalla completa, 8 pantallas repetidas (reproducción de caché) | 5,94 | **3,27** | 20,85 | 25,54 |
+| inactivo (fotograma forzado, sin cambios) | 0,14 | 0,14 | 0,15 | 0,15 |
+| 3 filas reescritas con texto nuevo por fotograma | **0,88** | 2,48 | 19,94 | 26,40 |
+| salida que se desplaza (`cat`, 6 líneas por fotograma) | **1,24** | 1,84 | 6,42 | 7,07 |
+| pantalla completa de texto nuevo por fotograma | **6,39** | 33,13 | 22,52 | 27,55 |
+| tipo htop: cambia el 20 % de las celdas, en todas las filas, por fotograma | **6,15** | 35,13 | 21,15 | 25,48 |
+| pantalla completa, 8 pantallas repetidas (reproducción de caché) | **3,14** | 3,16 | 21,84 | 27,95 |
 
-- **Más rápido en todos los escenarios que dibujan texto nuevo:** unas 21
-  veces menos tiempo de UI que `xterm` 4.0.0 cuando cambian pocas filas
-  (una shell, escribir en un editor), unas 4,9 veces con salida que se
-  desplaza y unas 3,3 veces con una pantalla completa de texto nuevo o una
-  pantalla tipo htop. Solo se graban las filas que cambian, y sus glifos
-  salen de un atlas en lugar de maquetar texto.
-- **La reproducción de caché es la excepción:** las páginas del atlas para
-  estas pantallas sintéticas con muchos colores comparten el presupuesto
-  de caché (unos 16 MiB por vista, que se libera cuando la vista se
-  oculta, se desvincula o hay presión de memoria) con las imágenes de
-  fila, así que no caben las ocho pantallas. Aun así es unas 3,5 veces más
-  rápido que `xterm`.
+- **Más rápido en todos los escenarios que cambian la pantalla:** unas 23 veces menos tiempo de
+  UI que `xterm` 4.0.0 cuando cambian pocas filas (una shell, escribir en
+  un editor), unas 5,2 veces con salida que se desplaza, unas 3,5 veces
+  con una pantalla completa de texto nuevo o una pantalla tipo htop, y
+  unas 7 veces cuando un programa alterna entre pantallas que ya dibujó.
+  Solo se graban las filas que cambian, sus glifos salen de un atlas en
+  lugar de maquetar texto y las filas se guardan en caché por contenido.
+- **La memoria está acotada por vista:** las imágenes de fila en caché,
+  las imágenes del atlas y el texto maquetado comparten `cacheBudget`
+  (16 MiB por defecto; se libera cuando la vista se oculta, se desvincula
+  o hay presión de memoria). Eso basta para las ocho pantallas de
+  200 × 60 con muchos colores de la reproducción de caché, con margen.
 - **El tiempo de rasterizado es mayor que con párrafos** en este
-  rasterizador por software: unos 122–127 ms por fotograma con el atlas,
-  98–104 ms con párrafos y 146–160 ms con los *widgets* de xterm (77–82 ms
+  rasterizador por software: unos 122–126 ms por fotograma con el atlas,
+  98–102 ms con párrafos y 134–155 ms con los *widgets* de xterm (79–82 ms
   al desplazar). Es rasterizado por software de una ventana de 3600 × 2200
   px, donde cada glifo es un cuadrilátero con textura; no dice nada sobre
   una GPU, y el atlas aún no se ha medido en una. Si el tiempo de

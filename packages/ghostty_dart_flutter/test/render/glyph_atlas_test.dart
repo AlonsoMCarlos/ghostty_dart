@@ -173,6 +173,57 @@ void main() {
       expect(ledger.images, 2);
     });
 
+    testWidgets('a page image is as tall as its slot rows in use', (
+      tester,
+    ) async {
+      final ledger = AtlasLedger();
+      final metrics = VtCellMetrics.measure(gridStyle, devicePixelRatio: 1);
+      final probe = GlyphAtlas(
+        metrics: metrics,
+        styleOf: (_, _) => ui.TextStyle(),
+        ledger: ledger,
+      );
+      // Pages of 3 rows of 4 slots.
+      final atlas = GlyphAtlas(
+        metrics: metrics,
+        styleOf: (color, faces) => TextStyle(
+          color: Color(color),
+          fontFamily: gridStyle.fontFamily,
+        ).getTextStyle(),
+        ledger: ledger,
+        maxPageWidth: probe.slotWidth * 4,
+        maxPageHeight: probe.slotHeight * 3,
+      );
+      probe.dispose();
+      addTearDown(atlas.dispose);
+      expect(atlas.slotsPerPage, 12);
+      final rowBytes = atlas.pageWidth * atlas.slotHeight * 4;
+      for (final unit in 'abc'.codeUnits) {
+        atlas.slotOf(unit, 0, _white);
+      }
+      atlas.flush();
+      expect(atlas.page(0).image.height, atlas.slotHeight);
+      expect(atlas.liveBytes, rowBytes);
+      expect(ledger.bytes, rowBytes);
+      for (final unit in 'defgh'.codeUnits) {
+        atlas.slotOf(unit, 0, _white);
+      }
+      atlas.flush();
+      expect(atlas.page(0).image.height, 2 * atlas.slotHeight);
+      expect(atlas.liveBytes, 2 * rowBytes);
+      // The one-row image was not drawn by anything: freed.
+      expect(ledger.bytes, 2 * rowBytes);
+      for (final unit in 'ijklmn'.codeUnits) {
+        atlas.slotOf(unit, 0, _white);
+      }
+      atlas.flush();
+      // Page 0 is full (3 rows), page 1 holds two slots in one row.
+      expect(atlas.page(0).image.height, atlas.pageHeight);
+      expect(atlas.page(1).image.height, atlas.slotHeight);
+      expect(atlas.liveBytes, atlas.pageBytes + rowBytes);
+      expect(ledger.bytes, atlas.liveBytes);
+    });
+
     testWidgets('a cached picture pins a superseded page image', (
       tester,
     ) async {
@@ -367,13 +418,17 @@ void main() {
       await h.write('\r\n\x1b[3mitalic');
       // Row 0's picture pins the previous image of page 0.
       expect(h.render.debugAtlasImages, 2);
-      expect(h.render.debugAtlasBytes, 2 * h.render.debugAtlas!.pageBytes);
+      final live = h.render.debugAtlas!.liveBytes;
+      expect(h.render.debugAtlasBytes, greaterThan(live));
+      expect(h.render.debugAtlasBytes, lessThanOrEqualTo(2 * live));
       await h.write('\x1b[1;1H\x1b[2K');
       h.render.didHaveMemoryPressure();
       expect(h.render.debugAtlasImages, 1);
     });
 
-    testWidgets('pictures and atlas images share the budget', (tester) async {
+    testWidgets('pictures, atlas images and paragraphs share the budget', (
+      tester,
+    ) async {
       const budget = 4 << 20;
       final h = await pumpRenderer(
         tester,
@@ -390,12 +445,80 @@ void main() {
           ].join(),
         );
         expect(
-          h.render.debugPictureBytes + h.render.debugAtlasBytes,
-          lessThanOrEqualTo(budget - budget ~/ 4),
+          h.render.debugPictureBytes +
+              h.render.debugAtlasBytes +
+              h.render.debugParagraphs.bytes,
+          lessThanOrEqualTo(budget),
         );
       }
       expect(h.render.debugCachedPictures, greaterThan(5));
       expect(h.render.debugCachedPictures, lessThan(200 * 5));
+    });
+
+    testWidgets('a heavily coloured 8-screen cycle replays from the cache', (
+      tester,
+    ) async {
+      // The widget benchmark's cache-replay scenario (200 x 60, DPR 2,
+      // random printable ASCII in 16/256/truecolor and four faces): its
+      // atlas takes ~1,200 slots in four pages. With the default budget
+      // every row of the 480-row cycle must stay cached: on 2026-11-10 the
+      // atlas took ~8 MiB of a 12 MiB picture share and LRU eviction of
+      // the cycle left no hits at all.
+      const sgrs = [
+        '', '31', '32', '33', '34', '35', '36', '91', '94', '1', '3', '4', //
+        '1;33', '38;5;208', '38;5;45', '38;5;141', '38;2;255;121;198',
+        '38;2;80;250;123', '30;42', '97;44', '48;5;236', '48;2;40;42;54',
+      ];
+      final random = math.Random(42);
+      String row() {
+        final b = StringBuffer();
+        var cols = 0;
+        while (cols < 200) {
+          var len = math.min(1 + random.nextInt(14), 200 - cols);
+          if (200 - cols - len == 1) len++;
+          b.write('\x1b[0;${sgrs[random.nextInt(sgrs.length)]}m');
+          b.write(
+            String.fromCharCodes([
+              for (var i = 0; i < len; i++) 0x21 + random.nextInt(94),
+            ]),
+          );
+          cols += len;
+          if (cols < 200) {
+            b.write('\x1b[0m ');
+            cols++;
+          }
+        }
+        return '$b\x1b[0m';
+      }
+
+      final screens = [
+        for (var s = 0; s < 8; s++)
+          [for (var y = 1; y <= 60; y++) '\x1b[$y;1H${row()}'].join(),
+      ];
+      final h = await pumpRenderer(
+        tester,
+        cols: 200,
+        rows: 60,
+        devicePixelRatio: 2,
+        initial: '\x1b[?25l',
+      );
+      for (var cycle = 0; cycle < 3; cycle++) {
+        for (final screen in screens) {
+          await h.write(screen);
+        }
+      }
+      final recorded = h.render.debugRowRecordings;
+      final hits = h.render.debugPictureHits;
+      for (final screen in screens) {
+        await h.write(screen);
+      }
+      expect(h.render.debugAtlas!.pageCount, greaterThanOrEqualTo(3));
+      expect(h.render.debugRowRecordings, recorded);
+      expect(h.render.debugPictureHits, hits + 8 * 60);
+      expect(
+        h.render.debugPictureBytes + h.render.debugAtlasBytes,
+        lessThanOrEqualTo(RenderTerminal.defaultCacheBudget),
+      );
     });
 
     testWidgets('an atlas over half the budget is rebuilt from the screen', (

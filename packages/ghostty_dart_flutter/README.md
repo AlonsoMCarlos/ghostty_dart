@@ -129,7 +129,7 @@ Behaviour that differs on purpose:
 ## Benchmarks
 
 Frame times against `xterm` 4.0.0 and `xterm2` 5.4.0, with the same byte
-streams on a 200 × 60 grid, measured on 2026-11-10 on one cloud VM (AMD
+streams on a 200 × 60 grid, measured on 2026-11-11 on one cloud VM (AMD
 Ryzen 5 3600, 6 vCPUs, **no GPU**: Xvfb with Mesa's software rasteriser),
 Flutter 3.47.9, Impeller (OpenGL ES), device pixel ratio 2, profile mode,
 3 passes of 300 frames. Average UI time (build, layout and paint) per
@@ -138,26 +138,26 @@ frame, plus the write before it, in ms. "paragraphs" is this view with
 
 | Scenario | ghostty_dart_flutter | (paragraphs) | xterm 4.0.0 | xterm2 5.4.0 |
 |---|---:|---:|---:|---:|
-| idle (forced frame, nothing changed) | 0.14 | 0.15 | 0.16 | 0.15 |
-| 3 rows rewritten with new text per frame | **0.92** | 2.49 | 19.31 | 24.83 |
-| scrolling output (`cat`, 6 lines per frame) | **1.23** | 1.90 | 6.02 | 6.91 |
-| full screen of new text per frame | **6.52** | 32.70 | 21.84 | 26.88 |
-| htop-like: 20 % of cells, every row, change per frame | **6.19** | 35.43 | 20.51 | 24.61 |
-| full screen, 8 screens repeated (cache replay) | 5.94 | **3.27** | 20.85 | 25.54 |
+| idle (forced frame, nothing changed) | 0.14 | 0.14 | 0.15 | 0.15 |
+| 3 rows rewritten with new text per frame | **0.88** | 2.48 | 19.94 | 26.40 |
+| scrolling output (`cat`, 6 lines per frame) | **1.24** | 1.84 | 6.42 | 7.07 |
+| full screen of new text per frame | **6.39** | 33.13 | 22.52 | 27.55 |
+| htop-like: 20 % of cells, every row, change per frame | **6.15** | 35.13 | 21.15 | 25.48 |
+| full screen, 8 screens repeated (cache replay) | **3.14** | 3.16 | 21.84 | 27.95 |
 
-- **Faster in every scenario that draws new text:** about 21× less UI
-  time than `xterm` 4.0.0 when a few rows change (a shell, typing in an
-  editor), 4.9× on scrolling output, and 3.3× on a full screen of new text
-  or an htop-like screen. Only changed rows are recorded, and their glyphs
-  come from an atlas instead of a text layout.
-- **Cache replay is the exception:** the atlas pages for these heavily
-  coloured synthetic screens share the cache budget (about 16 MiB per
-  view, released when the view is hidden, detached or under memory
-  pressure) with the row pictures, so not all eight screens stay cached.
-  It is still about 3.5× faster than `xterm`.
+- **Faster in every scenario that changes the screen:** about 23× less UI time than `xterm`
+  4.0.0 when a few rows change (a shell, typing in an editor), 5.2× on
+  scrolling output, 3.5× on a full screen of new text or an htop-like
+  screen, and 7× when a program switches between screens it drew before.
+  Only changed rows are recorded, their glyphs come from an atlas instead
+  of a text layout, and rows are cached by content.
+- **Memory is bounded per view:** cached row pictures, atlas images and
+  laid-out text share `cacheBudget` (16 MiB by default; released when the
+  view is hidden, detached or under memory pressure). That holds the
+  replay's eight heavily coloured 200 × 60 screens with room to spare.
 - **Raster time is higher than with paragraphs** on this software
-  rasteriser: about 122–127 ms per frame with the atlas, 98–104 ms with
-  paragraphs, 146–160 ms for the xterm widgets (77–82 ms while
+  rasteriser: about 122–126 ms per frame with the atlas, 98–102 ms with
+  paragraphs, 134–155 ms for the xterm widgets (79–82 ms while
   scrolling). It is software rendering of a 3600 × 2200 px window, where
   each glyph is a textured quad; it says nothing about a GPU, and the
   atlas has not been measured on one yet. If raster time matters on your

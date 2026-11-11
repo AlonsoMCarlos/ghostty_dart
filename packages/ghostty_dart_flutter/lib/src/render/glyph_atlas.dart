@@ -108,13 +108,15 @@ final class AtlasImage {
 /// space is bounded (at most 16 × glyphs × 4 faces) whatever colours a
 /// program uses.
 ///
-/// **Pages.** Slots live in fixed-size pages of [pageWidth] × [pageHeight]
-/// device pixels. [slotOf] assigns a new glyph the next free slot and
-/// queues it; [flush] rasterises every queued glyph at once, into a new
-/// image of each page that got glyphs (the page's previous image is
-/// copied in first, then [AtlasImage.retire]d). The renderer flushes once
-/// per frame, so a page gets at most one new image per frame and a full
-/// page never changes again.
+/// **Pages.** Slots live in pages of at most [pageWidth] × [pageHeight]
+/// device pixels, filled row by row. [slotOf] assigns a new glyph the next
+/// free slot and queues it; [flush] rasterises every queued glyph at once,
+/// into a new image of each page that got glyphs (the page's previous
+/// image is copied in first, then [AtlasImage.retire]d). A page image is
+/// only as tall as the slot rows in use ([imageHeight]), so the last,
+/// partly filled page costs what it holds, not a full page. The renderer
+/// flushes once per frame, so a page gets at most one new image per frame
+/// and a full page never changes again.
 ///
 /// **Fallbacks.** [slotOf] returns -1 for a glyph whose advance is not one
 /// cell (within half a device pixel), i.e. one from a fallback font: the
@@ -192,11 +194,18 @@ final class GlyphAtlas {
   /// Page size in device pixels.
   int get pageWidth => columns * slotWidth;
 
-  /// Page height in device pixels.
+  /// The height of a full page in device pixels.
   int get pageHeight => rowsPerPage * slotHeight;
 
-  /// The bytes of one page image.
+  /// The bytes of a full page image.
   int get pageBytes => pageWidth * pageHeight * 4;
+
+  /// The height of page [index]'s image once every assigned slot is
+  /// rasterised: whole slot rows, up to the last one in use.
+  int imageHeight(int index) {
+    final used = math.min(slotsPerPage, _count - index * slotsPerPage);
+    return ((used + columns - 1) ~/ columns) * slotHeight;
+  }
 
   static const _unknown = -2;
 
@@ -232,7 +241,8 @@ final class GlyphAtlas {
 
   /// The bytes of this atlas's current page images (superseded images
   /// still pinned by pictures are counted in [ledger] only).
-  int get liveBytes => _pages.length * pageBytes;
+  int get liveBytes => _liveBytes;
+  int _liveBytes = 0;
 
   /// The luminance bucket (0 to [lumaBuckets] - 1) of an ARGB [color]:
   /// Rec. 709 luma of its RGB, alpha ignored.
@@ -373,11 +383,13 @@ final class GlyphAtlas {
         );
       }
       final picture = recorder.endRecording();
+      final height = imageHeight(page);
       final image = AtlasImage._(
-        picture.toImageSync(pageWidth, pageHeight),
-        pageBytes,
+        picture.toImageSync(pageWidth, height),
+        pageWidth * height * 4,
         ledger,
       );
+      _liveBytes += image.bytes - (previous?.bytes ?? 0);
       picture.dispose();
       debugImages++;
       if (previous == null) {
@@ -411,5 +423,6 @@ final class GlyphAtlas {
       page.retire();
     }
     _pages.clear();
+    _liveBytes = 0;
   }
 }

@@ -96,10 +96,15 @@ class VtTerminalView extends StatefulWidget {
     this.semanticsLabel = 'Terminal',
     this.announceOutput = false,
     this.textRendering = VtTextRendering.atlas,
+    this.cacheBudget = defaultCacheBudget,
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
-       );
+       ),
+       assert(cacheBudget >= 0, 'cacheBudget must not be negative');
+
+  /// The default [cacheBudget]: 16 MiB per view.
+  static const defaultCacheBudget = RenderTerminal.defaultCacheBudget;
 
   /// The font the view uses when [textStyle] is `null`, and the base that
   /// a given [textStyle] is merged onto: 14 px, the generic `monospace`
@@ -248,6 +253,23 @@ class VtTerminalView extends StatefulWidget {
   /// coverage, or to rule out the atlas while debugging; see
   /// [VtTextRendering]. Changing it records the screen again.
   final VtTextRendering textRendering;
+
+  /// About how many bytes of rendering caches the view keeps: the cached
+  /// picture of each recently shown row, the glyph atlas images and laid
+  /// out text. Together they stay within this budget, except the pictures
+  /// of the rows on screen and the atlas images they draw, which are
+  /// always kept; laid out text takes at most a quarter of it, and the
+  /// glyph atlas is rebuilt from the screen once it outgrows half of it.
+  ///
+  /// The default, [defaultCacheBudget] (16 MiB), keeps about 1,000 rows of
+  /// 200 heavily styled columns with the glyph atlas, enough for a program
+  /// that switches between several full screens to redraw them without
+  /// recording rows again. A larger budget helps an app that replays more
+  /// screens than that; a smaller one suits many small views. Changing it
+  /// keeps the caches and evicts what no longer fits. The caches are also
+  /// released when the view is hidden for a few seconds, on memory
+  /// pressure (all but what the screen shows), and when the font changes.
+  final int cacheBudget;
 
   @override
   State<VtTerminalView> createState() => VtTerminalViewState();
@@ -584,6 +606,7 @@ class VtTerminalViewState extends State<VtTerminalView> {
               alwaysShowCursor: widget.alwaysShowCursor,
               backgroundOpacity: widget.backgroundOpacity,
               textRendering: widget.textRendering,
+              cacheBudget: widget.cacheBudget,
             ),
           ),
         ),
