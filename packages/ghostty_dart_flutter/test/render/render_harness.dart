@@ -31,7 +31,11 @@ final class RenderHarness {
     this.seams,
     this.geometry,
     this.cacheBudget,
+    this.textRendering,
   );
+
+  /// The text path the renderer is pumped with (changed by [rebuild]).
+  VtTextRendering textRendering;
 
   /// The renderer's cache budget (`TerminalRenderWidget.cacheBudget`).
   final int cacheBudget;
@@ -101,9 +105,11 @@ final class RenderHarness {
     bool alwaysShowCursor = false,
     double backgroundOpacity = 1,
     TerminalGeometry? geometry,
+    VtTextRendering? textRendering,
     Widget Function(Widget child)? wrap,
   }) async {
     if (geometry != null) this.geometry = geometry;
+    if (textRendering != null) this.textRendering = textRendering;
     final view = _view(
       source ?? seams,
       this.geometry,
@@ -115,6 +121,7 @@ final class RenderHarness {
       alwaysShowCursor: alwaysShowCursor,
       backgroundOpacity: backgroundOpacity,
       cacheBudget: cacheBudget,
+      textRendering: this.textRendering,
     );
     await tester.pumpWidget(wrap == null ? view : wrap(view));
   }
@@ -131,6 +138,7 @@ Widget _view(
   required bool alwaysShowCursor,
   required double backgroundOpacity,
   required int cacheBudget,
+  required VtTextRendering textRendering,
 }) => Align(
   alignment: Alignment.topLeft,
   child: RepaintBoundary(
@@ -148,6 +156,7 @@ Widget _view(
         alwaysShowCursor: alwaysShowCursor,
         backgroundOpacity: backgroundOpacity,
         cacheBudget: cacheBudget,
+        textRendering: textRendering,
       ),
     ),
   ),
@@ -166,6 +175,7 @@ Future<RenderHarness> pumpRenderer(
   String initial = '',
   VtTerminalTheme theme = VtTerminalTheme.defaultTheme,
   int cacheBudget = RenderTerminal.defaultCacheBudget,
+  VtTextRendering textRendering = VtTextRendering.atlas,
 }) async {
   tester.view.devicePixelRatio = devicePixelRatio;
   tester.view.physicalSize = const Size(8000, 4000);
@@ -190,6 +200,7 @@ Future<RenderHarness> pumpRenderer(
     seams,
     geometry,
     cacheBudget,
+    textRendering,
   );
   await harness.rebuild(textStyle: textStyle, focused: focused);
   return harness;

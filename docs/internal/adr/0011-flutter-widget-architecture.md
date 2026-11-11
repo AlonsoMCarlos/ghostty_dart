@@ -66,7 +66,7 @@
 
 **Deferred:**
 - Kitty images: `setVtPngDecoder` must decode synchronously, while `dart:ui` decodes asynchronously and has no web sync path. The layer order reserves a slot for them.
-- the `drawRawAtlas` glyph atlas (v2, only with benchmark evidence);
+- the `drawRawAtlas` glyph atlas (v2, only with benchmark evidence): built and made the default by ADR 0012 (2026-11-10);
 - ligatures;
 - mobile selection handles;
 - full screen-reader navigation.
@@ -111,3 +111,7 @@ Measured first (temporary `Stopwatch` probes in the view's paint, profile mode, 
 - **Memory.** Pictures and paragraphs are bounded by an estimated byte budget per view, 16 MiB by default (`TerminalRenderWidget.cacheBudget`; ¾ pictures, ¼ paragraphs; estimates from RSS measurements of 2026-11-10). Everything is released when the render box is detached, when its tickers are muted (a hidden tab or a covered route), and when the system fonts change; memory pressure keeps only the visible rows' pictures.
 
 Result (`mise run bench:widget`, same VM, DPR 2, write + UI average in ms, ours / xterm 4.0.0 / xterm2 5.4.0): idle 0.14 / 0.15 / 0.15; 3 dirty rows 2.49 / 19.11 / 25.49; scroll (`cat`) 1.76 / 5.87 / 6.43; full screen of new text 32.30 / 21.58 / 25.51; htop-like (20 % of cells, every row) 33.32 / 19.63 / 24.02; full screen of 8 repeated screens (cache replay) 3.05 / 20.42 / 25.83. Before these changes the replay scenario measured 63.91 for us. Targets on this VM: UI met for idle and for the replay; missed for 3 dirty rows and for a full screen of new text, where we are also 1.5× slower than xterm 4.0.0 (1.7× on the htop-like screen); raster missed everywhere (software). Those misses are what the `drawRawAtlas` v2 would address; it is proposed, not built (numbers in `benchmarks/README.md`).
+
+## Amendment (2026-11-10, glyph atlas)
+
+ADR 0012 (Accepted 2026-11-10) amends "Rendering (v1)" and the render-performance amendment above: grid text is drawn from a `drawRawAtlas` glyph atlas by default (`VtTextRendering.atlas`), one call per row and atlas page inside the row's cached picture. Row paragraphs stay as `VtTextRendering.paragraphs` (public opt-out), as the fallback for glyphs the atlas does not hold, and as the reference of the differential tests. The cache budget now counts atlas images too (pictures and atlas share ¾, paragraphs ¼). Design, numbers and the open raster question are in ADR 0012.

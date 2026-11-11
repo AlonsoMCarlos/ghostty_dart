@@ -1,9 +1,9 @@
-// Host side of `mise run bench:widget`: receives the traced timelines,
-// writes build/<key>.timeline{,_summary}.json, and the Markdown report
-// build/widget_bench.md (also printed).
+// Host side of `mise run bench:widget`: receives the timeline summaries
+// (the app summarises each run and writes its timeline to
+// build/<key>.timeline{,_summary}.json itself), and writes the Markdown
+// report build/widget_bench.md (also printed).
 import 'dart:io';
 
-import 'package:flutter_driver/flutter_driver.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/report.dart';
 import 'package:integration_test/integration_test_driver.dart';
 
@@ -31,25 +31,17 @@ Future<void> main() => integrationDriver(
     final meta = data['bench_meta'] as Map<String, dynamic>;
     final runs = <RunSummary>[];
     final renderers = <String>{};
-    for (final MapEntry(:key, :value)
-        in (meta['runs'] as Map<String, dynamic>).entries) {
+    for (final value in (meta['runs'] as Map<String, dynamic>).values) {
       final info = value as Map<String, dynamic>;
-      final json = data[key] as Map<String, dynamic>;
-      renderers.add(
-        rendererOf([
-          for (final event in (json['traceEvents'] as List<dynamic>? ?? []))
-            (event as Map<String, dynamic>).cast<String, Object?>(),
-        ]),
-      );
-      final summary = TimelineSummary.summarize(Timeline.fromJson(json));
-      await summary.writeTimelineToFile(key, pretty: true);
+      renderers.add(info['renderer'] as String);
       runs.add(
         RunSummary(
           scenario: info['scenario'] as String,
           subject: info['subject'] as String,
           pass: info['pass'] as int,
           requestedFrames: info['frames'] as int,
-          summary: summary.summaryJson,
+          summary: (info['summary'] as Map<String, dynamic>)
+              .cast<String, Object?>(),
           writeTimes: [
             for (final us in info['writeMicros'] as List<dynamic>) us as int,
           ],

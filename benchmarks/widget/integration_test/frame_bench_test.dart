@@ -1,15 +1,20 @@
-// Frame-time benchmark of the three terminal widgets (ADR 0011 targets).
+// Frame-time benchmark of the terminal widgets (ADR 0011 targets).
 //
 // Run it with `mise run bench:widget` (flutter drive --profile on a real
 // display; benchmarks/README.md). Every scenario × widget pair runs in
-// several passes, the widget order rotating per pass; each run is traced
-// with `traceAction`, and test_driver/perf_driver.dart summarises the
-// timelines into build/widget_bench.md.
+// several passes, the widget order rotating per pass. Each run is traced
+// with `traceTimeline` and summarised right away, here in the app: only
+// the summary goes to test_driver/perf_driver.dart, which writes
+// build/widget_bench.md, and the full timeline goes to a file and is
+// dropped before the next run. (Sending every timeline to the driver at
+// the end held all of them in memory at once, in both processes; a
+// 90-timeline run was killed for low memory on 2026-11-10.)
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_driver/flutter_driver.dart' as driver;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/frame_streams.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/report.dart';
@@ -30,6 +35,11 @@ const _renderer = String.fromEnvironment('BENCH_RENDERER');
 /// frames: four cycles of the full-screen scenario, so every measured
 /// screen has been drawn before.
 const _warmUpFrames = fullScreenCycle * 4;
+
+/// Where each run's full timeline is written as
+/// `<key>.timeline.json` (`--dart-define=BENCH_OUT_DIR`; the mise task
+/// points it at `build/`). Not written when empty.
+const _outDir = String.fromEnvironment('BENCH_OUT_DIR');
 
 /// Directory with the JetBrains Mono TTFs (`--dart-define=BENCH_FONT_DIR`;
 /// the mise task points it at ghostty_dart_flutter's pinned test fonts).
@@ -151,29 +161,41 @@ void main() {
           final writeMicros = <int>[];
           final stopwatch = Stopwatch();
           final key = reportKey(scenario.label, name, pass);
-          await binding.traceAction(
-            () async {
-              for (final bytes in measured) {
-                if (bytes.isNotEmpty) {
-                  stopwatch
-                    ..reset()
-                    ..start();
-                  subject.write(bytes);
-                  stopwatch.stop();
-                  writeMicros.add(stopwatch.elapsedMicroseconds);
-                }
-                await _nextFrame();
+          final timeline = await binding.traceTimeline(() async {
+            for (final bytes in measured) {
+              if (bytes.isNotEmpty) {
+                stopwatch
+                  ..reset()
+                  ..start();
+                subject.write(bytes);
+                stopwatch.stop();
+                writeMicros.add(stopwatch.elapsedMicroseconds);
               }
-            },
-            streams: _traceStreams,
-            reportKey: key,
+              await _nextFrame();
+            }
+          }, streams: _traceStreams);
+          final json = timeline.toJson();
+          final renderer = rendererOf([
+            for (final event in (json['traceEvents'] as List<dynamic>? ?? []))
+              (event as Map<String, dynamic>).cast<String, Object?>(),
+          ]);
+          final summary = driver.TimelineSummary.summarize(
+            driver.Timeline.fromJson(json),
           );
+          if (_outDir.isNotEmpty) {
+            await summary.writeTimelineToFile(
+              key,
+              destinationDirectory: _outDir,
+            );
+          }
           runs[key] = {
             'scenario': scenario.label,
             'subject': name,
             'pass': pass,
             'frames': _frames,
             'writeMicros': writeMicros,
+            'renderer': renderer,
+            'summary': summary.summaryJson,
           };
 
           await tester.pumpWidget(const SizedBox());

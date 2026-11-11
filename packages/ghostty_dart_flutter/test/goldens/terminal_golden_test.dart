@@ -12,6 +12,7 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
+import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
 
 import '../render/render_harness.dart';
 import '../support/fonts.dart';
@@ -67,13 +68,28 @@ void main() {
     if (!_skip) await requireJetBrainsMono();
   });
 
-  testWidgets('200 x 60 mixed screen', (tester) async {
-    await pumpRenderer(tester, cols: 200, rows: 60, initial: _mixedScreen());
-    await expectLater(
-      find.byKey(terminalKey),
-      matchesGoldenFile('mixed_screen_200x60.png'),
-    );
-  }, skip: _skip);
+  // The glyph atlas (the default) and the paragraph path (ADR 0012).
+  for (final textRendering in VtTextRendering.values) {
+    testWidgets('200 x 60 mixed screen (${textRendering.name})', (
+      tester,
+    ) async {
+      await pumpRenderer(
+        tester,
+        cols: 200,
+        rows: 60,
+        initial: _mixedScreen(),
+        textRendering: textRendering,
+      );
+      await expectLater(
+        find.byKey(terminalKey),
+        matchesGoldenFile(
+          textRendering == VtTextRendering.atlas
+              ? 'mixed_screen_200x60.png'
+              : 'mixed_screen_200x60_paragraphs.png',
+        ),
+      );
+    }, skip: _skip);
+  }
 
   for (final dpr in [1.5, 2.0]) {
     testWidgets('underline styles, strikethrough and overline at dpr $dpr', (

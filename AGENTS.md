@@ -44,6 +44,7 @@ ADRs in `docs/internal/adr/`. Research with sources in `docs/internal/research/`
 - **0009** The package names are kept without asking the Ghostty maintainers first (supersedes that line of 0007).
 - **0010** First release and publishing: 0.1.0 uploaded manually first, own `publish.yml`, release-please with `GITHUB_TOKEN` + dispatch, pana and dartdoc pinned.
 - **0011** `ghostty_dart_flutter` architecture: pty-agnostic `VtTerminalController` + `VtTerminalView` (`Vt` prefix); one repaint-isolated render box with a cached picture per row (content-keyed, so scrolling reuses pictures), run paragraphs at `col * cellWidth`, cursor overlay; keys through libghostty's encoder, IME through a delta text input client, shortcuts that never take Ctrl+V/Ctrl+A; mouse via `MouseEncoder`/`SelectionGesture`; scrolling owned by libghostty; semantics only while accessibility is on. Goldens Linux only (`golden` tag).
+- **0012** Glyph atlas for grid text: `VtTextRendering.atlas` (default) draws grid-safe narrow glyphs from a `drawRawAtlas` atlas (key: code unit, faces, one of 16 luminance buckets; 22 bits, web-safe), one call per row and page, in fixed-size pages flushed once per frame; atlas images count in the view's cache budget (`AtlasLedger`, superseded pages pinned by cached pictures included) and are released with the other caches. Wide characters, clusters, emoji, box drawing and glyphs whose advance is not one cell stay paragraphs. `VtTextRendering.paragraphs` is the opt-out and the differential reference.
 
 If a change contradicts an ADR, write a new ADR that supersedes it. Do not silently diverge.
 
@@ -141,8 +142,7 @@ Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`,
 
 ### `ghostty_dart_flutter` (widget)
 - Repaint only dirty rows, using the render state's `next_dirty`.
-- Draw one paragraph per row of style runs (per run, then per cell, when it does not measure the grid), never per cell. Cache row pictures by content, within a byte budget.
-- A `drawRawAtlas` glyph atlas is the planned v2 path. Land it only with benchmark evidence.
+- Draw grid text from the glyph atlas (ADR 0012): one `drawRawAtlas` per row and atlas page, inside the row's cached picture; never one call per frame or per cell. The paragraph path (one paragraph per row of style runs; per run, then per cell, when it does not measure the grid) stays as `VtTextRendering.paragraphs`, as the fallback for glyphs the atlas cannot hold, and as the reference in tests. Cache row pictures by content, within a byte budget that also counts atlas images.
 - Must work on Skia and Impeller, and on the web renderers (CanvasKit, skwasm) once `ghostty_dart` has its wasm backend; until then the package declares native platforms only.
 - Input:
   - Keys are encoded by libghostty's key encoder, including the Kitty protocol.

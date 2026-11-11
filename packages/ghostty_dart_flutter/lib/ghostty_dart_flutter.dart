@@ -7,7 +7,8 @@
 /// - [VtTerminalView] draws it and takes keyboard, IME, mouse and touch
 ///   input.
 /// - [VtTerminalTheme] sets its colours; [VtCellMetrics] is the measured,
-///   device-pixel-aligned cell size.
+///   device-pixel-aligned cell size; [VtTextRendering] picks how grid text
+///   is drawn (a glyph atlas by default).
 ///
 /// ```dart
 /// final controller = VtTerminalController(onOutput: pty.write);
@@ -28,5 +29,6 @@ export 'src/controller/terminal_controller.dart'
         VtTerminalResizeCallback;
 export 'src/input/keyboard/key_toolbar.dart' show VtTerminalKeyToolbar;
 export 'src/metrics/cell_metrics.dart' show VtCellMetrics;
+export 'src/render/text_rendering.dart' show VtTextRendering;
 export 'src/theme/terminal_theme.dart' show VtTerminalTheme;
 export 'src/view/terminal_view.dart' show VtTerminalView, VtTerminalViewState;

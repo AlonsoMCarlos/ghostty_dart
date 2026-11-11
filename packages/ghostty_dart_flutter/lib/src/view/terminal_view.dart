@@ -7,6 +7,7 @@ import '../input/keyboard/terminal_input_scope.dart';
 import '../input/pointer/terminal_pointer_scope.dart';
 import '../metrics/cell_metrics.dart';
 import '../render/terminal_render.dart';
+import '../render/text_rendering.dart';
 import '../scroll/terminal_scrollbar.dart';
 import '../seams/controller_seams.dart';
 import '../seams/read_only_seams.dart';
@@ -94,6 +95,7 @@ class VtTerminalView extends StatefulWidget {
     this.onSecondaryTapUp,
     this.semanticsLabel = 'Terminal',
     this.announceOutput = false,
+    this.textRendering = VtTextRendering.atlas,
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
@@ -239,6 +241,13 @@ class VtTerminalView extends StatefulWidget {
   /// second; long output is cut at the start, so the newest lines are
   /// read. Off by default: a busy program would flood the user.
   final bool announceOutput;
+
+  /// How the grid's text is drawn: from a glyph atlas (the default, much
+  /// cheaper for screens of new text) or as laid-out paragraphs. Choose
+  /// [VtTextRendering.paragraphs] for exact paragraph shaping and
+  /// coverage, or to rule out the atlas while debugging; see
+  /// [VtTextRendering]. Changing it records the screen again.
+  final VtTextRendering textRendering;
 
   @override
   State<VtTerminalView> createState() => VtTerminalViewState();
@@ -574,6 +583,7 @@ class VtTerminalViewState extends State<VtTerminalView> {
               cursorStyle: widget.cursorStyle,
               alwaysShowCursor: widget.alwaysShowCursor,
               backgroundOpacity: widget.backgroundOpacity,
+              textRendering: widget.textRendering,
             ),
           ),
         ),

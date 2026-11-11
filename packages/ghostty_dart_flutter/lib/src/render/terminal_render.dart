@@ -10,12 +10,15 @@ import 'package:ghostty_dart/ghostty_dart.dart';
 import '../seams/terminal_geometry.dart';
 import '../seams/terminal_seams.dart';
 import '../theme/terminal_theme.dart';
+import 'glyph_atlas.dart';
 import 'paragraph_cache.dart';
 import 'row_recorder.dart';
+import 'text_rendering.dart';
 
-/// The terminal grid renderer (ADR 0011 "Rendering (v1)"): one
+/// The terminal grid renderer (ADR 0011 "Rendering (v1)", ADR 0012): one
 /// repaint-isolated render box that draws the rows of [source] with a
-/// cached picture per row, plus the cursor, inside [geometry]. Never
+/// cached picture per row, plus the cursor, inside [geometry]. Grid text
+/// comes from a glyph atlas or from paragraphs ([textRendering]). Never
 /// exported.
 ///
 /// Output only repaints: the frame is read from [source] once per paint,
@@ -38,6 +41,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     this.backgroundOpacity = 1.0,
     this.cursorHidden,
     this.cacheBudget = RenderTerminal.defaultCacheBudget,
+    this.textRendering = VtTextRendering.atlas,
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
@@ -84,9 +88,12 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
   /// tree is being built (a connection closed from `didUpdateWidget`).
   final ValueListenable<bool>? cursorHidden;
 
-  /// About how many bytes of row pictures and paragraphs the view keeps
-  /// cached (see [RenderTerminal.cacheBudget]).
+  /// About how many bytes of row pictures, atlas images and paragraphs
+  /// the view keeps cached (see [RenderTerminal.cacheBudget]).
   final int cacheBudget;
+
+  /// How grid text is drawn (see [VtTextRendering]).
+  final VtTextRendering textRendering;
 
   @override
   RenderTerminal createRenderObject(BuildContext context) => RenderTerminal(
@@ -102,6 +109,7 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     cursorHidden: cursorHidden,
     blinkEnabled: TickerMode.valuesOf(context).enabled,
     cacheBudget: cacheBudget,
+    textRendering: textRendering,
   );
 
   @override
@@ -118,16 +126,34 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
       ..backgroundOpacity = backgroundOpacity
       ..cursorHidden = cursorHidden
       ..blinkEnabled = TickerMode.valuesOf(context).enabled
-      ..cacheBudget = cacheBudget;
+      ..cacheBudget = cacheBudget
+      ..textRendering = textRendering;
   }
 }
 
-/// A recorded row picture and the content it was recorded from.
+/// A recorded row picture, the content it was recorded from and the atlas
+/// images it draws (retained while it lives).
 final class _CachedRow {
-  _CachedRow(this.picture, this.content, this.frame);
+  _CachedRow(this.picture, this.content, this.frame, this.images, this.bytes) {
+    for (final image in images) {
+      image.retain();
+    }
+  }
 
   final ui.Picture picture;
   final RowContent content;
+  final List<AtlasImage> images;
+
+  /// The picture's estimated size (`RowContent.estimatedBytes` or
+  /// `estimatedAtlasBytes`, by the path that recorded it).
+  final int bytes;
+
+  void dispose() {
+    picture.dispose();
+    for (final image in images) {
+      image.release();
+    }
+  }
 
   /// The last frame that showed this picture.
   int frame;
@@ -143,7 +169,16 @@ final class _CachedRow {
 /// viewport moves, so this content check is what lets a scroll reuse the
 /// rows that only moved (ADR 0011, amendment of 2026-11-10). Pictures of
 /// rows that left the viewport are disposed. Every picture and paragraph
-/// is dropped when the text style, text scaler or cell metrics change.
+/// is dropped when the text style, text scaler, cell metrics or
+/// [textRendering] change.
+///
+/// **Glyph atlas** (ADR 0012, [VtTextRendering.atlas]). The recorder draws
+/// grid text from a [GlyphAtlas] that belongs to it, so the atlas is
+/// dropped wherever the recorder is. Glyphs a frame's rows miss are
+/// queued while the rows are recorded and rasterised once, after them;
+/// only those rows are recorded again. Atlas images count in
+/// [cacheBudget], including superseded page images that cached pictures
+/// still draw ([AtlasLedger]).
 ///
 /// **Render hold.** While [TerminalFrameSource.isRenderHeld] is true the
 /// frame is not read and nothing is dropped: the cached pictures are
@@ -170,6 +205,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     ValueListenable<bool>? cursorHidden,
     bool blinkEnabled = true,
     int cacheBudget = defaultCacheBudget,
+    VtTextRendering textRendering = VtTextRendering.atlas,
   }) : _source = source,
        _cursorHidden = cursorHidden,
        _geometry = geometry,
@@ -182,6 +218,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
        _backgroundOpacity = backgroundOpacity,
        _blinkEnabled = blinkEnabled,
        _cacheBudget = cacheBudget,
+       _textRendering = textRendering,
        _paragraphs = ParagraphCache(maxBytes: cacheBudget ~/ 4);
 
   /// How long the cursor stays on, then off, while it blinks: Ghostty's
@@ -212,6 +249,16 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   double _backgroundOpacity;
   bool _blinkEnabled;
   int _cacheBudget;
+  VtTextRendering _textRendering;
+
+  /// See [TerminalRenderWidget.textRendering]. A change drops every cached
+  /// picture, as a font change does.
+  VtTextRendering get textRendering => _textRendering;
+  set textRendering(VtTextRendering value) {
+    if (value == _textRendering) return;
+    _textRendering = value;
+    markNeedsPaint();
+  }
 
   /// See [TerminalRenderWidget.source].
   TerminalFrameSource get source => _source;
@@ -326,11 +373,17 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     markNeedsPaint();
   }
 
-  /// About how many bytes of row pictures and paragraphs this view keeps,
-  /// by estimate (`RowContent.estimatedBytes`,
-  /// `ParagraphCache.estimatedBytes`): three quarters for pictures, one
-  /// quarter for paragraphs. Pictures shown in the current frame are kept
-  /// even beyond it.
+  /// About how many bytes of row pictures, glyph atlas images and
+  /// paragraphs this view keeps, by estimate (`RowContent.estimatedBytes`,
+  /// `ParagraphCache.estimatedBytes`; atlas images exactly, 4 bytes per
+  /// pixel): three quarters for pictures and atlas images together, one
+  /// quarter for paragraphs. Pictures shown in the current frame, and the
+  /// atlas images they draw, are kept even beyond it.
+  ///
+  /// The atlas itself may grow to half of the budget; past that (and past
+  /// twice what it held after its first frame, so a screen that needs more
+  /// does not thrash) it is dropped with every picture at the next paint
+  /// and rebuilt from the screen.
   ///
   /// Pictures are kept by content: a row whose new content was shown
   /// recently (a program redrawing the screen shifted by a line, or
@@ -342,7 +395,8 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   /// are muted ([blinkEnabled] false) and, [hiddenReleaseDelay] later, it
   /// is no longer composited (a hidden tab, a covered route; a muted view
   /// still on screen keeps them); on memory pressure (all but the visible
-  /// rows); and when the system fonts change.
+  /// rows, and the atlas too if it holds pages the screen does not draw);
+  /// and when the system fonts change.
   int get cacheBudget => _cacheBudget;
   set cacheBudget(int value) {
     if (value == _cacheBudget) return;
@@ -366,6 +420,14 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   }
 
   int get _pictureBudget => _cacheBudget - _cacheBudget ~/ 4;
+
+  int get _atlasBudget => _cacheBudget ~/ 2;
+
+  // Every atlas image of this view (live or pinned by cached pictures).
+  final _ledger = AtlasLedger();
+
+  // What the atlas held after the first frame of its generation.
+  int _atlasFloor = 0;
 
   // Row cache.
   final ParagraphCache _paragraphs;
@@ -420,6 +482,19 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   /// The estimated bytes of the cached pictures.
   @visibleForTesting
   int get debugPictureBytes => _pictureBytes;
+
+  /// The glyph atlas of the current recorder, if any.
+  @visibleForTesting
+  GlyphAtlas? get debugAtlas => _recorder?.atlas;
+
+  /// The bytes of every atlas image not freed yet (live pages and
+  /// superseded ones still drawn by cached pictures).
+  @visibleForTesting
+  int get debugAtlasBytes => _ledger.bytes;
+
+  /// How many atlas images are not freed yet.
+  @visibleForTesting
+  int get debugAtlasImages => _ledger.images;
 
   /// Rows the current recorder drew as one paragraph (see
   /// `RowRecorder.debugRowParagraphs`); resets when the caches drop.
@@ -494,6 +569,18 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     // Keep what the screen shows, drop everything else.
     _paragraphs.clear();
     _evictPictures(_frame, budget: 0);
+    // An atlas page the screen does not draw can only go with the whole
+    // atlas: drop it and the pictures, and record the screen again.
+    final atlas = _recorder?.atlas;
+    if (atlas == null) return;
+    final drawn = <AtlasImage>{for (final row in _rows.values) ...row.images};
+    for (var page = 0; page < atlas.pageCount; page++) {
+      if (!drawn.contains(atlas.page(page))) {
+        _dropAll();
+        markNeedsPaint();
+        return;
+      }
+    }
   }
 
   // A font was installed or removed: glyphs drawn with a fallback may now
@@ -586,20 +673,38 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       _rescanAll = true;
     }
     final current = _recorder;
+    final useAtlas = _textRendering == VtTextRendering.atlas;
     if (current != null &&
         current.metrics == metrics &&
         current.textStyle == _textStyle &&
-        current.textScaler == _textScaler) {
+        current.textScaler == _textScaler &&
+        (current.atlas != null) == useAtlas &&
+        !_atlasOverBudget(current.atlas)) {
       return current;
     }
     _dropRows();
     _paragraphs.clear();
-    return _recorder = RowRecorder(
+    current?.dispose();
+    _atlasFloor = 0;
+    final recorder = RowRecorder(
       metrics: metrics,
       textStyle: _textStyle,
       textScaler: _textScaler,
       paragraphs: _paragraphs,
+      atlasLedger: useAtlas ? _ledger : null,
+      // 2 MiB pages for the default budget, smaller ones for small budgets.
+      atlasPageBytes: _cacheBudget ~/ 8,
     );
+    return _recorder = recorder;
+  }
+
+  // Whether [atlas] outgrew its share of the budget, and twice what its
+  // first frame needed (so a screen that needs more does not drop it
+  // every frame).
+  bool _atlasOverBudget(GlyphAtlas? atlas) {
+    if (atlas == null || _atlasFloor == 0) return false;
+    final bytes = atlas.liveBytes;
+    return bytes > _atlasBudget && bytes > 2 * _atlasFloor;
   }
 
   bool _rescanAll = false;
@@ -642,6 +747,16 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       final ids = List<RenderRowId?>.filled(rows, null);
       final selection = _recordedTheme!.selection;
       var complete = true;
+      final atlas = recorder.atlas;
+      if (atlas != null) {
+        // The default foreground's printable ASCII goes first, in page 0.
+        atlas
+          ..prefill(colorOfRgb(colors.foreground).toARGB32())
+          ..flush();
+      }
+      // Rows whose glyphs were not in the atlas yet: recorded again once
+      // the atlas is flushed, after every other row.
+      final missed = <(RenderRowId, RowContent)>[];
       try {
         for (final row in state.allRows) {
           final y = row.viewportY;
@@ -653,17 +768,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
             _rowScans++;
             if (cached == null || !recorder.scanMatches(cached.content)) {
               final content = recorder.takeScan();
-              var entry = _pictures.remove(content);
-              if (entry == null) {
-                entry = _CachedRow(recorder.record(content), content, frame);
-                _pictureBytes += content.estimatedBytes;
-                _rowRecordings++;
-              } else {
-                _pictureHits++;
-                entry.frame = frame;
+              if (!_showContent(recorder, id, content, frame)) {
+                missed.add((id, content));
               }
-              _pictures[content] = entry;
-              _rows[id] = entry;
             } else {
               _touch(cached, frame);
             }
@@ -675,10 +782,18 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
             cursorCell = recorder.readCell(row, cursorX, colors);
           }
         }
+        if (missed.isNotEmpty) {
+          atlas!.flush();
+          for (final (id, content) in missed) {
+            final shown = _showContent(recorder, id, content, frame);
+            assert(shown, 'a row missed glyphs after the atlas was flushed');
+          }
+        }
       } catch (_) {
         _dropRows();
         rethrow;
       }
+      if (atlas != null && _atlasFloor == 0) _atlasFloor = atlas.liveBytes;
       for (final id in ids) {
         if (id == null) complete = false;
       }
@@ -694,6 +809,42 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     } finally {
       _source.endFrame();
     }
+  }
+
+  /// Shows [content] in row [id]: its cached picture, or a new recording.
+  /// Returns false, recording nothing, when the row needs atlas glyphs that
+  /// are only queued.
+  bool _showContent(
+    RowRecorder recorder,
+    RenderRowId id,
+    RowContent content,
+    int frame,
+  ) {
+    var entry = _pictures.remove(content);
+    if (entry == null) {
+      final picture = recorder.record(content);
+      if (recorder.missedGlyphs) {
+        picture.dispose();
+        return false;
+      }
+      entry = _CachedRow(
+        picture,
+        content,
+        frame,
+        recorder.recordedImages,
+        recorder.atlas == null
+            ? content.estimatedBytes
+            : content.estimatedAtlasBytes,
+      );
+      _pictureBytes += entry.bytes;
+      _rowRecordings++;
+    } else {
+      _pictureHits++;
+      entry.frame = frame;
+    }
+    _pictures[content] = entry;
+    _rows[id] = entry;
+    return true;
   }
 
   static bool _sameRowColors(RenderColors a, RenderColors b) {
@@ -820,30 +971,30 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       ..[entry.content] = entry;
   }
 
-  /// Disposes the least recently used pictures until the rest fit
-  /// [budget] (the picture share of [cacheBudget]), never one shown in
-  /// [frame].
+  /// Disposes the least recently used pictures until the rest, with the
+  /// atlas images, fit [budget] (the picture share of [cacheBudget]),
+  /// never one shown in [frame]. A disposed picture releases its atlas
+  /// images, so superseded pages it pinned are freed with it.
   void _evictPictures(int frame, {int? budget}) {
     final limit = budget ?? _pictureBudget;
-    if (_pictureBytes <= limit) return;
+    if (_pictureBytes + _ledger.bytes <= limit) return;
     final evicted = <_CachedRow>[];
-    var bytes = _pictureBytes;
     for (final entry in _pictures.values) {
-      if (bytes <= limit) break;
+      if (_pictureBytes + _ledger.bytes <= limit) break;
       if (entry.frame == frame) continue;
       evicted.add(entry);
-      bytes -= entry.content.estimatedBytes;
+      _pictureBytes -= entry.bytes;
+      // Releases the atlas images now, so the ledger is current.
+      entry.dispose();
     }
     for (final entry in evicted) {
       _pictures.remove(entry.content);
-      entry.picture.dispose();
     }
-    _pictureBytes = bytes;
   }
 
   void _dropRows() {
     for (final row in _pictures.values) {
-      row.picture.dispose();
+      row.dispose();
     }
     _pictures.clear();
     _pictureBytes = 0;
@@ -856,6 +1007,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   void _dropAll() {
     _dropRows();
     _paragraphs.clear();
+    _recorder?.dispose();
     _recorder = null;
     _recordedTheme = null;
     _colors = null;

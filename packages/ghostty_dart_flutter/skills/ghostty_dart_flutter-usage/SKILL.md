@@ -82,6 +82,14 @@ class _TerminalPageState extends State<TerminalPage> {
   set it from `build`.
 - **One controller, one view.** Dispose the controller when done; it is safe
   to call twice, and every other member throws `StateError` afterwards.
+- **Text is drawn from a glyph atlas by default**
+  (`textRendering: VtTextRendering.atlas`): each glyph is rasterised once
+  and rows are drawn with `drawRawAtlas`, which makes screens full of new
+  text cheap. Pass `textRendering: VtTextRendering.paragraphs` for exact
+  paragraph shaping and coverage (fonts that change glyphs by context, a
+  view shown under a scale transform, or to rule the atlas out while
+  debugging a rendering difference). Wide characters, emoji, grapheme
+  clusters and box drawing are paragraphs on both paths.
 
 ## Input behaviour (differs from package:xterm)
 

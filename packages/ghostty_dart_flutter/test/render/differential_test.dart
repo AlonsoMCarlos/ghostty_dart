@@ -100,11 +100,14 @@ void main() {
     // cold renderer paints.
     const budget = 160 << 10;
     const pictureBudget = budget - budget ~/ 4;
+    // Paragraphs: the atlas would take most of this small budget (see
+    // glyph_atlas_test.dart for the atlas's share).
     final h = await pumpRenderer(
       tester,
       cols: 20,
       rows: 5,
       cacheBudget: budget,
+      textRendering: VtTextRendering.paragraphs,
     );
     for (var frame = 0; frame < 100; frame++) {
       await h.write(
@@ -133,6 +136,7 @@ void main() {
       rows: 8,
       devicePixelRatio: 2,
       initial: '\x1b[2 q',
+      textRendering: VtTextRendering.paragraphs,
     );
     final random = math.Random(7);
     for (var step = 0; step < 8; step++) {
@@ -159,80 +163,86 @@ void main() {
     }
   });
 
-  testWidgets('warm caches paint what a cold renderer paints', (tester) async {
-    final h = await pumpRenderer(
-      tester,
-      cols: 24,
-      rows: 8,
-      devicePixelRatio: 1.5,
-      initial:
-          '\x1b[2 q' // steady cursor: the blink phase cannot differ
-          '${List.generate(20, (i) => '\x1b[3${i % 8}mline $i\x1b[0m').join('\r\n')}',
-    );
-    await _expectSameAsCold(h, 'initial');
+  for (final textRendering in VtTextRendering.values) {
+    testWidgets('warm caches paint what a cold renderer paints '
+        '(${textRendering.name})', (tester) async {
+      final h = await pumpRenderer(
+        tester,
+        textRendering: textRendering,
+        cols: 24,
+        rows: 8,
+        devicePixelRatio: 1.5,
+        initial:
+            '\x1b[2 q' // steady cursor: the blink phase cannot differ
+            '${List.generate(20, (i) => '\x1b[3${i % 8}mline $i\x1b[0m').join('\r\n')}',
+      );
+      await _expectSameAsCold(h, 'initial');
 
-    final steps = <String, Future<void> Function()>{
-      'newline scroll': () => h.write('\r\nnew line'),
-      'viewport scroll up': () async {
-        h.controller.scrollViewport(const ViewportScroll.delta(-3));
-        await tester.pump();
-      },
-      'viewport scroll down': () async {
-        h.controller.scrollViewport(const ViewportScroll.delta(2));
-        await tester.pump();
-      },
-      'scroll to bottom': () async {
-        h.controller.scrollViewport(const ViewportScroll.bottom());
-        await tester.pump();
-      },
-      'ED 2': () => h.write('\x1b[2J\x1b[Hafter clear'),
-      'resize narrower': () => h.resize(16, 8),
-      'resize taller and wider': () => h.resize(30, 10),
-      'alternate screen on': () => h.write('\x1b[?1049h\x1b[42malt screen'),
-      'alternate screen off': () => h.write('\x1b[?1049l'),
-      'render hold start': () =>
-          h.write('\x1b[?2026h\x1b[5;1Hheld text\x1b[31m red'),
-      'render hold end': () => h.write('\x1b[?2026l'),
-      'palette (OSC 4)': () => h.write('\x1b]4;1;rgb:00/ff/80\x07'),
-      'default foreground (OSC 10)': () => h.write('\x1b]10;rgb:ff/ff/00\x07'),
-      'default background (OSC 11)': () => h.write('\x1b]11;rgb:20/00/40\x07'),
-      'cursor colour (OSC 12)': () => h.write('\x1b]12;rgb:00/ff/00\x07'),
-      'reverse video': () => h.write('\x1b[?5h'),
-      'reverse video off': () => h.write('\x1b[?5l'),
-      'selection': () async {
-        h.seams.selection = h.seams.terminal.selectRange(
-          const GridPoint.viewport(2, 1),
-          const GridPoint.viewport(6, 3),
-        );
-        await tester.pump();
-      },
-      'selection moved': () async {
-        h.seams.selection = h.seams.terminal.selectRange(
-          const GridPoint.viewport(0, 2),
-          const GridPoint.viewport(3, 2),
-        );
-        await tester.pump();
-      },
-      'theme': () async {
-        h.controller.theme = VtTerminalTheme.whiteOnBlack;
-        await tester.pump();
-      },
-    };
-    for (final MapEntry(key: step, value: run) in steps.entries) {
-      await run();
-      await _expectSameAsCold(h, step);
-    }
-
-    final random = math.Random(2026);
-    for (var i = 0; i < 12; i++) {
-      await h.write(_randomOutput(random, 40));
-      if (i.isEven) {
-        h.controller.scrollViewport(
-          ViewportScroll.delta(random.nextInt(5) - 3),
-        );
-        await tester.pump();
+      final steps = <String, Future<void> Function()>{
+        'newline scroll': () => h.write('\r\nnew line'),
+        'viewport scroll up': () async {
+          h.controller.scrollViewport(const ViewportScroll.delta(-3));
+          await tester.pump();
+        },
+        'viewport scroll down': () async {
+          h.controller.scrollViewport(const ViewportScroll.delta(2));
+          await tester.pump();
+        },
+        'scroll to bottom': () async {
+          h.controller.scrollViewport(const ViewportScroll.bottom());
+          await tester.pump();
+        },
+        'ED 2': () => h.write('\x1b[2J\x1b[Hafter clear'),
+        'resize narrower': () => h.resize(16, 8),
+        'resize taller and wider': () => h.resize(30, 10),
+        'alternate screen on': () => h.write('\x1b[?1049h\x1b[42malt screen'),
+        'alternate screen off': () => h.write('\x1b[?1049l'),
+        'render hold start': () =>
+            h.write('\x1b[?2026h\x1b[5;1Hheld text\x1b[31m red'),
+        'render hold end': () => h.write('\x1b[?2026l'),
+        'palette (OSC 4)': () => h.write('\x1b]4;1;rgb:00/ff/80\x07'),
+        'default foreground (OSC 10)': () =>
+            h.write('\x1b]10;rgb:ff/ff/00\x07'),
+        'default background (OSC 11)': () =>
+            h.write('\x1b]11;rgb:20/00/40\x07'),
+        'cursor colour (OSC 12)': () => h.write('\x1b]12;rgb:00/ff/00\x07'),
+        'reverse video': () => h.write('\x1b[?5h'),
+        'reverse video off': () => h.write('\x1b[?5l'),
+        'selection': () async {
+          h.seams.selection = h.seams.terminal.selectRange(
+            const GridPoint.viewport(2, 1),
+            const GridPoint.viewport(6, 3),
+          );
+          await tester.pump();
+        },
+        'selection moved': () async {
+          h.seams.selection = h.seams.terminal.selectRange(
+            const GridPoint.viewport(0, 2),
+            const GridPoint.viewport(3, 2),
+          );
+          await tester.pump();
+        },
+        'theme': () async {
+          h.controller.theme = VtTerminalTheme.whiteOnBlack;
+          await tester.pump();
+        },
+      };
+      for (final MapEntry(key: step, value: run) in steps.entries) {
+        await run();
+        await _expectSameAsCold(h, step);
       }
-      await _expectSameAsCold(h, 'random step $i');
-    }
-  });
+
+      final random = math.Random(2026);
+      for (var i = 0; i < 12; i++) {
+        await h.write(_randomOutput(random, 40));
+        if (i.isEven) {
+          h.controller.scrollViewport(
+            ViewportScroll.delta(random.nextInt(5) - 3),
+          );
+          await tester.pump();
+        }
+        await _expectSameAsCold(h, 'random step $i');
+      }
+    });
+  }
 }

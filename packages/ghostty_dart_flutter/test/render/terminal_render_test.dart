@@ -132,7 +132,11 @@ void main() {
     testWidgets('a text style change drops every picture and paragraph', (
       tester,
     ) async {
-      final h = await pumpRenderer(tester, initial: 'hello');
+      final h = await pumpRenderer(
+        tester,
+        initial: 'hello',
+        textRendering: VtTextRendering.paragraphs,
+      );
       final recorded = h.render.debugRowRecordings;
       final style = gridStyle.copyWith(fontSize: 14);
       await h.rebuild(
@@ -319,11 +323,13 @@ void main() {
       // Row 0 shows the same status line for many frames while rows 1-4
       // churn through new content and the cache evicts. Once the status
       // line changes, its old picture is recent, not the oldest.
+      // Paragraphs: the atlas would take most of this small budget.
       final h = await pumpRenderer(
         tester,
         cols: 20,
         rows: 5,
         cacheBudget: 160 << 10,
+        textRendering: VtTextRendering.paragraphs,
       );
       Future<void> churn(int frame) => h.write(
         [
@@ -411,7 +417,11 @@ void main() {
     testWidgets('memory pressure keeps only the visible pictures', (
       tester,
     ) async {
-      final h = await pumpRenderer(tester, initial: 'hello');
+      final h = await pumpRenderer(
+        tester,
+        initial: 'hello',
+        textRendering: VtTextRendering.paragraphs,
+      );
       await h.write('\x1b[1;1Hworld');
       await h.write('\x1b[1;1Hagain');
       expect(h.render.debugCachedPictures, 4); // hello, world, again, blank

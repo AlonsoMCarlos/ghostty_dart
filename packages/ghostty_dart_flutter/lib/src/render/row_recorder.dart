@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
 import '../metrics/cell_metrics.dart';
+import 'glyph_atlas.dart';
 import 'paragraph_cache.dart';
 
 /// Face flags of a cached paragraph (the `faces` field of
@@ -122,6 +123,29 @@ final class RowContent {
     return 1024 + 96 * chars + 256 * calls;
   }();
 
+  /// [estimatedBytes] for a picture recorded with a glyph atlas: run text
+  /// is no paragraph but `drawRawAtlas` sprites, which the display list
+  /// stores as an `RSTransform`, a source rect and a `DlColor`: 52 bytes
+  /// per glyph (`dl_op_records.h`, `DrawAtlasBaseOp`, Flutter 3.47.9),
+  /// counted as 64; clusters are still paragraphs. An estimate.
+  late final int estimatedAtlasBytes = () {
+    var runChars = 0;
+    var clusterChars = 0;
+    var calls = 2; // the atlas calls of the row (tinted, untinted)
+    for (var i = 0; i < _ops.length; i += RowRecorder._opLength(_ops[i])) {
+      switch (_ops[i]) {
+        case _opRun:
+          runChars += _texts[_ops[i + 2]].length;
+        case _opCluster:
+          clusterChars += _texts[_ops[i + 2]].length;
+          calls++;
+        default:
+          calls++;
+      }
+    }
+    return 1024 + 64 * runChars + 96 * clusterChars + 256 * calls;
+  }();
+
   /// A readable list of the operations, for tests: `bg 0+3 #ffcd3131`,
   /// `sel 1+2 #aaaeafad`, `run 4 "abc" #ffcccccc f0`, `cluster 7 "中" …
   /// span 2`, `deco 0-5 underline:curly strike #ff000000 #ffcccccc`.
@@ -166,9 +190,11 @@ final class RowContent {
 }
 
 /// Scans terminal rows into [RowContent] and records content into a
-/// [ui.Picture] (ADR 0011 "Rendering (v1)"): merged background spans, the
-/// selection, the row's style runs as one paragraph (one per run as a
-/// fallback, see [record]) and hand-drawn decorations. Never exported.
+/// [ui.Picture] (ADR 0011 "Rendering (v1)", ADR 0012): merged background
+/// spans, the selection, the row's style runs (glyphs from [atlas] with
+/// one `drawRawAtlas` per page, or, without an atlas, one paragraph per
+/// row with one per run as a fallback, see [record]) and hand-drawn
+/// decorations. Never exported.
 ///
 /// The picture is drawn at the row's top-left grid corner (x = 0 is column
 /// 0, y = 0 the row's top).
@@ -178,19 +204,25 @@ final class RowContent {
 /// or combining characters); they are laid out with
 /// `letterSpacing = metrics.letterSpacing`, so glyph *i* advances by
 /// exactly one cell width. A row paragraph is measured as a whole; every
-/// run paragraph is measured once, when it is laid out: if its width is not its cell count times the cell width (a glyph
-/// from a fallback font, or a face with another advance), it is drawn cell
-/// by cell instead. Everything else (wide characters, grapheme clusters,
+/// run paragraph is measured once, when it is laid out: if its width is
+/// not its cell count times the cell width (a glyph from a fallback font,
+/// or a face with another advance), it is drawn cell by cell instead. The
+/// atlas checks every glyph's advance the same way when it rasterises it
+/// and leaves the ones that do not fit to the per-cell path. Everything else (wide characters, grapheme clusters,
 /// emoji, symbols that may come from a fallback font) is laid out on its
 /// own, centred in its one or two cells, and scaled down if wider.
 final class RowRecorder {
   /// A recorder for rows of [metrics] cells in [textStyle] (scaled by
-  /// [textScaler]), sharing paragraphs through [paragraphs].
+  /// [textScaler]), sharing paragraphs through [paragraphs]. With an
+  /// [atlasLedger] it draws grid text from its own [atlas], whose images
+  /// are counted there and whose pages hold at most [atlasPageBytes].
   RowRecorder({
     required this.metrics,
     required this.textStyle,
     required this.paragraphs,
     this.textScaler = TextScaler.noScaling,
+    this.atlasLedger,
+    this.atlasPageBytes = GlyphAtlas.defaultMaxPageBytes,
   }) : _fontSize = textScaler.scale(textStyle.fontSize ?? kDefaultFontSize) {
     final px = 1 / metrics.devicePixelRatio;
     _thickness = math.max(px, _snap(_fontSize * decorationThicknessEm));
@@ -201,6 +233,191 @@ final class RowRecorder {
     // the cell.
     _underlineTop = math.min(underlineTop, metrics.height - 3 * _thickness);
     _strikeTop = _snap(metrics.baseline - _fontSize * strikethroughOffsetEm);
+  }
+
+  /// Where [atlas] counts its images; `null` for no atlas.
+  final AtlasLedger? atlasLedger;
+
+  /// The most bytes an [atlas] page holds (at least one glyph).
+  final int atlasPageBytes;
+
+  /// The glyph atlas grid text is drawn from, or `null` to lay text out
+  /// as paragraphs (`VtTextRendering.paragraphs`). Owned by this
+  /// recorder: [dispose] disposes it.
+  late final GlyphAtlas? atlas = atlasLedger == null
+      ? null
+      : GlyphAtlas(
+          metrics: metrics,
+          styleOf: _uiStyle,
+          ledger: atlasLedger!,
+          maxPageBytes: atlasPageBytes,
+        );
+
+  /// Whether the last [record] needed glyphs that were only queued in
+  /// [atlas], not rasterised yet: its picture lacks them. Flush the atlas
+  /// and record the row again (the renderer does, once per frame).
+  bool get missedGlyphs => _missedGlyphs;
+  bool _missedGlyphs = false;
+
+  /// The atlas images the last [record]'s picture draws. A cached picture
+  /// [AtlasImage.retain]s them for as long as it lives.
+  List<AtlasImage> get recordedImages => _recordedImages;
+  List<AtlasImage> _recordedImages = const [];
+
+  /// Releases the glyph atlas (row pictures that use it keep their
+  /// images, see [AtlasImage]).
+  void dispose() => atlas?.dispose();
+
+  // Per-row sprite buffers, grown on demand.
+  Float32List _xforms = Float32List(0);
+  Float32List _rects = Float32List(0);
+  Int32List _colors = Int32List(0);
+  Int32List _spriteSlots = Int32List(0);
+  Int32List _spriteCols = Int32List(0);
+  Int32List _spriteColors = Int32List(0);
+  // Nearest sampling: sprites map one texel to one device pixel, and it
+  // measured ~4 % less raster time than bilinear (ADR 0012).
+  final _atlasPaint = Paint();
+  final _fallback = <int>[];
+
+  // Draws every run glyph of the row from the atlas, one drawRawAtlas per
+  // page; glyphs that do not fit the grid are drawn on their own, after
+  // it. Sets [_missedGlyphs] when a glyph is only queued.
+  void _drawAtlasRow(
+    Canvas canvas,
+    GlyphAtlas atlas,
+    Uint32List ops,
+    List<String> texts,
+  ) {
+    var count = 0;
+    for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
+      if (ops[i] == _opRun) count += texts[ops[i + 2]].length;
+    }
+    if (count == 0) return;
+    if (_spriteSlots.length < count) {
+      final size = math.max(count, 2 * _spriteSlots.length);
+      _xforms = Float32List(size * 4);
+      _rects = Float32List(size * 4);
+      _colors = Int32List(size);
+      _spriteSlots = Int32List(size);
+      _spriteCols = Int32List(size);
+      _spriteColors = Int32List(size);
+    }
+    var n = 0;
+    var firstPage = 1 << 30;
+    var lastPage = -1;
+    var missed = false;
+    _fallback.clear();
+    for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
+      if (ops[i] != _opRun) continue;
+      final col = ops[i + 1];
+      final text = texts[ops[i + 2]];
+      final color = ops[i + 3];
+      final faces = ops[i + 4];
+      // 0: drawn untinted, without the per-sprite colour blend (the glyph
+      // is rasterised in exactly this colour: the default foreground,
+      // white, black).
+      final spriteColor = GlyphAtlas.isExactGrey(color) ? 0 : color;
+      for (var c = 0; c < text.length; c++) {
+        final unit = text.codeUnitAt(c);
+        if (unit == 0x20) continue;
+        final slot = atlas.slotOf(unit, faces, color);
+        if (slot < 0) {
+          _fallback
+            ..add(col + c)
+            ..add(unit)
+            ..add(color)
+            ..add(faces);
+          continue;
+        }
+        if (!atlas.isRasterised(slot)) missed = true;
+        final page = atlas.pageOf(slot);
+        if (page < firstPage) firstPage = page;
+        if (page > lastPage) lastPage = page;
+        _spriteSlots[n] = slot;
+        _spriteCols[n] = col + c;
+        _spriteColors[n] = spriteColor;
+        n++;
+      }
+    }
+    if (missed) {
+      // The picture is discarded and the row recorded again after the
+      // atlas is flushed: queueing every glyph of the row is enough.
+      _missedGlyphs = true;
+      return;
+    }
+    if (n > 0) {
+      final images = <AtlasImage>[];
+      for (var page = firstPage; page <= lastPage; page++) {
+        final image = _drawAtlasPage(
+          canvas,
+          atlas,
+          page,
+          n,
+          firstPage == lastPage,
+        );
+        if (image != null) images.add(image);
+      }
+      _recordedImages = images;
+    }
+    for (var k = 0; k < _fallback.length; k += 4) {
+      _drawCluster(
+        canvas,
+        (
+          String.fromCharCode(_fallback[k + 1]),
+          _fallback[k + 2],
+          _fallback[k + 3] | TextFace.cluster,
+        ),
+        _fallback[k],
+        1,
+      );
+    }
+  }
+
+  // Draws the first [count] sprites that are in [page] (all of them when
+  // [only]): tinted ones with one drawRawAtlas, untinted ones (colour 0)
+  // with another; returns the page image, or null if no sprite is in it.
+  AtlasImage? _drawAtlasPage(
+    Canvas canvas,
+    GlyphAtlas atlas,
+    int page,
+    int count,
+    bool only,
+  ) {
+    final scale = 1 / metrics.devicePixelRatio;
+    final left = -atlas.padX * scale;
+    final top = -atlas.padTop * scale;
+    final cell = metrics.width;
+    AtlasImage? image;
+    for (final untinted in const [false, true]) {
+      var n = 0;
+      for (var k = 0; k < count; k++) {
+        final slot = _spriteSlots[k];
+        if (!only && atlas.pageOf(slot) != page) continue;
+        final color = _spriteColors[k];
+        if ((color == 0) != untinted) continue;
+        final j = n * 4;
+        _xforms[j] = scale;
+        _xforms[j + 1] = 0;
+        _xforms[j + 2] = _spriteCols[k] * cell + left;
+        _xforms[j + 3] = top;
+        atlas.writeRect(_rects, j, slot);
+        _colors[n] = color;
+        n++;
+      }
+      if (n == 0) continue;
+      image = atlas.page(page);
+      canvas.drawRawAtlas(
+        image.image,
+        Float32List.sublistView(_xforms, 0, n * 4),
+        Float32List.sublistView(_rects, 0, n * 4),
+        untinted ? null : Int32List.sublistView(_colors, 0, n),
+        untinted ? null : GlyphAtlas.blendMode,
+        null,
+        _atlasPaint,
+      );
+    }
+    return image;
   }
 
   // Decoration geometry. Heuristics in ems of the font size until the
@@ -303,7 +520,14 @@ final class RowRecorder {
 
   /// Records [content] into a picture.
   ///
-  /// When the row has two or more text runs, they are laid out together as
+  /// With an [atlas], every grid-safe glyph of the row's runs is a sprite
+  /// of the atlas, drawn with one `drawRawAtlas` per atlas page after the
+  /// backgrounds; no text is laid out. If a glyph was not in the atlas yet
+  /// it is queued, [missedGlyphs] is set, and the picture lacks the row's
+  /// text: flush the atlas and record again. [recordedImages] lists the
+  /// atlas images the picture draws.
+  ///
+  /// Without an atlas, when the row has two or more text runs, they are laid out together as
   /// one paragraph with a style span per run (blank gaps become spaces),
   /// which costs a fraction of one paragraph per run: building and laying
   /// out ~1400 run paragraphs took 46 ms per 200 × 60 frame on the
@@ -318,6 +542,9 @@ final class RowRecorder {
     final canvas = Canvas(recorder);
     final ops = content._ops;
     final texts = content._texts;
+    final atlas = this.atlas;
+    _missedGlyphs = false;
+    _recordedImages = const [];
     ui.Paragraph? row;
     var textStarted = false;
     for (var i = 0; i < ops.length;) {
@@ -325,7 +552,12 @@ final class RowRecorder {
       if (!textStarted && op != _opBackground && op != _opSelection) {
         // Backgrounds and the selection come first; the text goes on top.
         textStarted = true;
-        row = _rowParagraph(ops, texts);
+        if (atlas != null) {
+          _drawAtlasRow(canvas, atlas, ops, texts);
+          if (_missedGlyphs) break;
+        } else {
+          row = _rowParagraph(ops, texts);
+        }
         if (row != null) {
           canvas.drawParagraph(
             row,
@@ -339,7 +571,7 @@ final class RowRecorder {
           canvas.drawRect(_cells(ops[i + 1], ops[i + 2]), _paint);
           i += 4;
         case _opRun:
-          if (row == null) {
+          if (row == null && atlas == null) {
             _drawRun(
               canvas,
               texts[ops[i + 2]],
@@ -459,7 +691,8 @@ final class RowRecorder {
   final _uiStyles = <int, ui.TextStyle>{};
 
   ui.TextStyle _uiStyle(int color, int faces) {
-    final key = color << 3 | faces;
+    // Arithmetic, not a shift: exact on the web too (35 bits).
+    final key = color * 8 + faces;
     final cached = _uiStyles[key];
     if (cached != null) return cached;
     if (_uiStyles.length >= 1024) _uiStyles.clear();

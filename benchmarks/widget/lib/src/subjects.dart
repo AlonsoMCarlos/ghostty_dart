@@ -1,5 +1,6 @@
-/// The three terminal widgets the frame benchmarks compare, behind one
-/// interface.
+/// The terminal widgets the frame benchmarks compare, behind one
+/// interface: ghostty_dart_flutter on both text paths (ADR 0012), xterm
+/// 4.0.0 and xterm2 5.4.0.
 library;
 
 import 'dart:convert';
@@ -37,6 +38,7 @@ abstract interface class BenchSubject {
 /// Every subject, in report order.
 List<BenchSubject Function()> get allSubjects => [
   GhosttySubject.new,
+  () => GhosttySubject(textRendering: VtTextRendering.paragraphs),
   XtermSubject.new,
   Xterm2Subject.new,
 ];
@@ -71,22 +73,33 @@ Size _xtermGridSize(TextStyle style) {
   return size;
 }
 
-/// ghostty_dart_flutter's `VtTerminalView`.
+/// ghostty_dart_flutter's `VtTerminalView`, drawing text with
+/// [textRendering].
 final class GhosttySubject implements BenchSubject {
   /// Creates the 200×60 controller.
-  GhosttySubject();
+  GhosttySubject({this.textRendering = VtTextRendering.atlas});
+
+  /// The text path (the view's default is the atlas).
+  final VtTextRendering textRendering;
 
   final _controller = VtTerminalController(cols: benchCols, rows: benchRows);
 
   @override
-  String get name => 'ghostty_dart_flutter';
+  String get name => switch (textRendering) {
+    VtTextRendering.atlas => 'ghostty_dart_flutter',
+    VtTextRendering.paragraphs => 'ghostty_dart_flutter (paragraphs)',
+  };
 
   @override
   Widget build(TextStyle style, double devicePixelRatio) {
     final size = ghosttyGridSize(style, devicePixelRatio);
     return SizedBox.fromSize(
       size: size,
-      child: VtTerminalView(controller: _controller, textStyle: style),
+      child: VtTerminalView(
+        controller: _controller,
+        textStyle: style,
+        textRendering: textRendering,
+      ),
     );
   }
 

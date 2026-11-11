@@ -282,15 +282,17 @@ avoiding it keeps the dependency set smaller.
 
 How long does each Flutter terminal widget take to produce a frame? This
 benchmark (`benchmarks/widget/`, a Flutter app and workspace member) drives
-the same per-frame byte streams into three widgets and records the frame
-timeline with `integration_test`'s `traceAction` under `flutter drive
---profile`, as the [Flutter profiling
+the same per-frame byte streams into four widgets and records the frame
+timeline with `integration_test`'s `traceTimeline` under `flutter drive
+--profile`, summarised with `flutter_driver`'s `TimelineSummary` as the
+[Flutter profiling
 cookbook](https://docs.flutter.dev/cookbook/testing/integration/profiling)
 describes (checked 2026-11-10).
 
 | Widget | Package | Input |
 |---|---|---|
-| `ghostty_dart_flutter` | this workspace, `VtTerminalView` | `Uint8List` via `writeBytes` |
+| `ghostty_dart_flutter` | this workspace, `VtTerminalView` with its default glyph atlas (ADR 0012) | `Uint8List` via `writeBytes` |
+| `ghostty_dart_flutter (paragraphs)` | the same view with `textRendering: VtTextRendering.paragraphs` (row paragraphs, ADR 0011) | `Uint8List` via `writeBytes` |
 | `xterm 4.0.0` | [`xterm`](https://pub.dev/packages/xterm) 4.0.0, `TerminalView` | `String` (UTF-8 decoded in the write) |
 | `xterm2 5.4.0` | [`xterm2`](https://pub.dev/packages/xterm2) 5.4.0, `TerminalView` | `String` (UTF-8 decoded in the write) |
 
@@ -316,7 +318,7 @@ The report goes to stdout and `benchmarks/widget/build/widget_bench.md`;
 every run's timeline and `TimelineSummary` are in
 `benchmarks/widget/build/<scenario>__<widget>__p<pass>.timeline{,_summary}.json`.
 `mise run bench:widget:test` (part of `mise run check`) tests the harness
-headlessly: the streams, the report, and that all three widgets end up with
+headlessly: the streams, the report, and that all four widgets end up with
 the same screen text for every scenario.
 
 The macOS bench app is not sandboxed, because it reads the test fonts from
@@ -377,6 +379,14 @@ the repository. It has not been run on a Mac yet.
   Averages are the median of the per-pass averages. p90, p99 (nearest rank)
   and worst pool every pass. A run where the timeline recorded fewer than
   95% of the driven frames is flagged `⚠` and must not be published.
+- **Summaries in the app:** each run's timeline is summarised inside the
+  benchmark app right after the run (`TimelineSummary.summarize`), written
+  to `build/<key>.timeline{,_summary}.json` (`BENCH_OUT_DIR`), and dropped
+  before the next run; only the summaries go to the driver. Until
+  2026-11-10 every timeline was sent to the driver at the end and
+  summarised there, which held all of them in memory at once in both
+  processes: a 5-widget run (90 timelines) was killed for low memory
+  while its driver summarised them.
 - **Tracing:** only the `Dart`, `Embedder` and `GC` timeline streams, into
   an endless buffer (`--endless-trace-buffer`). The first run on
   2026-11-10 traced `all` streams into the VM's ring buffer: the `API`
@@ -397,11 +407,13 @@ the repository. It has not been run on a Mac yet.
 
 ### Results
 
-The third run on 2026-11-10 (renderer of the T6 fix round, harness with the
-fresh, scroll and htop-like scenarios), on a cloud VM **without a GPU**.
-Read the raster columns as software rendering and the UI columns as one
-6-core VM; neither predicts a phone or a desktop with a GPU. Re-run on your
-hardware before quoting a number.
+The run of 2026-11-10 after the glyph atlas became the default (ADR 0012),
+with four widgets: `ghostty_dart_flutter` (atlas), the same view with
+`VtTextRendering.paragraphs` (the previous renderer, ADR 0011), xterm
+4.0.0 and xterm2 5.4.0, on a cloud VM **without a GPU**. Read the raster
+columns as software rendering and the UI columns as one 6-core VM; neither
+predicts a phone or a desktop with a GPU. Re-run on your hardware before
+quoting a number.
 
 ```sh
 GDK_SCALE=2 xvfb-run -a -s '-screen 0 3840x2400x24' mise run bench:widget
@@ -416,8 +428,8 @@ GDK_SCALE=2 xvfb-run -a -s '-screen 0 3840x2400x24' mise run bench:widget
 | Renderer | Impeller, OpenGL ES backend (requested with `--enable-impeller`; the report read `Impeller (OpenGL ES)` from the timelines) |
 | Device pixel ratio | 2.0 (`GDK_SCALE=2`), window 1800 × 1100 logical px |
 | Grid, font | 200 × 60 cells, JetBrains Mono 12 px |
-| Frames | 300 traced per run (+ 32 warm-up), 3 passes, widget order rotated |
-| Semantics | On for all three widgets: the Linux embedder enabled it (all 54 timelines have `Semantics.*` events). `ghostty_dart_flutter` then also reads its visible text at most every 500 ms. |
+| Frames | 300 traced per run (+ 32 warm-up), 3 passes, widget order rotated; every run recorded all its frames |
+| Semantics | On for all four widgets: the Linux embedder enabled it (all 72 timelines have `Semantics.*` events). `ghostty_dart_flutter` then also reads its visible text at most every 500 ms. |
 
 Times in ms. UI = frame build time (build, layout, paint on the UI
 thread); raster = rasterizer time; write = the synchronous write before
@@ -426,73 +438,100 @@ all passes. The ADR verdict checks write + UI against the UI target.
 
 | Scenario | Widget | Frames | UI avg | UI p90 | UI p99 | UI worst | Raster avg | Raster p90 | Raster p99 | Raster worst | Write avg | Write p99 | Write + UI avg | ADR target (UI / raster) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| idle | ghostty_dart_flutter | 900/900 | 0.14 | 0.18 | 0.30 | 0.60 | 102.46 | 110.62 | 125.65 | 184.42 | 0.00 | 0.00 | 0.14 | UI met, raster missed (≤ 0.5 / ≤ 1.0) |
-| idle | xterm 4.0.0 | 900/900 | 0.15 | 0.17 | 0.28 | 4.06 | 160.52 | 174.89 | 196.06 | 321.75 | 0.00 | 0.00 | 0.15 | – |
-| idle | xterm2 5.4.0 | 900/900 | 0.15 | 0.17 | 0.23 | 0.38 | 141.45 | 153.53 | 184.03 | 307.47 | 0.00 | 0.00 | 0.15 | – |
-| 3 dirty rows | ghostty_dart_flutter | 901/900 | 2.44 | 2.90 | 5.52 | 10.72 | 102.30 | 111.17 | 137.00 | 178.56 | 0.05 | 0.20 | 2.49 | missed (≤ 1.0 / ≤ 2.0) |
-| 3 dirty rows | xterm 4.0.0 | 900/900 | 19.01 | 22.51 | 35.23 | 55.16 | 160.60 | 176.84 | 204.12 | 330.17 | 0.10 | 0.17 | 19.11 | – |
-| 3 dirty rows | xterm2 5.4.0 | 901/900 | 25.38 | 30.09 | 37.40 | 91.68 | 147.28 | 161.41 | 200.56 | 305.70 | 0.11 | 0.19 | 25.49 | – |
-| full screen, fresh | ghostty_dart_flutter | 903/900 | 31.95 | 35.87 | 53.39 | 102.49 | 105.03 | 111.57 | 133.48 | 187.44 | 0.35 | 0.49 | 32.30 | missed (≤ 4.0 / ≤ 4.0) |
-| full screen, fresh | xterm 4.0.0 | 900/900 | 19.92 | 24.71 | 35.56 | 56.22 | 161.84 | 178.30 | 234.28 | 333.31 | 1.66 | 2.77 | 21.58 | – |
-| full screen, fresh | xterm2 5.4.0 | 901/900 | 24.15 | 28.71 | 37.19 | 86.37 | 148.32 | 162.19 | 190.39 | 306.07 | 1.35 | 2.16 | 25.51 | – |
-| scroll (cat) | ghostty_dart_flutter | 900/900 | 1.71 | 2.14 | 3.21 | 6.90 | 103.19 | 109.61 | 140.93 | 220.78 | 0.05 | 0.51 | 1.76 | – |
-| scroll (cat) | xterm 4.0.0 | 901/900 | 5.81 | 8.57 | 14.16 | 19.23 | 91.44 | 99.81 | 127.50 | 167.69 | 0.06 | 0.10 | 5.87 | – |
-| scroll (cat) | xterm2 5.4.0 | 901/900 | 6.38 | 9.05 | 13.07 | 19.68 | 94.21 | 102.52 | 126.12 | 182.87 | 0.05 | 0.12 | 6.43 | – |
-| htop-like (20 % of cells) | ghostty_dart_flutter | 903/900 | 33.25 | 37.04 | 51.39 | 92.12 | 106.49 | 113.25 | 124.34 | 179.78 | 0.07 | 0.12 | 33.32 | – |
-| htop-like (20 % of cells) | xterm 4.0.0 | 900/900 | 19.28 | 23.55 | 35.08 | 58.96 | 159.19 | 174.91 | 209.34 | 317.97 | 0.35 | 0.72 | 19.63 | – |
-| htop-like (20 % of cells) | xterm2 5.4.0 | 900/900 | 23.71 | 28.00 | 37.25 | 86.36 | 148.91 | 163.02 | 191.47 | 282.43 | 0.31 | 0.54 | 24.02 | – |
-| full screen, warm (cache replay) | ghostty_dart_flutter | 901/900 | 2.63 | 3.47 | 6.13 | 12.38 | 103.43 | 110.91 | 123.24 | 178.02 | 0.41 | 1.57 | 3.05 | UI met, raster missed (≤ 4.0 / ≤ 4.0) |
-| full screen, warm (cache replay) | xterm 4.0.0 | 900/900 | 18.79 | 22.80 | 32.87 | 59.98 | 160.79 | 178.18 | 215.05 | 315.53 | 1.64 | 2.67 | 20.42 | – |
-| full screen, warm (cache replay) | xterm2 5.4.0 | 900/900 | 24.48 | 29.43 | 36.21 | 71.91 | 147.73 | 164.29 | 178.69 | 283.29 | 1.35 | 2.06 | 25.83 | – |
+| idle | ghostty_dart_flutter | 901/900 | 0.14 | 0.18 | 0.28 | 0.54 | 122.17 | 132.10 | 139.96 | 157.80 | 0.00 | 0.00 | 0.14 | UI met, raster missed (≤ 0.5 / ≤ 1.0) |
+| idle | ghostty_dart_flutter (paragraphs) | 901/900 | 0.15 | 0.19 | 0.31 | 1.25 | 103.39 | 110.81 | 117.43 | 123.21 | 0.00 | 0.00 | 0.15 | UI met, raster missed (≤ 0.5 / ≤ 1.0) |
+| idle | xterm 4.0.0 | 900/900 | 0.16 | 0.17 | 0.23 | 2.88 | 155.17 | 170.99 | 183.61 | 202.19 | 0.00 | 0.00 | 0.16 | – |
+| idle | xterm2 5.4.0 | 900/900 | 0.15 | 0.18 | 0.24 | 0.66 | 137.71 | 149.43 | 158.98 | 163.65 | 0.00 | 0.00 | 0.15 | – |
+| 3 dirty rows | ghostty_dart_flutter | 901/900 | 0.85 | 0.99 | 1.38 | 4.90 | 126.08 | 134.05 | 141.16 | 148.28 | 0.07 | 0.18 | 0.92 | UI met, raster missed (≤ 1.0 / ≤ 2.0) |
+| 3 dirty rows | ghostty_dart_flutter (paragraphs) | 900/900 | 2.43 | 2.96 | 6.43 | 8.56 | 97.71 | 109.41 | 115.47 | 126.50 | 0.06 | 0.14 | 2.49 | missed (≤ 1.0 / ≤ 2.0) |
+| 3 dirty rows | xterm 4.0.0 | 900/900 | 19.21 | 23.02 | 28.43 | 32.05 | 156.96 | 174.41 | 187.74 | 208.72 | 0.10 | 0.16 | 19.31 | – |
+| 3 dirty rows | xterm2 5.4.0 | 900/900 | 24.74 | 30.07 | 35.85 | 46.16 | 146.51 | 162.77 | 175.58 | 179.71 | 0.09 | 0.15 | 24.83 | – |
+| full screen, fresh | ghostty_dart_flutter | 900/900 | 6.02 | 8.62 | 12.22 | 17.46 | 125.40 | 134.04 | 142.21 | 150.69 | 0.50 | 4.38 | 6.52 | missed (≤ 4.0 / ≤ 4.0) |
+| full screen, fresh | ghostty_dart_flutter (paragraphs) | 901/900 | 32.35 | 36.26 | 49.91 | 68.38 | 98.26 | 110.72 | 117.17 | 135.97 | 0.36 | 0.51 | 32.70 | missed (≤ 4.0 / ≤ 4.0) |
+| full screen, fresh | xterm 4.0.0 | 900/900 | 20.17 | 25.40 | 32.77 | 43.46 | 159.90 | 175.78 | 191.05 | 198.69 | 1.67 | 5.17 | 21.84 | – |
+| full screen, fresh | xterm2 5.4.0 | 901/900 | 25.69 | 30.36 | 35.60 | 41.49 | 147.98 | 163.28 | 175.53 | 182.33 | 1.19 | 1.72 | 26.88 | – |
+| scroll (cat) | ghostty_dart_flutter | 900/900 | 1.18 | 1.40 | 2.28 | 9.97 | 106.19 | 110.83 | 117.84 | 159.56 | 0.05 | 1.01 | 1.23 | – |
+| scroll (cat) | ghostty_dart_flutter (paragraphs) | 900/900 | 1.83 | 2.19 | 3.38 | 7.30 | 103.32 | 108.31 | 115.75 | 141.55 | 0.07 | 1.14 | 1.90 | – |
+| scroll (cat) | xterm 4.0.0 | 900/900 | 5.95 | 8.85 | 12.54 | 16.07 | 77.47 | 96.98 | 105.48 | 124.70 | 0.07 | 0.12 | 6.02 | – |
+| scroll (cat) | xterm2 5.4.0 | 900/900 | 6.84 | 9.74 | 14.61 | 20.20 | 82.35 | 99.94 | 106.72 | 147.91 | 0.06 | 0.11 | 6.91 | – |
+| htop-like (20 % of cells) | ghostty_dart_flutter | 901/900 | 6.05 | 8.96 | 12.97 | 15.05 | 126.75 | 135.94 | 144.01 | 149.97 | 0.14 | 1.34 | 6.19 | – |
+| htop-like (20 % of cells) | ghostty_dart_flutter (paragraphs) | 901/900 | 35.36 | 38.71 | 52.17 | 62.48 | 98.05 | 110.81 | 117.23 | 124.58 | 0.07 | 0.12 | 35.43 | – |
+| htop-like (20 % of cells) | xterm 4.0.0 | 900/900 | 20.17 | 24.26 | 31.02 | 56.02 | 158.32 | 173.99 | 187.74 | 239.79 | 0.34 | 0.74 | 20.51 | – |
+| htop-like (20 % of cells) | xterm2 5.4.0 | 901/900 | 24.32 | 28.75 | 34.53 | 43.61 | 148.01 | 162.14 | 172.86 | 193.25 | 0.29 | 0.41 | 24.61 | – |
+| full screen, warm (cache replay) | ghostty_dart_flutter | 900/900 | 5.52 | 8.27 | 11.89 | 14.86 | 127.04 | 133.65 | 140.90 | 148.23 | 0.43 | 4.36 | 5.94 | missed (≤ 4.0 / ≤ 4.0) |
+| full screen, warm (cache replay) | ghostty_dart_flutter (paragraphs) | 900/900 | 2.83 | 3.48 | 7.24 | 9.27 | 99.60 | 109.44 | 115.52 | 122.96 | 0.43 | 3.59 | 3.27 | UI met, raster missed (≤ 4.0 / ≤ 4.0) |
+| full screen, warm (cache replay) | xterm 4.0.0 | 900/900 | 19.20 | 23.61 | 30.76 | 35.70 | 157.73 | 175.59 | 189.30 | 201.56 | 1.65 | 3.18 | 20.85 | – |
+| full screen, warm (cache replay) | xterm2 5.4.0 | 901/900 | 24.34 | 29.62 | 35.22 | 46.61 | 146.38 | 162.09 | 173.17 | 183.30 | 1.21 | 1.81 | 25.54 | – |
 
-Write + UI average per pass (ms), all three passes:
+Write + UI average per pass (ms):
 
-| Scenario | ghostty_dart_flutter | xterm 4.0.0 | xterm2 5.4.0 |
-|---|---|---|---|
-| idle | 0.14 / 0.15 / 0.14 | 0.16 / 0.15 / 0.15 | 0.15 / 0.15 / 0.14 |
-| 3 dirty rows | 2.52 / 2.61 / 2.39 | 19.62 / 19.11 / 18.32 | 25.48 / 25.91 / 23.28 |
-| full screen, fresh | 33.17 / 32.30 / 31.19 | 22.74 / 21.49 / 21.58 | 25.41 / 25.69 / 25.09 |
-| scroll (cat) | 1.89 / 1.80 / 1.71 | 5.89 / 6.57 / 5.73 | 6.49 / 6.94 / 6.25 |
-| htop-like (20 % of cells) | 36.10 / 32.93 / 33.32 | 19.63 / 19.13 / 19.76 | 24.80 / 24.03 / 23.65 |
-| full screen, warm (cache replay) | 3.37 / 3.01 / 3.02 | 21.38 / 20.16 / 20.42 | 27.17 / 24.69 / 25.83 |
+| Scenario | Widget | Pass 1 | Pass 2 | Pass 3 |
+|---|---|---:|---:|---:|
+| idle | ghostty_dart_flutter | 0.14 | 0.14 | 0.15 |
+| idle | ghostty_dart_flutter (paragraphs) | 0.15 | 0.15 | 0.15 |
+| idle | xterm 4.0.0 | 0.15 | 0.16 | 0.16 |
+| idle | xterm2 5.4.0 | 0.15 | 0.14 | 0.15 |
+| 3 dirty rows | ghostty_dart_flutter | 0.92 | 0.93 | 0.84 |
+| 3 dirty rows | ghostty_dart_flutter (paragraphs) | 2.49 | 2.54 | 2.45 |
+| 3 dirty rows | xterm 4.0.0 | 19.31 | 19.62 | 18.36 |
+| 3 dirty rows | xterm2 5.4.0 | 24.83 | 26.70 | 23.56 |
+| full screen, fresh | ghostty_dart_flutter | 6.52 | 6.58 | 5.65 |
+| full screen, fresh | ghostty_dart_flutter (paragraphs) | 32.70 | 33.52 | 31.07 |
+| full screen, fresh | xterm 4.0.0 | 21.83 | 23.15 | 20.07 |
+| full screen, fresh | xterm2 5.4.0 | 26.88 | 27.32 | 24.79 |
+| scroll (cat) | ghostty_dart_flutter | 1.30 | 1.23 | 1.18 |
+| scroll (cat) | ghostty_dart_flutter (paragraphs) | 1.92 | 1.88 | 1.71 |
+| scroll (cat) | xterm 4.0.0 | 6.02 | 6.30 | 5.76 |
+| scroll (cat) | xterm2 5.4.0 | 6.91 | 7.01 | 6.53 |
+| htop-like (20 % of cells) | ghostty_dart_flutter | 6.34 | 6.22 | 5.38 |
+| htop-like (20 % of cells) | ghostty_dart_flutter (paragraphs) | 35.43 | 35.55 | 32.89 |
+| htop-like (20 % of cells) | xterm 4.0.0 | 20.51 | 21.62 | 18.27 |
+| htop-like (20 % of cells) | xterm2 5.4.0 | 24.61 | 25.79 | 22.95 |
+| full screen, warm (cache replay) | ghostty_dart_flutter | 6.53 | 5.92 | 5.59 |
+| full screen, warm (cache replay) | ghostty_dart_flutter (paragraphs) | 3.37 | 3.27 | 3.00 |
+| full screen, warm (cache replay) | xterm 4.0.0 | 20.84 | 20.85 | 21.14 |
+| full screen, warm (cache replay) | xterm2 5.4.0 | 26.72 | 25.51 | 25.52 |
 
 What this run shows, and what it does not:
 
-- **Where `ghostty_dart_flutter` is slower than xterm 4.0.0:** a full
-  screen of new text (32.30 ms write + UI against 21.58, 1.5× slower) and
-  the htop-like screen where every row changes (33.32 against 19.63, 1.7×
-  slower; xterm2 is also faster in both). The view lays out one paragraph
-  per changed row, about 0.5 ms for a 200-column styled row on this VM;
-  the xterm widgets draw one cached paragraph per cell, keyed by character
-  and style (`xterm` 4.0.0 `lib/src/ui/painter.dart`, a 10,240-entry
-  cache), which this alphabet keeps warm whatever the text. A glyph atlas
-  (ADR 0011's v2) is the planned answer; until then, these are the cases
-  to expect it to lose.
-- **Where it is faster:** few changed rows per frame (3 dirty rows: 2.49
-  against 19.11, about 7.7×) and scrolling output (`cat`: 1.76 against
-  5.87, about 3.3×). In both, only the rows that changed are laid out;
-  scrolled rows keep their pictures.
-- **Cache replay:** 3.05 ms against 20.42 because the eight repeated
-  screens are replayed from the view's row-picture cache, not drawn. It
-  says how cheap a cache hit is, not how fast new output is drawn.
-- **ADR 0011 targets on this VM:** UI met for idle (0.14 ≤ 0.5) and for
-  the cache replay (3.05 ≤ 4); UI missed for 3 dirty rows (2.49 > 1) and
-  for a fresh full screen (32.30 > 4). Raster is missed in every scenario
+- **New text is no longer the weak spot.** With the atlas a full screen
+  of new text costs 6.52 ms write + UI (paragraphs: 32.70; xterm 4.0.0:
+  21.84, about 3.3× slower) and the htop-like screen 6.19 (paragraphs
+  35.43; xterm 4.0.0 20.51, 3.3×). Row recording no longer lays out text:
+  each row is one `drawRawAtlas` call (two when it mixes tinted and
+  untinted glyphs) from an atlas of rasterised glyphs (ADR 0012).
+- **Few changed rows and scrolling:** 3 dirty rows 0.92 ms (paragraphs
+  2.49, xterm 4.0.0 19.31, about 21×), `cat` 1.23 (paragraphs 1.90, xterm
+  6.02, about 4.9×).
+- **Cache replay got slower with the atlas:** 5.94 ms against 3.27 with
+  paragraphs (xterm 4.0.0: 20.85). These synthetic screens use ~13
+  luminance levels in four faces, so the atlas needs four 2 MiB pages,
+  which share the 16 MiB budget with the row pictures; the eight-screen
+  cycle (480 rows) no longer fits and part of it is recorded again every
+  frame. A shell session needs one or two pages.
+- **ADR 0011 targets on this VM:** UI met for idle (0.14 ≤ 0.5) and 3
+  dirty rows (0.92 ≤ 1); missed for a fresh full screen (6.52 > 4) and
+  now for the cache replay (5.94 > 4). Raster is missed in every scenario
   (software rasteriser).
-- **Raster is software here.** About 100 ms per frame for
-  `ghostty_dart_flutter` and 90–160 ms for the xterm widgets, even idle:
-  Mesa's software rasteriser redraws the whole 3600 × 2200 px window. The
-  absolute numbers say nothing about a GPU.
-- **How the renderer got here** (2026-11-10): the first run measured 63.56
-  ms UI for the cache-replay scenario (then labelled "full screen, warm").
-  Probes put it in paragraph creation: one paragraph per style run from a
-  4,096-entry cache that this stream's ~11,500 distinct runs defeated.
-  Rows of several runs are now one paragraph, and row pictures are cached
-  by content within a 16 MiB per-view budget. The fresh, scroll and
-  htop-like scenarios were added afterwards because the replay scenario
-  had stopped measuring text drawing; they have no earlier numbers.
-- **Write** stays under 0.4 ms on average for `ghostty_dart_flutter`
+- **Raster is software here, and the atlas costs more of it:** about 122–
+  127 ms per frame with the atlas against 98–104 ms with paragraphs and
+  146–160 ms for the xterm widgets (77–82 ms for them while scrolling).
+  Mesa's software rasteriser redraws the whole 3600 × 2200 px window every
+  frame, and each glyph is a textured quad; tinted quads go through
+  Impeller's blend pipeline. Glyphs whose colour is exactly their
+  luminance level's grey (the default foreground) are drawn untinted,
+  which cut raster time by ~17 % in a same-run probe; a `cullRect` and the
+  paint's anti-aliasing made no difference. Whether a GPU shows the same
+  ratio is not measured yet.
+- **Write** stays under 0.5 ms on average for `ghostty_dart_flutter`
   (parsing included), against up to 1.7 ms for the xterm widgets.
+- **History** (2026-11-10): the first run measured 63.56 ms UI for the
+  cache-replay scenario (then labelled "full screen, warm"); row
+  paragraphs and the content-keyed picture cache brought it to 3.05, but
+  a fresh full screen still cost 32.30 (xterm 4.0.0: 21.58). The glyph
+  atlas was built for that case. A five-widget run of the atlas spike was
+  killed for low memory while its driver summarised 90 timelines; the
+  timelines are now summarised in the app, one at a time.
 - In the CUP scenarios nothing scrolls. The scroll scenario does scroll,
   into the default scrollback (libghostty-vt's byte limit, xterm's 1,000
   lines); libghostty-vt 1.0.0's slower line-limited scrollback (upstream
@@ -506,7 +545,7 @@ What this run shows, and what it does not:
 `mise run test:grid-pixels` (`integration_test/grid_pixel_test.dart`) is
 the device half of the check `ghostty_dart_flutter` runs on
 flutter_tester's software raster: three 200-column rows of `|` (regular,
-bold, italic) through `VtTerminalView`, read back with
+bold, italic) through `VtTerminalView` on both text paths, read back with
 `RenderRepaintBoundary.toImage`; the first lit device pixel of each cell
 must sit at `col × widthPx + constant` within 1 px, at DPR 1, 1.5, 2 and
 3 and font sizes 11, 13 and 15.5. The renderer is read from the traced
@@ -518,9 +557,13 @@ specific to the on-screen surface (its multisampling, the compositor) is
 not covered. Only `|` glyphs are drawn: the check catches advance drift
 across the row, not per-glyph bearing differences.
 
-On 2026-11-10, on the machine above (`GDK_SCALE=2 xvfb-run -a -s '-screen
-0 3840x2400x24' mise run test:grid-pixels`): **Impeller (OpenGL ES), 12 of
-12 cases with 0 px deviation and 0 px drift at column 199.** The same run
+It runs every case on both text paths (`VtTextRendering.atlas` and
+`.paragraphs`). On 2026-11-10, after the atlas became the default
+(`xvfb-run -a mise run test:grid-pixels`): **Impeller (OpenGL ES), 24 of
+24 cases (12 per path) with 0 px deviation and 0 px drift at column
+199.** The earlier run, paragraphs only (`GDK_SCALE=2 xvfb-run -a -s
+'-screen 0 3840x2400x24' mise run test:grid-pixels`), gave 12 of 12 at
+0 px too. The same run
 with `--renderer=skia` (`--no-enable-impeller`) also gave 0 px in all 12
 cases, but its timeline had no Impeller events and no Skia ones either
 (Skia is only traced with `--trace-skia`), so it does not prove which

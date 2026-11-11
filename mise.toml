@@ -289,7 +289,7 @@ dir = "{{config_root}}/benchmarks/widget"
 run = "flutter test"
 
 [tasks."bench:widget"]
-description = "Frame-time benchmark (flutter drive --profile) of 3 widgets x 3 scenarios x N passes -> benchmarks/widget/build/widget_bench.md"
+description = "Frame-time benchmark (flutter drive --profile) of 4 widgets x 6 scenarios x N passes -> benchmarks/widget/build/widget_bench.md"
 usage = '''
 arg "[device]" default="linux" help="desktop device id: linux or macos"
 flag "--frames <n>" default="300" help="traced frames per run"
@@ -309,6 +309,7 @@ flutter drive --profile -d "$usage_device" "$impeller" --endless-trace-buffer \
   --dart-define=BENCH_FRAMES="$usage_frames" \
   --dart-define=BENCH_PASSES="$usage_passes" \
   --dart-define=BENCH_RENDERER="$usage_renderer" \
+  --dart-define=BENCH_OUT_DIR="{{config_root}}/benchmarks/widget/build" \
   --dart-define=BENCH_FONT_DIR="{{config_root}}/packages/ghostty_dart_flutter/test/fonts"
 '''
 
@@ -317,7 +318,7 @@ flutter drive --profile -d "$usage_device" "$impeller" --endless-trace-buffer \
 # must land on the device-pixel grid under Impeller (or Skia) too. Needs a
 # display, like bench:widget.
 [tasks."test:grid-pixels"]
-description = "Check on a desktop device that glyphs land on the device-pixel grid (200 columns, 4 DPRs x 3 sizes)"
+description = "Check on a desktop device that glyphs land on the device-pixel grid (200 columns, 4 DPRs x 3 sizes x 2 text paths)"
 usage = '''
 arg "[device]" default="linux" help="desktop device id: linux or macos"
 flag "--renderer <renderer>" default="impeller" help="impeller or skia" {

@@ -30,9 +30,11 @@ runs your shell on Linux, macOS and Windows.
   encoding (legacy and the Kitty keyboard protocol), mouse reports,
   selection and paste protection all come from libghostty-vt 1.0, the
   same code the Ghostty app runs.
-- **Draws only what changed.** The view re-records only the rows the
-  terminal marks dirty, one paragraph per row, and keeps every other row
-  (and recently shown row content) as a cached picture. An idle terminal re-records nothing.
+- **Draws only what changed, without laying out text.** The view
+  re-records only the rows the terminal marks dirty, drawing their glyphs
+  from a glyph atlas with one `drawRawAtlas` call per row, and keeps every
+  other row (and recently shown row content) as a cached picture. An idle
+  terminal re-records nothing.
 - **Does not steal the shell's keys.** Ctrl+V and Ctrl+A reach the program;
   copy and paste use your platform's terminal convention. IME composition,
   soft keyboards (with a key toolbar for Esc, Ctrl, Alt, Tab and arrows),
@@ -131,33 +133,36 @@ streams on a 200 × 60 grid, measured on 2026-11-10 on one cloud VM (AMD
 Ryzen 5 3600, 6 vCPUs, **no GPU**: Xvfb with Mesa's software rasteriser),
 Flutter 3.47.9, Impeller (OpenGL ES), device pixel ratio 2, profile mode,
 3 passes of 300 frames. Average UI time (build, layout and paint) per
-frame, plus the write before it, in ms:
+frame, plus the write before it, in ms. "paragraphs" is this view with
+`textRendering: VtTextRendering.paragraphs`:
 
-| Scenario | ghostty_dart_flutter | xterm 4.0.0 | xterm2 5.4.0 |
-|---|---:|---:|---:|
-| idle (forced frame, nothing changed) | 0.14 | 0.15 | 0.15 |
-| 3 rows rewritten with new text per frame | **2.49** | 19.11 | 25.49 |
-| scrolling output (`cat`, 6 lines per frame) | **1.76** | 5.87 | 6.43 |
-| full screen of new text per frame | 32.30 | **21.58** | 25.51 |
-| htop-like: 20 % of cells, every row, change per frame | 33.32 | **19.63** | 24.02 |
-| full screen, 8 screens repeated (cache replay) | 3.05 | 20.42 | 25.83 |
+| Scenario | ghostty_dart_flutter | (paragraphs) | xterm 4.0.0 | xterm2 5.4.0 |
+|---|---:|---:|---:|---:|
+| idle (forced frame, nothing changed) | 0.14 | 0.15 | 0.16 | 0.15 |
+| 3 rows rewritten with new text per frame | **0.92** | 2.49 | 19.31 | 24.83 |
+| scrolling output (`cat`, 6 lines per frame) | **1.23** | 1.90 | 6.02 | 6.91 |
+| full screen of new text per frame | **6.52** | 32.70 | 21.84 | 26.88 |
+| htop-like: 20 % of cells, every row, change per frame | **6.19** | 35.43 | 20.51 | 24.61 |
+| full screen, 8 screens repeated (cache replay) | 5.94 | **3.27** | 20.85 | 25.54 |
 
-- **Faster** when few rows change (a shell, an editor typing: about 7.7×
-  less than xterm) and on scrolling output (about 3.3×): only changed
-  rows are laid out, and scrolled rows keep their pictures.
-- **Slower** when most rows get new text every frame: a full screen of new
-  text is about 1.5× slower than `xterm`, an htop-like screen about 1.7×
-  (and `xterm2` is faster too). This widget lays out one paragraph per
-  changed row; the xterm widgets reuse one cached paragraph per character
-  and style. A glyph atlas is planned to close this gap.
-- The cache-replay row only shows how cheap a cached row is: the widget
-  keeps recently shown rows as pictures, within a budget of about 16 MiB
-  per view (released when the view is hidden, detached or under memory
-  pressure).
-- Raster time was about 100 ms per frame for this widget and 90–160 ms for
-  the others, but it is software rendering of a 3600 × 2200 px window, so
-  it says nothing about a GPU. Re-run the benchmark on your hardware
-  before quoting a number.
+- **Faster in every scenario that draws new text:** about 21× less UI
+  time than `xterm` 4.0.0 when a few rows change (a shell, typing in an
+  editor), 4.9× on scrolling output, and 3.3× on a full screen of new text
+  or an htop-like screen. Only changed rows are recorded, and their glyphs
+  come from an atlas instead of a text layout.
+- **Cache replay is the exception:** the atlas pages for these heavily
+  coloured synthetic screens share the cache budget (about 16 MiB per
+  view, released when the view is hidden, detached or under memory
+  pressure) with the row pictures, so not all eight screens stay cached.
+  It is still about 3.5× faster than `xterm`.
+- **Raster time is higher than with paragraphs** on this software
+  rasteriser: about 122–127 ms per frame with the atlas, 98–104 ms with
+  paragraphs, 146–160 ms for the xterm widgets (77–82 ms while
+  scrolling). It is software rendering of a 3600 × 2200 px window, where
+  each glyph is a textured quad; it says nothing about a GPU, and the
+  atlas has not been measured on one yet. If raster time matters on your
+  device, measure both paths and use `VtTextRendering.paragraphs` if it is
+  better there.
 
 The full table (p90, p99, worst, raster, write), the methodology and the
 command are in
@@ -170,7 +175,7 @@ Facts as of 2026-11-10. Each project made a different trade-off, and
 
 | Package | Engine | Web | Repaint strategy | `xterm` 4.0.0 API |
 |---|---|---|---|---|
-| `ghostty_dart_flutter` (unreleased) | libghostty-vt 1.0.0 (stable C ABI), FFI | No (planned) | Dirty rows only, one paragraph per row, row pictures cached by content | No (adapter planned) |
+| `ghostty_dart_flutter` (unreleased) | libghostty-vt 1.0.0 (stable C ABI), FFI | No (planned) | Dirty rows only, `drawRawAtlas` glyph atlas (row paragraphs as an option), row pictures cached by content | No (adapter planned) |
 | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 | Pure Dart | Yes | Whole screen on every change, paragraph per cell | It is the API |
 | [`xterm2`](https://pub.dev/packages/xterm2) 5.4.0 | Pure Dart (`xterm2_core`) | Yes | Paints per cell | Same API (a fork) |
 | [`flterm`](https://pub.dev/packages/flterm) 0.0.6 (+ [`libghostty`](https://pub.dev/packages/libghostty) 0.0.13) | A pre-1.0 libghostty-vt commit, FFI and wasm | Yes | `drawRawAtlas` glyph atlas | No |

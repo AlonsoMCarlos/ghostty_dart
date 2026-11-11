@@ -6,7 +6,8 @@
 //
 // Run it with `mise run test:grid-pixels` (flutter drive on a display;
 // `xvfb-run` on a headless Linux machine). For every device pixel ratio and
-// font size it paints three 200-column rows of `|` (regular, bold, italic)
+// font size, and for both text paths (the glyph atlas and paragraphs, ADR
+// 0012), it paints three 200-column rows of `|` (regular, bold, italic)
 // through VtTerminalView, reads the pixels back with `toImage`, and checks
 // that the first lit device pixel of every cell is at
 // `col * widthPx + constant`, within one device pixel.
@@ -78,89 +79,94 @@ void main() {
     binding.reportData = {'grid_pixels': results};
   });
 
-  for (final dpr in [1.0, 1.5, 2.0, 3.0]) {
-    for (final fontSize in [11.0, 13.0, 15.5]) {
-      testWidgets('glyphs stay on the device-pixel grid at dpr $dpr, '
-          'size $fontSize', (tester) async {
-        tester.view.devicePixelRatio = dpr;
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final style = TextStyle(fontFamily: _fontFamily, fontSize: fontSize);
-        final metrics = VtCellMetrics.measure(style, devicePixelRatio: dpr);
-        final controller = VtTerminalController(cols: _cols, rows: _rows);
-        addTearDown(controller.dispose);
-        final key = GlobalKey();
+  for (final textRendering in VtTextRendering.values) {
+    for (final dpr in [1.0, 1.5, 2.0, 3.0]) {
+      for (final fontSize in [11.0, 13.0, 15.5]) {
+        testWidgets('glyphs stay on the device-pixel grid at dpr $dpr, '
+            'size $fontSize (${textRendering.name})', (tester) async {
+          tester.view.devicePixelRatio = dpr;
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final style = TextStyle(fontFamily: _fontFamily, fontSize: fontSize);
+          final metrics = VtCellMetrics.measure(style, devicePixelRatio: dpr);
+          final controller = VtTerminalController(cols: _cols, rows: _rows);
+          addTearDown(controller.dispose);
+          final key = GlobalKey();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            debugShowCheckedModeBanner: false,
-            home: OverflowBox(
-              alignment: Alignment.topLeft,
-              minWidth: 0,
-              maxWidth: double.infinity,
-              minHeight: 0,
-              maxHeight: double.infinity,
-              child: RepaintBoundary(
-                key: key,
-                child: VtTerminalView(
-                  controller: controller,
-                  textStyle: style,
-                  autoResize: false,
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              home: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: 0,
+                maxWidth: double.infinity,
+                minHeight: 0,
+                maxHeight: double.infinity,
+                child: RepaintBoundary(
+                  key: key,
+                  child: VtTerminalView(
+                    controller: controller,
+                    textStyle: style,
+                    autoResize: false,
+                    textRendering: textRendering,
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-        controller.write(
-          '${'|' * _cols}\x1b[1m${'|' * _cols}'
-          '\x1b[0;3m${'|' * _cols}\x1b[?25l',
-        );
-        // The frame that draws the rows is traced, so the result names the
-        // renderer that drew it (Impeller or Skia, from the event names).
-        final timeline = await binding.traceTimeline(
-          tester.pumpAndSettle,
-          streams: const ['Embedder'],
-        );
-        final renderer = rendererOf([
-          for (final event in timeline.traceEvents!)
-            if (event.json case final json?) json.cast<String, Object?>(),
-        ]);
+          );
+          controller.write(
+            '${'|' * _cols}\x1b[1m${'|' * _cols}'
+            '\x1b[0;3m${'|' * _cols}\x1b[?25l',
+          );
+          // The frame that draws the rows is traced, so the result names the
+          // renderer that drew it (Impeller or Skia, from the event names).
+          final timeline = await binding.traceTimeline(
+            tester.pumpAndSettle,
+            streams: const ['Embedder'],
+          );
+          final renderer = rendererOf([
+            for (final event in timeline.traceEvents!)
+              if (event.json case final json?) json.cast<String, Object?>(),
+          ]);
 
-        final boundary =
-            key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-        final image = await boundary.toImage(pixelRatio: dpr);
-        final ByteData rgba;
-        try {
-          rgba = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
-        } finally {
-          image.dispose();
-        }
-        expect(
-          image.width,
-          greaterThanOrEqualTo(metrics.widthPx * _cols),
-          reason: 'the image holds every column',
-        );
-        final rows = _firstLitPixels(rgba, image.width, metrics);
-
-        var worst = 0;
-        var drift = 0;
-        for (final (index, firsts) in rows.indexed) {
-          expect(firsts, isNot(contains(-1)), reason: 'row $index');
-          final constant = firsts.first;
-          for (final first in firsts) {
-            worst = math.max(worst, (first - constant).abs());
+          final boundary =
+              key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: dpr);
+          final ByteData rgba;
+          try {
+            rgba = (await image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            ))!;
+          } finally {
+            image.dispose();
           }
-          drift = math.max(drift, (firsts.last - constant).abs());
-        }
-        final line =
-            '$renderer, dpr $dpr size $fontSize: cell ${metrics.widthPx} px, '
-            'letterSpacing ${metrics.letterSpacing.toStringAsFixed(4)}, '
-            'max |first lit - (col*w + c)| = $worst px, '
-            'drift at col ${_cols - 1} = $drift px';
-        results.add(line);
-        // ignore: avoid_print, the driver's console is the report.
-        print('grid_pixels: $line');
-        expect(worst, lessThanOrEqualTo(1), reason: line);
-      });
+          expect(
+            image.width,
+            greaterThanOrEqualTo(metrics.widthPx * _cols),
+            reason: 'the image holds every column',
+          );
+          final rows = _firstLitPixels(rgba, image.width, metrics);
+
+          var worst = 0;
+          var drift = 0;
+          for (final (index, firsts) in rows.indexed) {
+            expect(firsts, isNot(contains(-1)), reason: 'row $index');
+            final constant = firsts.first;
+            for (final first in firsts) {
+              worst = math.max(worst, (first - constant).abs());
+            }
+            drift = math.max(drift, (firsts.last - constant).abs());
+          }
+          final line =
+              '$renderer, ${textRendering.name}, dpr $dpr size $fontSize: cell ${metrics.widthPx} px, '
+              'letterSpacing ${metrics.letterSpacing.toStringAsFixed(4)}, '
+              'max |first lit - (col*w + c)| = $worst px, '
+              'drift at col ${_cols - 1} = $drift px';
+          results.add(line);
+          // ignore: avoid_print, the driver's console is the report.
+          print('grid_pixels: $line');
+          expect(worst, lessThanOrEqualTo(1), reason: line);
+        });
+      }
     }
   }
 }

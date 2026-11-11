@@ -16,7 +16,8 @@ const benchCols = 200;
 /// Grid height of every benchmark.
 const benchRows = 60;
 
-/// The three frame scenarios of ADR 0011's performance targets.
+/// The frame scenarios: ADR 0011's performance targets plus the scroll,
+/// htop-like and cache-replay workloads.
 enum Scenario {
   /// No output: frames that only recomposite the unchanged screen.
   idle('idle'),
