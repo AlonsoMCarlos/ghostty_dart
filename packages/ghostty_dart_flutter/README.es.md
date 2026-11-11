@@ -1,4 +1,4 @@
-<!-- source: README.md@e07d8ee5195a73c9cf2bbb1bca7f49103e93dc63 -->
+<!-- source: README.md@70b5849e9da00dd34319df0de466c60f9d55abe1 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -169,10 +169,12 @@ Flutter 3.47.9, Impeller (OpenGL ES), relación de píxeles 2, modo
   rasterizador por software: unos 122–126 ms por fotograma con el atlas,
   98–102 ms con párrafos y 134–155 ms con los *widgets* de xterm (79–82 ms
   al desplazar). Es rasterizado por software de una ventana de 3600 × 2200
-  px, donde cada glifo es un cuadrilátero con textura; no dice nada sobre
-  una GPU, y el atlas aún no se ha medido en una. Si el tiempo de
-  rasterizado importa en tu dispositivo, mide ambos caminos y usa
-  `VtTextRendering.paragraphs` si allí es mejor.
+  px, donde cada glifo es un cuadrilátero con textura. Con GPU la
+  relación se invierte: en un *runner* macOS de GitHub (Apple M1 virtual,
+  Impeller sobre Metal, DPR 1 y fuente de 7 px, así que es solo
+  orientativo), una pantalla completa nueva se rasterizó en 1,9 ms con el
+  atlas, 5,6 ms con párrafos y 24–26 ms con los *widgets* de xterm. Si el
+  tiempo de rasterizado importa en tu dispositivo, mide ambos caminos.
 
 La tabla completa (p90, p99, peor caso, rasterizado, escritura), la
 metodología y el comando están en

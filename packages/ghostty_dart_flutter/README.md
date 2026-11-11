@@ -159,10 +159,11 @@ frame, plus the write before it, in ms. "paragraphs" is this view with
   rasteriser: about 122–126 ms per frame with the atlas, 98–102 ms with
   paragraphs, 134–155 ms for the xterm widgets (79–82 ms while
   scrolling). It is software rendering of a 3600 × 2200 px window, where
-  each glyph is a textured quad; it says nothing about a GPU, and the
-  atlas has not been measured on one yet. If raster time matters on your
-  device, measure both paths and use `VtTextRendering.paragraphs` if it is
-  better there.
+  each glyph is a textured quad. On a GPU the ratio reverses: on a
+  GitHub-hosted macOS runner (Apple M1, virtual; Impeller on Metal; DPR 1,
+  7 px font, so indicative only) a fresh full screen rasterised in 1.9 ms
+  with the atlas, 5.6 ms with paragraphs and 24–26 ms for the xterm
+  widgets. If raster time matters on your device, measure both paths.
 
 The full table (p90, p99, worst, raster, write), the methodology and the
 command are in

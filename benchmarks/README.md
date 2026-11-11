@@ -525,8 +525,8 @@ What this run shows, and what it does not:
   Impeller's blend pipeline. Glyphs whose colour is exactly their
   luminance level's grey (the default foreground) are drawn untinted,
   which cut raster time by ~17 % in a same-run probe; a `cullRect` and the
-  paint's anti-aliasing made no difference. Whether a GPU shows the same
-  ratio is not measured yet.
+  paint's anti-aliasing made no difference. On a GPU the ratio reverses:
+  see "Indicative run on a macOS runner (Metal)" below.
 - **Write** stays under 0.5 ms on average for `ghostty_dart_flutter`
   (parsing included), against up to 1.7 ms for the xterm widgets. Its
   **p99 is noise from the software rasteriser**, not the widget: 3.5 ms
@@ -554,6 +554,45 @@ What this run shows, and what it does not:
   merged into upstream `main` on 2026-11-10, is not in a 1.0.x release
   yet, checked that day) is not involved, since the controller uses the
   byte limit.
+
+### Indicative run on a macOS runner (Metal)
+
+`.github/workflows/bench-widget.yml` (manual dispatch) runs the same
+benchmark on a GitHub-hosted `macos-latest` runner: Apple M1 (virtual),
+macOS 26.7.2, Impeller on Metal, DPR 1.0. Its display is 1024 × 768, so
+the window is 1024 × 642 logical px and the font is 7 px
+(`--font-size=7`): still 200 × 60 cells, but fewer pixels than the VM's
+DPR 2, 12 px run, so compare widgets within this table, not with the
+table above. The GPU is virtualised and shared: indicative numbers.
+2026-11-11, run 42996476721, 3 passes × 300 frames, all 900/900 frames.
+
+| Scenario | Widget | write + UI avg | raster avg |
+|---|---|---:|---:|
+| full screen, fresh | ghostty_dart_flutter | **5.16** | **1.89** |
+| full screen, fresh | ghostty_dart_flutter (paragraphs) | 32.54 | 5.55 |
+| full screen, fresh | xterm 4.0.0 | 21.98 | 26.45 |
+| full screen, fresh | xterm2 5.4.0 | 24.94 | 23.82 |
+| htop-like | ghostty_dart_flutter | **4.67** | **1.79** |
+| htop-like | ghostty_dart_flutter (paragraphs) | 34.66 | 5.83 |
+| htop-like | xterm 4.0.0 | 17.93 | 24.26 |
+| htop-like | xterm2 5.4.0 | 21.05 | 22.74 |
+| 3 dirty rows | ghostty_dart_flutter | **1.05** | **1.98** |
+| 3 dirty rows | ghostty_dart_flutter (paragraphs) | 2.77 | 4.23 |
+| 3 dirty rows | xterm 4.0.0 | 21.64 | 29.48 |
+| 3 dirty rows | xterm2 5.4.0 | 22.55 | 22.20 |
+| scroll (cat) | ghostty_dart_flutter | **1.67** | **0.91** |
+| scroll (cat) | ghostty_dart_flutter (paragraphs) | 2.29 | 1.45 |
+| scroll (cat) | xterm 4.0.0 | 4.06 | 7.03 |
+| scroll (cat) | xterm2 5.4.0 | 4.19 | 6.84 |
+| cache replay | ghostty_dart_flutter | 2.98 | **1.72** |
+| cache replay | ghostty_dart_flutter (paragraphs) | **2.81** | 4.20 |
+| cache replay | xterm 4.0.0 | 21.29 | 26.79 |
+| cache replay | xterm2 5.4.0 | 23.56 | 22.12 |
+
+Idle: 0.20 ms UI for every widget; raster 1.94 (atlas), 5.93
+(paragraphs), 25.04 and 19.49 (xterm, xterm2). On this GPU the atlas
+rasterises 2–3× faster than paragraphs, the opposite of llvmpipe.
+`test:grid-pixels` on Metal: 24 of 24 cases at 0 px, both text paths.
 
 ### Grid pixel check on the device renderer
 

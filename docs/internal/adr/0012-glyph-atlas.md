@@ -114,3 +114,20 @@ So the write itself did not get slower: on a VM whose software rasteriser satura
 Raster averages unchanged (atlas 122–126 ms, paragraphs 98–102). The other scenarios move within the run-to-run spread of this VM (the fresh screen measured 5.50–6.52 across the runs of 2026-11-10 and 2026-11-11). `test:grid-pixels`: 24 of 24 cases 0 px.
 
 **Memory bound.** Per view: row pictures + atlas images (live and superseded ones still drawn) + cached paragraphs ≤ `cacheBudget` (16 MiB by default), paragraphs alone ≤ ¼ of it, plus whatever the current frame shows (its pictures and the atlas images they draw are never evicted). The atlas is rebuilt from the screen once its live pages pass ½ of the budget (and twice its first frame). Not counted: the engine's own caches (Impeller's glyph atlas for paragraphs, GPU copies of images where the platform keeps them).
+
+## Amendment 2026-11-11: raster time on a GPU (indicative)
+
+The open question under Consequences is answered for one GPU. `bench-widget.yml` ran `bench:widget` (3 passes × 300 frames) and `test:grid-pixels` on a GitHub-hosted `macos-latest` runner: Apple M1 (virtual), macOS 26.7.2, Impeller on Metal, DPR 1.0, a 1024 × 642 window, so JetBrains Mono at **7 px** (`--font-size=7`; still 200 × 60 cells, so the per-cell work is the same; the pixel counts are not, so do not compare these milliseconds with the VM's). The GPU is virtualised and shared, so the numbers are indicative. Run 42996476721, commit 38f1ac0.
+
+Raster average, ms (atlas / paragraphs / xterm 4.0.0 / xterm2 5.4.0):
+
+| Scenario | atlas | paragraphs | xterm 4.0.0 | xterm2 5.4.0 |
+|---|---:|---:|---:|---:|
+| idle | 1.94 | 5.93 | 25.04 | 19.49 |
+| 3 dirty rows | 1.98 | 4.23 | 29.48 | 22.20 |
+| full screen, fresh | 1.89 | 5.55 | 26.45 | 23.82 |
+| scroll (cat) | 0.91 | 1.45 | 7.03 | 6.84 |
+| htop-like | 1.79 | 5.83 | 24.26 | 22.74 |
+| cache replay | 1.72 | 4.20 | 26.79 | 22.12 |
+
+On this GPU the atlas path rasterises **2–3× faster than paragraphs** and 10–14× faster than the xterm widgets, the opposite of the software rasteriser's ratio. The software-raster cost above is a property of llvmpipe, not of the atlas. Write + UI averages there (atlas / paragraphs / xterm 4.0.0): fresh 5.16 / 32.54 / 21.98, htop-like 4.67 / 34.66 / 17.93, 3 dirty rows 1.05 / 2.77 / 21.64, scroll 1.67 / 2.29 / 4.06, replay 2.98 / 2.81 / 21.29. Write p99 for a fresh screen: 1.16 ms atlas, 0.88 paragraphs. `test:grid-pixels` on Metal: 24 of 24 cases at 0 px, both text paths. A run on a dedicated GPU (desktop or phone) is still welcome.
