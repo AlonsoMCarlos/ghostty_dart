@@ -22,4 +22,9 @@ hooks:
       path: .native-cache/host/
 
 dev_dependencies:
+  # tool/xterm_compat (COMPATIBILITY.md generator): both already locked as
+  # transitive dependencies (analyzer is a dev dependency of ghostty_dart,
+  # crypto comes with it), so declaring them adds no package to pubspec.lock.
+  analyzer: ^13.3.0
+  crypto: ^3.0.8
   lints: ^6.1.0

@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
+import '../input/pointer/mouse_reports.dart';
 import '../input/pointer/pointer_mapping.dart';
 import '../seams/terminal_geometry.dart';
 import '../seams/terminal_seams.dart';
@@ -97,6 +98,7 @@ class TerminalScrollbar extends StatelessWidget {
     this.pointer,
     this.keys,
     this.text,
+    this.reports = MouseReports.none,
     this.thickness = kTerminalScrollbarThickness,
     this.color = kTerminalScrollbarColor,
     this.fadeDelay = kTerminalScrollbarTimeToFade,
@@ -118,6 +120,10 @@ class TerminalScrollbar extends StatelessWidget {
   /// Where raw alternate-scroll sequences go (see [TerminalScrollRouter]).
   final TerminalTextSink? text;
 
+  /// The view's mouse report filter and hook, for wheel reports (see
+  /// [TerminalScrollRouter.reports]).
+  final MouseReports reports;
+
   /// The width of the scrollbar in logical pixels.
   final double thickness;
 
@@ -134,6 +140,7 @@ class TerminalScrollbar extends StatelessWidget {
       pointer: pointer,
       keys: keys,
       text: text,
+      reports: reports,
     ),
     geometry: geometry,
     thickness: thickness,
@@ -284,6 +291,7 @@ class _ScrollbarBodyState extends State<_ScrollbarBody> {
       rows,
       surface: widget.geometry.toSurface(local),
       modifiers: currentKeyModifiers(),
+      cell: widget.geometry.viewportCellAt(local),
     );
   }
 

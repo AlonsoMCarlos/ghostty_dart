@@ -6,6 +6,7 @@ import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
@@ -464,6 +465,99 @@ class VtTerminalController extends ChangeNotifier {
   /// when the screen is blank).
   void selectAll() => selection = _checked.selectAll();
 
+  // ---------------------------------------------------------------------
+  // Highlights
+  // ---------------------------------------------------------------------
+
+  final _highlights = <VtTerminalHighlight>[];
+
+  /// Highlights the cells from [start] to [end], both inclusive, with
+  /// [color], painted over the text; for search results, for example.
+  ///
+  /// [start] and [end] may be in any [PointSpace] and in either order;
+  /// the range runs in line order between them, like a non-rectangular
+  /// [VtTerminalSelection.selectRange]. Both ends are tracked, so the
+  /// highlight follows its text as output scrolls it, until the text
+  /// leaves the scrollback. Every view of this controller paints each
+  /// live highlight, in creation order, over whole cells (with [color]'s
+  /// alpha) after the text and the cursor. A highlight is painted only
+  /// while the screen it was made on (primary or alternate) is active.
+  ///
+  /// The returned [VtTerminalHighlight] belongs to this controller:
+  /// [VtTerminalHighlight.dispose] removes it, and [dispose] removes
+  /// every highlight. Adding one notifies listeners.
+  ///
+  /// ```dart
+  /// final hit = controller.addHighlight(
+  ///   const GridPoint.screen(4, 120),
+  ///   const GridPoint.screen(9, 120),
+  ///   color: const Color(0x80FFFF00),
+  /// );
+  /// // later
+  /// hit.dispose();
+  /// ```
+  ///
+  /// Throws [RangeError] when a point is outside the grid,
+  /// [ArgumentError] for [PointSpace.unknown], and [StateError] after
+  /// [dispose].
+  VtTerminalHighlight addHighlight(
+    GridPoint start,
+    GridPoint end, {
+    required Color color,
+  }) {
+    final vt = _checked;
+    final highlight = _guard(() {
+      final from = vt.trackGridRef(start);
+      if (from == null) {
+        throw RangeError('start $start is outside the terminal grid');
+      }
+      final to = vt.trackGridRef(end);
+      if (to == null) {
+        from.dispose();
+        throw RangeError('end $end is outside the terminal grid');
+      }
+      final a = from.pointIn(PointSpace.screen);
+      final b = to.pointIn(PointSpace.screen);
+      final reversed =
+          a != null && b != null && (b.y < a.y || (b.y == a.y && b.x < a.x));
+      return VtTerminalHighlight._(
+        this,
+        color,
+        reversed ? to : from,
+        reversed ? from : to,
+        vt.activeScreen,
+      );
+    });
+    _highlights.add(highlight);
+    _notify();
+    return highlight;
+  }
+
+  /// The live highlights, in creation order (see [addHighlight]).
+  /// Unmodifiable; a new list after every change.
+  List<VtTerminalHighlight> get highlights {
+    _checkNotDisposed();
+    return List.unmodifiable(_highlights);
+  }
+
+  void _removeHighlight(VtTerminalHighlight highlight) {
+    if (_highlights.remove(highlight)) _notify();
+  }
+
+  /// The live highlights on the active screen with both ends known, as
+  /// screen points with `start` before `end`, in creation order.
+  List<({Color color, GridPoint start, GridPoint end})> _screenHighlights() {
+    if (_highlights.isEmpty || _disposed) return const [];
+    final screen = terminal.activeScreen;
+    return [
+      for (final highlight in _highlights)
+        if (highlight._screen == screen)
+          if (highlight.start case final start?)
+            if (highlight.end case final end?)
+              (color: highlight.color, start: start, end: end),
+    ];
+  }
+
   /// The selected text as plain text, soft-wrapped lines joined, or `null`
   /// when nothing is selected.
   String? get selectedText {
@@ -515,6 +609,9 @@ class VtTerminalController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _pending.clear();
+    for (final highlight in List.of(_highlights)) {
+      highlight.dispose();
+    }
     _renderHoldTimer?.cancel();
     _formatter?.dispose();
     _mouseEncoder.dispose();
@@ -683,4 +780,74 @@ final class _Internals implements ControllerInternals {
     required int cellWidthPx,
     required int cellHeightPx,
   }) => _controller._resizeDuringLayout(cols, rows, cellWidthPx, cellHeightPx);
+
+  @override
+  List<({Color color, GridPoint start, GridPoint end})> screenHighlights() =>
+      _controller._screenHighlights();
+}
+
+/// A coloured range painted over a terminal's text; see
+/// [VtTerminalController.addHighlight].
+///
+/// Its ends are tracked: they follow the text as output scrolls it. Once
+/// the text leaves the scrollback, [start] or [end] becomes `null` and the
+/// highlight is no longer painted (it stays in
+/// [VtTerminalController.highlights] until disposed).
+///
+/// **Ownership:** it belongs to its [controller]. [dispose] removes it;
+/// disposing the controller disposes it too.
+final class VtTerminalHighlight {
+  VtTerminalHighlight._(
+    this.controller,
+    this.color,
+    this._start,
+    this._end,
+    this._screen,
+  );
+
+  /// The controller that paints this highlight.
+  final VtTerminalController controller;
+
+  /// The fill colour, painted with its alpha over the text.
+  final Color color;
+
+  final TrackedGridRef _start;
+  final TrackedGridRef _end;
+
+  /// The screen (primary or alternate) the highlight was made on.
+  final TerminalScreen _screen;
+
+  bool _disposed = false;
+
+  /// The first highlighted cell now, in [PointSpace.screen]; `null` once
+  /// its text left the scrollback, or after [dispose].
+  GridPoint? get start => _point(_start);
+
+  /// The last highlighted cell now (inclusive), in [PointSpace.screen];
+  /// `null` once its text left the scrollback, or after [dispose].
+  GridPoint? get end => _point(_end);
+
+  GridPoint? _point(TrackedGridRef ref) {
+    if (_disposed || controller.isDisposed) return null;
+    return ref.pointIn(PointSpace.screen);
+  }
+
+  /// Whether [dispose] has been called, directly or by disposing the
+  /// controller.
+  bool get isDisposed => _disposed;
+
+  /// Removes the highlight: views stop painting it and the controller's
+  /// listeners are notified. Safe to call more than once.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _start.dispose();
+    _end.dispose();
+    controller._removeHighlight(this);
+  }
+
+  @override
+  String toString() => isDisposed
+      ? 'VtTerminalHighlight(disposed)'
+      : 'VtTerminalHighlight($start..$end, $color)';
 }

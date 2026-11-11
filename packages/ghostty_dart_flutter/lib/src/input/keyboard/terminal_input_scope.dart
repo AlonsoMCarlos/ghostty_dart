@@ -8,6 +8,7 @@ import 'package:ghostty_dart/ghostty_dart.dart';
 
 import '../../seams/terminal_geometry.dart';
 import '../../seams/terminal_seams.dart';
+import '../input_hooks.dart';
 import '../text_input/composing_overlay.dart';
 import '../text_input/sentinel_editor.dart';
 import '../text_input/terminal_text_input.dart';
@@ -27,13 +28,16 @@ import 'terminal_shortcuts.dart';
 /// 3. The release of a key whose press was encoded, and every modifier
 ///    key, goes to the encoder (even while the IME composes).
 /// 4. While the IME composes, every other key goes to the IME.
-/// 5. With a text input connection open, and unless the program enabled
+/// 5. [onTerminalKey], when given, sees the key press or repeat: a string
+///    it returns consumes the key and is sent in its place (empty: the key
+///    is [KeyEventResult.ignored], nothing is sent), `null` goes on.
+/// 6. With a text input connection open, and unless the program enabled
 ///    Kitty "report event types" (2) or "report all keys" (8), a
 ///    writing-system key or Space without Ctrl, Alt or Super (after the
 ///    AltGr and Option rules) is left to the platform text input, as
 ///    `EditableText` does, so IMEs, dead keys and compose sequences work.
 ///    Its text arrives as committed text (ADR 0011, 2026-11-10 amendment).
-/// 6. Every other key goes to [keys] as a [VtKeyEvent]. The key is
+/// 7. Every other key goes to [keys] as a [VtKeyEvent]. The key is
 ///    [KeyEventResult.handled] when the encoder produced bytes, and always
 ///    for Tab, Esc, Enter, Space and the arrows (so Flutter's traversal and
 ///    activation shortcuts never see them); otherwise it is ignored, so Cmd
@@ -46,8 +50,12 @@ import 'terminal_shortcuts.dart';
 /// arrives within [commitTimeout] (a dead key, an IME that swallowed the
 /// key) or the IME starts composing, the queue moves on.
 ///
-/// [readOnly] sends nothing (no keys, text, pastes or focus reports) but
-/// still copies. [hardwareKeyboardOnly] opens no text input connection:
+/// **Hooks.** Soft-keyboard Backspace and the IME's Enter-like actions go
+/// through [onTerminalKey] too, as synthesised key presses. Committed text
+/// (not pastes) goes through [onTerminalText] just before it is sent.
+///
+/// [readOnly] sends nothing (no keys, text, pastes or focus reports) and
+/// calls no hook, but still copies. [hardwareKeyboardOnly] opens no text input connection:
 /// no soft keyboard and no IME, and printable keys are encoded with their
 /// text directly.
 class TerminalInputScope extends StatefulWidget {
@@ -73,6 +81,8 @@ class TerminalInputScope extends StatefulWidget {
     this.composingBackground,
     this.kittyKeyboardFlags,
     this.macosOptionAsAlt,
+    this.onTerminalKey,
+    this.onTerminalText,
     required this.child,
   });
 
@@ -157,6 +167,13 @@ class TerminalInputScope extends StatefulWidget {
   /// [OptionAsAlt.none]: Option composes characters.
   final ValueGetter<OptionAsAlt>? macosOptionAsAlt;
 
+  /// Sees each key press or repeat before it is encoded or left to the
+  /// platform text input (see the class docs, step 5).
+  final VtTerminalKeyHook? onTerminalKey;
+
+  /// Sees each committed text just before it is sent.
+  final VtTerminalTextHook? onTerminalText;
+
   /// The rest of the view.
   final Widget child;
 
@@ -221,8 +238,8 @@ class TerminalInputScopeState extends State<TerminalInputScope>
       !widget.hardwareKeyboardOnly &&
       !widget.text.isDisposed;
 
-  /// Whether a text input connection is open.
-  @visibleForTesting
+  /// Whether a text input connection is open (the view's
+  /// `hasInputConnection`).
   bool get hasTextInputConnection => _textInput.isAttached;
 
   /// Shows the soft keyboard: focuses the view and opens (or re-shows) the
@@ -609,7 +626,13 @@ class TerminalInputScopeState extends State<TerminalInputScope>
   void _onEdit(SentinelEdit edit) {
     if (!_acceptsInput || widget.text.isDisposed) return;
     for (var i = 0; i < edit.backspaces; i++) {
-      _emit(() => _sendKeyWithLatch(const VtKeyEvent(key: VtKey.backspace)));
+      _emit(
+        () => _sendSoftKey(
+          const VtKeyEvent(key: VtKey.backspace),
+          PhysicalKeyboardKey.backspace,
+          LogicalKeyboardKey.backspace,
+        ),
+      );
     }
     final text = edit.text;
     if (text.isEmpty) return;
@@ -618,9 +641,11 @@ class TerminalInputScopeState extends State<TerminalInputScope>
       if (!latched.isEmpty && text.characters.length == 1) {
         widget.keys.latchedModifiers.value = KeyModifiers.none;
         widget.keys.sendKey(keyEventForCharacter(text, latched));
-      } else {
-        widget.text.sendText(text);
+        return;
       }
+      final hook = widget.onTerminalText;
+      final sent = hook == null ? text : hook(text) ?? text;
+      if (sent.isNotEmpty) widget.text.sendText(sent);
     }, text.characters.length);
   }
 
@@ -632,10 +657,50 @@ class TerminalInputScopeState extends State<TerminalInputScope>
           TextInputAction.go ||
           TextInputAction.search ||
           TextInputAction.send:
-        _emit(() => _sendKeyWithLatch(const VtKeyEvent(key: VtKey.enter)));
+        _emit(
+          () => _sendSoftKey(
+            const VtKeyEvent(key: VtKey.enter),
+            PhysicalKeyboardKey.enter,
+            LogicalKeyboardKey.enter,
+          ),
+        );
       default:
         break;
     }
+  }
+
+  /// Sends a key a soft keyboard or IME produced without a key event
+  /// ([event], with the latched modifiers), first offering
+  /// [TerminalInputScope.onTerminalKey] a synthesised press of
+  /// [physical] / [logical].
+  void _sendSoftKey(
+    VtKeyEvent event,
+    PhysicalKeyboardKey physical,
+    LogicalKeyboardKey logical,
+  ) {
+    final hook = widget.onTerminalKey;
+    if (hook != null && !widget.text.isDisposed) {
+      final latched = widget.keys.latchedModifiers.value;
+      final replacement = hook(
+        KeyDownEvent(
+          physicalKey: physical,
+          logicalKey: logical,
+          timeStamp: Duration.zero,
+          synthesized: true,
+        ),
+        event.modifiers | latched,
+      );
+      if (replacement != null) {
+        if (replacement.isNotEmpty) {
+          if (!latched.isEmpty) {
+            widget.keys.latchedModifiers.value = KeyModifiers.none;
+          }
+          widget.text.sendText(replacement);
+        }
+        return;
+      }
+    }
+    _sendKeyWithLatch(event);
   }
 
   void _sendKeyWithLatch(VtKeyEvent event) {
@@ -725,6 +790,19 @@ class TerminalInputScopeState extends State<TerminalInputScope>
     final latched = widget.keys.latchedModifiers.value;
     final vtEvent = mapper.map(event, extraModifiers: latched);
     final mods = vtEvent.modifiers;
+    final hook = widget.onTerminalKey;
+    if (hook != null) {
+      final replacement = hook(event, mods);
+      if (replacement != null) {
+        // An empty string leaves the key to the rest of the app.
+        if (replacement.isEmpty) return KeyEventResult.ignored;
+        if (!latched.isEmpty) {
+          widget.keys.latchedModifiers.value = KeyModifiers.none;
+        }
+        _emit(() => widget.text.sendText(replacement));
+        return KeyEventResult.handled;
+      }
+    }
     final textual =
         isTextKey(key) ||
         (key == VtKey.unidentified && vtEvent.text.isNotEmpty);

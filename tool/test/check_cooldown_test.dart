@@ -3,7 +3,8 @@
 // Run with `dart tool/test/check_cooldown_test.dart` from the repository root.
 //
 // The same tiny harness as tool/test/check_translations_test.dart: the
-// workspace root (which owns tool/) depends on nothing but lints.
+// workspace root (which owns tool/) has no package:test (only lints, plus
+// analyzer and crypto for tool/xterm_compat).
 
 import 'dart:io';
 

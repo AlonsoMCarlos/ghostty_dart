@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
 import 'terminal_controller.dart';
@@ -47,6 +48,11 @@ abstract interface class ControllerInternals {
     required int cellWidthPx,
     required int cellHeightPx,
   });
+
+  /// The live highlights on the active screen whose ends are both known,
+  /// as screen points with `start` before `end`, in creation order. Empty
+  /// (and cheap) when there are none.
+  List<({Color color, GridPoint start, GridPoint end})> screenHighlights();
 }
 
 final _internals = Expando<ControllerInternals>('VtTerminalController');

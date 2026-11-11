@@ -1,5 +1,6 @@
 import 'package:ghostty_dart/ghostty_dart.dart';
 
+import '../input/pointer/mouse_reports.dart';
 import '../seams/terminal_seams.dart';
 
 /// Decides where a scroll of whole rows goes: wheel reports to the
@@ -20,6 +21,11 @@ import '../seams/terminal_seams.dart';
 /// One deviation, from the input research (xterm2): with Shift held the
 /// rows always scroll the scrollback, never reports or arrows (Shift is
 /// the "select instead of reporting" modifier).
+///
+/// [reports] may turn a wheel step down ([MouseReports.allows]): that row
+/// then goes on to step 2 or 3 as if the program did not track the mouse
+/// (a column is dropped), and an accepted step goes through
+/// [MouseReports.send].
 final class TerminalScrollRouter {
   /// A router over [viewport]. Without [pointer] every scroll moves the
   /// viewport (there are no modes to read). [text] carries the raw
@@ -31,6 +37,7 @@ final class TerminalScrollRouter {
     this.pointer,
     this.keys,
     this.text,
+    this.reports = MouseReports.none,
   });
 
   /// The viewport to scroll.
@@ -44,6 +51,9 @@ final class TerminalScrollRouter {
 
   /// Where the raw alternate-scroll sequences go.
   final TerminalTextSink? text;
+
+  /// The view's mouse report filter and hook, for wheel reports.
+  final MouseReports reports;
 
   /// Whether a scroll would do anything now: the viewport has scrollback,
   /// or the program gets the rows (tracking, or the alternate screen with
@@ -63,35 +73,52 @@ final class TerminalScrollRouter {
 
   /// Scrolls by [rows] (positive is down, towards newer output) and
   /// [cols] (positive is right; only ever reported). [surface] is the
-  /// pointer in surface (device) pixels, for reports.
+  /// pointer in surface (device) pixels, for reports, and [cell] the
+  /// viewport cell under it, for [MouseReports.send].
   void scroll(
     int rows, {
     int cols = 0,
     required ({double x, double y}) surface,
     required KeyModifiers modifiers,
+    GridPoint cell = const GridPoint.viewport(0, 0),
   }) {
     if (viewport.isDisposed || (rows == 0 && cols == 0)) return;
     final pointer = this.pointer;
     final shift = modifiers.hasShift;
     if (pointer != null && !shift && pointer.isMouseTracking) {
-      _clearSelection(pointer);
-      void report(MouseButton button, int count) {
+      var cleared = false;
+      // Returns how many of [count] steps the filter turned down.
+      int report(MouseButton button, int count) {
+        var refused = 0;
         for (var i = 0; i < count; i++) {
-          pointer.sendMouse(
-            VtMouseEvent(
-              action: MouseAction.press,
-              button: button,
-              modifiers: modifiers,
-              x: surface.x,
-              y: surface.y,
-            ),
+          final event = VtMouseEvent(
+            action: MouseAction.press,
+            button: button,
+            modifiers: modifiers,
+            x: surface.x,
+            y: surface.y,
           );
+          if (!reports.allows(event)) {
+            refused++;
+            continue;
+          }
+          if (!cleared) {
+            cleared = true;
+            _clearSelection(pointer);
+          }
+          reports.send(pointer, event, cell);
         }
+        return refused;
       }
 
-      report(rows < 0 ? MouseButton.four : MouseButton.five, rows.abs());
+      final refusedRows = report(
+        rows < 0 ? MouseButton.four : MouseButton.five,
+        rows.abs(),
+      );
       report(cols < 0 ? MouseButton.six : MouseButton.seven, cols.abs());
-      return;
+      if (refusedRows == 0) return;
+      // The refused rows scroll as if the program did not track the mouse.
+      rows = rows < 0 ? -refusedRows : refusedRows;
     }
     if (rows == 0) return;
     if (!shift && viewport.isAlternateScreen) {

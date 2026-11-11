@@ -2,7 +2,8 @@
 // `dart tool/test/check_translations_test.dart` from the repository root.
 //
 // A tiny harness instead of package:test, like tool/native/test/tool_test.dart:
-// the workspace root (which owns tool/) depends on nothing but lints. Each
+// the workspace root (which owns tool/) has no package:test (only lints, plus
+// analyzer and crypto for tool/xterm_compat). Each
 // test builds a throwaway git repository in a temp directory, so the real
 // `git hash-object` and `git ls-files` are exercised.
 

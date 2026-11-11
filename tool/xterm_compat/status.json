@@ -1,0 +1,97 @@
+{
+  "comment": "Hand-kept statuses for packages/ghostty_dart_xterm/COMPATIBILITY.md (tool/xterm_compat/compat.dart, rules in src/compare.dart). Keys: a library (zmodem.dart), a symbol (Terminal) or a member (Terminal.write; Terminal.new is the unnamed constructor). status: differs (present, behaves differently), missing (planned), wont (not provided, on purpose). A missing member without an entry is missing/planned. Signature differences are found automatically and need no entry. Regenerate with `mise run compat`.",
+  "entries": {
+    "zmodem.dart": {
+      "status": "missing",
+      "reason": "needs package:zmodem as a new dependency, a separate decision (ADR 0013)"
+    },
+    "utils.dart": {
+      "status": "wont",
+      "reason": "the debugger is built on xterm's Dart escape parser; parsing lives in libghostty-vt (ADR 0004, ADR 0013)"
+    },
+    "EscapeHandler": {
+      "status": "wont",
+      "reason": "parsing lives in libghostty-vt, so there is no handler to implement or subclass (ADR 0004, ADR 0013)"
+    },
+    "EscapeParser": {
+      "status": "wont",
+      "reason": "parsing lives in libghostty-vt (ADR 0004, ADR 0013)"
+    },
+    "Buffer.charset": {
+      "status": "wont",
+      "reason": "charset state lives in libghostty-vt; xterm's Charset type is not exported either"
+    },
+    "TerminalViewState.renderTerminal": {
+      "status": "wont",
+      "reason": "xterm's render object (RenderTerminal, not exported); the view renders through ghostty_dart_flutter (ADR 0011)"
+    },
+    "Terminal": {
+      "status": "differs",
+      "reason": "not an EscapeHandler: its handler methods write the equivalent sequence while the parser is in its ground state and throw StateError otherwise (ADR 0013)"
+    },
+    "Terminal.onIconChange": {
+      "status": "differs",
+      "reason": "never called for OSC 1 (icon name): libghostty-vt 1.0.0 does not report it (ADR 0013 known limits)"
+    },
+    "Terminal.mainBuffer": {
+      "status": "differs",
+      "reason": "cannot be read while the alternate screen is active: libghostty-vt 1.0.0 exposes only the active screen (ADR 0013 known limits)"
+    },
+    "Terminal.reflowEnabled": {
+      "status": "differs",
+      "reason": "has no effect: libghostty-vt 1.0.0 always reflows on resize (ADR 0013 known limits)"
+    },
+    "Terminal.onPrivateOSC": {
+      "status": "differs",
+      "reason": "only sees OSC sequences that libghostty-vt does not implement itself (ADR 0013 known limits)"
+    },
+    "Terminal.onResize": {
+      "status": "differs",
+      "reason": "the pixel arguments are xterm's cell size in logical pixels, computed from the view's device pixel ratio; 0 without a TerminalView (ADR 0013)"
+    },
+    "Terminal.unknownCSI": {
+      "status": "differs",
+      "reason": "no-op: there is no sequence to emulate it with (ADR 0013)"
+    },
+    "Terminal.unsupportedStyle": {
+      "status": "differs",
+      "reason": "no-op: there is no sequence to emulate it with (ADR 0013)"
+    },
+    "Buffer.marginTop": {
+      "status": "differs",
+      "reason": "libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits)"
+    },
+    "Buffer.marginBottom": {
+      "status": "differs",
+      "reason": "libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits)"
+    },
+    "Buffer.absoluteMarginTop": {
+      "status": "differs",
+      "reason": "libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits)"
+    },
+    "Buffer.absoluteMarginBottom": {
+      "status": "differs",
+      "reason": "libghostty-vt 1.0.0 does not expose the DECSTBM scroll margins (ADR 0013 known limits)"
+    },
+    "KeytabInputHandler.call": {
+      "status": "differs",
+      "reason": "application cursor keys follow cursorKeysMode (DECCKM); xterm reads appKeypadMode there, a bug (ADR 0013)"
+    },
+    "ClickMouseHandler.call": {
+      "status": "differs",
+      "reason": "normal and UTF-8 mouse reports encode the row as 32 + y; xterm sends 32 + y + 1, an off-by-one (ADR 0013)"
+    },
+    "UpDownMouseHandler.call": {
+      "status": "differs",
+      "reason": "normal and UTF-8 mouse reports encode the row as 32 + y; xterm sends 32 + y + 1, an off-by-one (ADR 0013)"
+    },
+    "TerminalView": {
+      "status": "differs",
+      "reason": "keys typed into the view are encoded by libghostty-vt (Kitty protocol, key releases) while terminal.inputHandler is defaultInputHandler; mouse reports come from libghostty-vt's encoder; one TerminalView per Terminal (ADR 0013)"
+    },
+    "TerminalView.scrollController": {
+      "status": "differs",
+      "reason": "accepted and ignored: libghostty-vt owns scrolling (ADR 0011, ADR 0013)"
+    }
+  }
+}

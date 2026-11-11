@@ -35,6 +35,8 @@ class _CountingSource extends Fake implements TerminalFrameSource {
   @override
   void endFrame() => inner.endFrame();
   @override
+  List<ViewportHighlight> viewportHighlights() => inner.viewportHighlights();
+  @override
   void addListener(VoidCallback listener) => inner.addListener(listener);
   @override
   void removeListener(VoidCallback listener) => inner.removeListener(listener);

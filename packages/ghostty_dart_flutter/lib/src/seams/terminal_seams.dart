@@ -16,10 +16,22 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
 import '../controller/terminal_controller.dart';
 import '../theme/terminal_theme.dart';
+
+/// A highlight to paint, in viewport cells: from ([startX], [startY]) to
+/// ([endX], [endY]), both inclusive, in line order. The rows may lie
+/// above the viewport (negative) or below it; clip them to the grid.
+typedef ViewportHighlight = ({
+  Color color,
+  int startX,
+  int startY,
+  int endX,
+  int endY,
+});
 
 /// What the renderer reads, once per frame.
 ///
@@ -60,6 +72,12 @@ abstract interface class TerminalFrameSource implements Listenable {
   /// Marks the frame drawn ([RenderState.markClean]). Call it after every
   /// row of [RenderState.dirtyRows] was re-recorded.
   void endFrame();
+
+  /// The controller's highlights ([VtTerminalController.addHighlight])
+  /// that may be visible, in creation order, positioned for the viewport
+  /// as of now. Read it once per paint, next to [updateFrame], and not
+  /// while [isRenderHeld]. Empty when there are none or after disposal.
+  List<ViewportHighlight> viewportHighlights();
 }
 
 /// Where keys go: hardware keys and on-screen toolbar keys.

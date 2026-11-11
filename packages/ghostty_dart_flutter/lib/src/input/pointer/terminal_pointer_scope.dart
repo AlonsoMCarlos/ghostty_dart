@@ -12,6 +12,7 @@ import '../../scroll/row_accumulator.dart';
 import '../../scroll/terminal_scroll_router.dart';
 import '../../seams/terminal_geometry.dart';
 import '../../seams/terminal_seams.dart';
+import 'mouse_reports.dart';
 import 'pointer_mapping.dart';
 
 /// Called with the details of a primary tap or a secondary release and the
@@ -76,6 +77,13 @@ const _arenaDevices = {
 /// the mouse, the program's OSC 22 shape when it set one, and a crosshair
 /// while a drag would select a block.
 ///
+/// **Report hooks** ([reports]). The filter is asked for each press (mouse
+/// and touch tap), wheel step and motion event that would be reported;
+/// a refused press handles its whole gesture as if the program did not
+/// track the mouse, a refused wheel step scrolls as if untracked, and
+/// refused motion is dropped. The release of a reported press is never
+/// filtered. Every report that passes goes through [MouseReports.send].
+///
 /// [pointer] must stay the same object while the view shows the same
 /// controller: a different one ends the press in progress and drops the
 /// click sequence.
@@ -94,6 +102,9 @@ class TerminalPointerScope extends StatefulWidget {
     this.onTapUp,
     this.onSecondaryTapDown,
     this.onSecondaryTapUp,
+    this.reports = MouseReports.none,
+    this.wordBoundaryCodepoints,
+    this.rectangleSelection = false,
   });
 
   /// Where mouse reports and selections go.
@@ -136,6 +147,18 @@ class TerminalPointerScope extends StatefulWidget {
 
   /// The release of a secondary press passed to [onSecondaryTapDown].
   final TerminalTapUpCallback? onSecondaryTapUp;
+
+  /// The view's mouse report filter and hook (see the class docs).
+  final MouseReports reports;
+
+  /// The codepoints that end a word for double-click and long-press word
+  /// selection; `null` uses libghostty's default set. Changing it creates
+  /// a new selection gesture.
+  final List<int>? wordBoundaryCodepoints;
+
+  /// Whether a plain primary drag selects a block (rectangle). When
+  /// `false`, the modifier rule still selects one.
+  final bool rectangleSelection;
 
   @override
   State<TerminalPointerScope> createState() => _TerminalPointerScopeState();
@@ -200,6 +223,10 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
   /// The buttons reported as pressed to the program.
   int _reportedButtons = 0;
 
+  /// The buttons held during a reported gesture whose press the report
+  /// filter refused: neither their press nor their release is reported.
+  int _refusedButtons = 0;
+
   /// The last cell a motion report was sent for (motion de-duplication;
   /// the controller's `setFromTerminal` clears the encoder's own).
   GridPoint? _lastMotionCell;
@@ -263,6 +290,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     pointer: widget.pointer,
     keys: widget.keys,
     text: widget.text,
+    reports: widget.reports,
   );
 
   @override
@@ -283,7 +311,11 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     }
     final pointerChanged = !identical(oldWidget.pointer, widget.pointer);
     if (pointerChanged ||
-        oldWidget.geometry.metrics.widthPx != widget.geometry.metrics.widthPx) {
+        oldWidget.geometry.metrics.widthPx != widget.geometry.metrics.widthPx ||
+        !listEquals(
+          oldWidget.wordBoundaryCodepoints,
+          widget.wordBoundaryCodepoints,
+        )) {
       // The repeat distance is one cell; a new terminal needs a new
       // gesture.
       _endPointer(cancelled: true, sink: oldWidget.pointer);
@@ -328,6 +360,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
       repeatInterval: _repeatInterval,
       // Ghostty uses one cell width (`max_distance` in `src/Surface.zig`).
       repeatDistance: _geometry.metrics.widthPx.toDouble(),
+      wordBoundaryCodepoints: widget.wordBoundaryCodepoints,
     );
   }
 
@@ -426,9 +459,14 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     final modifiers = currentKeyModifiers();
 
     if (_reports(modifiers)) {
-      _route = _Route.report;
-      _syncReportedButtons(event, modifiers);
-      return;
+      final allowed = _allowedPresses(event.buttons, event, modifiers);
+      final lowest = event.buttons & -event.buttons;
+      // A refused press: the whole gesture acts as if untracked.
+      if (lowest == 0 || allowed & lowest != 0) {
+        _route = _Route.report;
+        _syncReportedButtons(event, modifiers, allowed: allowed);
+        return;
+      }
     }
 
     final cell = _cellAt(event.localPosition);
@@ -475,7 +513,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
         // Another button pressed or released while one is held arrives as
         // a move with different buttons; the press or release report
         // carries the position, so no motion report follows it.
-        if (event.buttons != _reportedButtons) {
+        if (event.buttons != (_reportedButtons | _refusedButtons)) {
           _syncReportedButtons(event, modifiers);
         } else {
           _reportMotion(event, modifiers);
@@ -540,14 +578,17 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     if (!sink.isDisposed) {
       if (_reportedButtons != 0) {
         final position = _geometry.toSurface(_lastLocal);
+        final cell = _geometry.viewportCellAt(_lastLocal);
         for (final bit in buttonBits(_reportedButtons)) {
-          sink.sendMouse(
+          widget.reports.send(
+            sink,
             VtMouseEvent(
               action: MouseAction.release,
               button: mouseButtonOf(bit),
               x: position.x,
               y: position.y,
             ),
+            cell,
           );
         }
         sink.setMouseButtonsPressed(anyPressed: false);
@@ -558,6 +599,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
       }
     }
     _reportedButtons = 0;
+    _refusedButtons = 0;
     _route = _Route.none;
     _activePointer = null;
   }
@@ -566,19 +608,51 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
   // Mouse reports
   // -------------------------------------------------------------------
 
+  /// The bits of [pressed] whose press the report filter allows (all of
+  /// them without a filter; bits with no terminal button are never
+  /// reported, so they count as allowed).
+  int _allowedPresses(int pressed, PointerEvent event, KeyModifiers modifiers) {
+    if (widget.reports.filter == null) return pressed;
+    final position = _geometry.toSurface(event.localPosition);
+    var allowed = pressed;
+    for (final bit in buttonBits(pressed)) {
+      final press = VtMouseEvent(
+        action: MouseAction.press,
+        button: mouseButtonOf(bit),
+        modifiers: modifiers,
+        x: position.x,
+        y: position.y,
+      );
+      if (!widget.reports.allows(press)) allowed &= ~bit;
+    }
+    return allowed;
+  }
+
   /// Sends a press for every button newly held in [event] and a release
   /// for every one let go, and keeps the encoder's "any button pressed"
-  /// state current.
-  void _syncReportedButtons(PointerEvent event, KeyModifiers modifiers) {
+  /// state current. [allowed] is the presses the report filter already
+  /// allowed; `null` asks it for every new press.
+  void _syncReportedButtons(
+    PointerEvent event,
+    KeyModifiers modifiers, {
+    int? allowed,
+  }) {
     final buttons = event is PointerUpEvent ? 0 : event.buttons;
-    final pressed = buttons & ~_reportedButtons;
+    final held = _reportedButtons | _refusedButtons;
+    final pressed = buttons & ~held;
     final released = _reportedButtons & ~buttons;
-    _reportedButtons = buttons;
+    _refusedButtons &= buttons;
+    final reportedPresses =
+        pressed & (allowed ?? _allowedPresses(pressed, event, modifiers));
+    _refusedButtons |= pressed & ~reportedPresses;
+    _reportedButtons = (_reportedButtons & buttons) | reportedPresses;
     _pointer.setMouseButtonsPressed(anyPressed: buttons != 0);
     final position = _geometry.toSurface(event.localPosition);
+    final cell = _cellAt(event.localPosition);
     void send(MouseAction action, int bits) {
       for (final bit in buttonBits(bits)) {
-        _pointer.sendMouse(
+        widget.reports.send(
+          _pointer,
           VtMouseEvent(
             action: action,
             button: mouseButtonOf(bit),
@@ -586,19 +660,20 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
             x: position.x,
             y: position.y,
           ),
+          cell,
         );
       }
     }
 
     send(MouseAction.release, released);
-    send(MouseAction.press, pressed);
+    send(MouseAction.press, reportedPresses);
     _lastMotionCell = _geometry.viewportCellAt(event.localPosition);
     _lastMotionButtons = buttons;
   }
 
   /// Reports motion, dropping motion that stays in the same cell with the
   /// same buttons unless the program asked for pixel positions (SGR-Pixels,
-  /// DEC 1016).
+  /// DEC 1016), and motion the report filter refuses.
   void _reportMotion(PointerEvent event, KeyModifiers modifiers) {
     final buttons = event is PointerHoverEvent ? 0 : _reportedButtons;
     final cell = _geometry.viewportCellAt(event.localPosition);
@@ -610,15 +685,15 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     _lastMotionCell = cell;
     _lastMotionButtons = buttons;
     final position = _geometry.toSurface(event.localPosition);
-    _pointer.sendMouse(
-      VtMouseEvent(
-        action: MouseAction.motion,
-        button: heldButtonOf(buttons),
-        modifiers: modifiers,
-        x: position.x,
-        y: position.y,
-      ),
+    final motion = VtMouseEvent(
+      action: MouseAction.motion,
+      button: heldButtonOf(buttons),
+      modifiers: modifiers,
+      x: position.x,
+      y: position.y,
     );
+    if (!widget.reports.allows(motion)) return;
+    widget.reports.send(_pointer, motion, _cellAt(event.localPosition));
   }
 
   // -------------------------------------------------------------------
@@ -631,6 +706,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
   }
 
   bool get _rectangle =>
+      widget.rectangleSelection ||
       isRectangleSelect(currentKeyModifiers(), defaultTargetPlatform);
 
   void _dragSelection() {
@@ -720,13 +796,17 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
       rows,
       surface: _geometry.toSurface(details.localPosition),
       modifiers: currentKeyModifiers(),
+      cell: _cellAt(details.localPosition),
     );
   }
 
   void _onLongPressStart(LongPressStartDetails details) {
     if (_pointer.isDisposed) return;
     final word = _guarded(
-      () => _pointer.terminal.selectWord(_cellAt(details.localPosition)),
+      () => _pointer.terminal.selectWord(
+        _cellAt(details.localPosition),
+        boundaryCodepoints: widget.wordBoundaryCodepoints,
+      ),
     );
     _wordStart = word?.start.pointIn(PointSpace.screen);
     _wordEnd = word?.end.pointIn(PointSpace.screen);
@@ -751,19 +831,22 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
     if (_pointer.isDisposed) return;
     if (_reports(KeyModifiers.none)) {
       final position = _geometry.toSurface(details.localPosition);
-      void send(MouseAction action) => _pointer.sendMouse(
-        VtMouseEvent(
-          action: action,
-          button: MouseButton.left,
-          x: position.x,
-          y: position.y,
-        ),
+      final cell = _cellAt(details.localPosition);
+      VtMouseEvent tap(MouseAction action) => VtMouseEvent(
+        action: action,
+        button: MouseButton.left,
+        x: position.x,
+        y: position.y,
       );
-      _pointer.setMouseButtonsPressed(anyPressed: true);
-      send(MouseAction.press);
-      _pointer.setMouseButtonsPressed(anyPressed: false);
-      send(MouseAction.release);
-      return;
+      final press = tap(MouseAction.press);
+      // A refused tap acts as if the program did not track the mouse.
+      if (widget.reports.allows(press)) {
+        _pointer.setMouseButtonsPressed(anyPressed: true);
+        widget.reports.send(_pointer, press, cell);
+        _pointer.setMouseButtonsPressed(anyPressed: false);
+        widget.reports.send(_pointer, tap(MouseAction.release), cell);
+        return;
+      }
     }
     _setSelection(null);
     widget.onTapUp?.call(details, _cellAt(details.localPosition));
@@ -818,6 +901,7 @@ class _TerminalPointerScopeState extends State<TerminalPointerScope> {
       cols: cols,
       surface: _geometry.toSurface(event.localPosition),
       modifiers: modifiers,
+      cell: _cellAt(event.localPosition),
     );
   }
 

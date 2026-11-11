@@ -89,6 +89,29 @@ final class ControllerSeams
   @override
   void endFrame() => internalsOf(controller).renderState.markClean();
 
+  @override
+  List<ViewportHighlight> viewportHighlights() {
+    if (isDisposed) return const [];
+    final highlights = _internals.screenHighlights();
+    if (highlights.isEmpty) return const [];
+    final vt = controller.terminal;
+    // The viewport's top row in screen coordinates (as in
+    // cursorViewportCell: the scrollbar counts screen rows).
+    final top = vt.scrollbar.offset;
+    final rows = vt.rows;
+    return [
+      for (final (:color, :start, :end) in highlights)
+        if (end.y >= top && start.y < top + rows)
+          (
+            color: color,
+            startX: start.x,
+            startY: start.y - top,
+            endX: end.x,
+            endY: end.y - top,
+          ),
+    ];
+  }
+
   // TerminalKeySink
 
   @override

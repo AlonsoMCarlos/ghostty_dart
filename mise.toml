@@ -164,13 +164,14 @@ dart tool/native/pin_prebuilt.dart "$usage_tag" ${usage_no_verify:+--no-verify} 
 '''
 
 [tasks."test:tool"]
-description = "Test the repo tools (binary checker, pin logic, asset manifest, cooldown lock parsing, translation check, analysis options sync, repo hygiene)"
+description = "Test the repo tools (binary checker, pin logic, asset manifest, cooldown lock parsing, translation check, analysis options sync, repo hygiene, xterm compat generator)"
 run = [
   "dart tool/native/test/tool_test.dart",
   "dart tool/test/check_cooldown_test.dart",
   "dart tool/test/check_translations_test.dart",
   "dart tool/test/analysis_options_test.dart",
   "dart tool/test/repo_hygiene_test.dart",
+  "dart tool/test/xterm_compat_test.dart",
 ]
 
 # The name is the one CI and the task list use; it covers workflows and the
@@ -445,6 +446,25 @@ description = "Test the DCO check and the release scripts (temp git repos, stubs
 shell = "bash -c"
 run = ["bash tool/check_dco_test.sh", "bash tool/release/test/release_test.sh"]
 
+# COMPATIBILITY.md of ghostty_dart_xterm (ADR 0013, "Evidence"):
+# tool/xterm_compat compares xterm 4.0.0's API (a committed analyzer snapshot)
+# with the adapter's, merged with the hand-kept tool/xterm_compat/status.json.
+# The snapshot is retaken only by hand and reviewed, like native:pin; it fails
+# closed unless the locked xterm archive sha256 and the hash of its lib/ tree
+# match the pins in tool/xterm_compat/src/pin.dart. compat and compat:check
+# read only the snapshot and the adapter's sources (no network).
+[tasks."compat:snapshot"]
+description = "Re-take tool/xterm_compat/xterm-4.0.0.api.json from the locked xterm 4.0.0 (fail-closed pins; review the diff)"
+run = "dart tool/xterm_compat/compat.dart snapshot"
+
+[tasks.compat]
+description = "Regenerate packages/ghostty_dart_xterm/COMPATIBILITY.md from the snapshot, the adapter and status.json"
+run = "dart tool/xterm_compat/compat.dart write"
+
+[tasks."compat:check"]
+description = "Fail if COMPATIBILITY.md is stale or tool/xterm_compat/status.json is inconsistent"
+run = "dart tool/xterm_compat/compat.dart check"
+
 [tasks.check]
 description = "Everything CI runs locally"
 depends = [
@@ -456,6 +476,7 @@ depends = [
   "bench:widget:test",
   "test:tool",
   "test:release",
+  "compat:check",
   "cooldown",
   "docs:translations",
   "lint:ci",

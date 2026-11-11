@@ -7,9 +7,10 @@
 /// provided (ADR 0004). `COMPATIBILITY.md` lists every xterm member and
 /// whether it is the same, differs, is planned or will not be supported.
 ///
-/// Work in progress: this version only has xterm's value types
-/// (`CellOffset`, `BufferRange`, `CursorStyle`, `TerminalState`, …);
-/// `Terminal` and the rest follow (ADR 0013).
+/// Work in progress: this version has xterm's value types (`CellOffset`,
+/// `BufferRange`, `CursorStyle`, `TerminalState`, …) and its key and mouse
+/// handlers (`TerminalKey`, `defaultInputHandler`, `defaultMouseHandler`,
+/// …); `Terminal` and the rest follow (ADR 0013).
 library;
 
 export 'src/core/buffer/cell_offset.dart';
@@ -18,6 +19,11 @@ export 'src/core/buffer/segment.dart';
 export 'src/core/cell.dart';
 export 'src/core/color.dart';
 export 'src/core/cursor.dart';
+export 'src/core/input/handler.dart';
+export 'src/core/input/keys.dart';
+export 'src/core/mouse/button.dart';
+export 'src/core/mouse/button_state.dart';
+export 'src/core/mouse/handler.dart';
 export 'src/core/mouse/mode.dart';
 export 'src/core/platform.dart';
 export 'src/core/state.dart';

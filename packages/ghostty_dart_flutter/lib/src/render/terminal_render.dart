@@ -182,6 +182,12 @@ final class _CachedRow {
 /// [cacheBudget], including superseded page images that cached pictures
 /// still draw ([AtlasLedger]).
 ///
+/// **Highlights** ([TerminalFrameSource.viewportHighlights]) are an overlay
+/// like the cursor: read once per paint (not while the render is held),
+/// filled over whole cells after the cursor, in creation order, and never
+/// part of a row's content key, so they record no row (ADR 0011,
+/// amendment of 2026-11-11).
+///
 /// **Render hold.** While [TerminalFrameSource.isRenderHeld] is true the
 /// frame is not read and nothing is dropped: the cached pictures are
 /// replayed, and a font or theme change waits for the end of the hold.
@@ -462,6 +468,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   VtCursorStyle? _paintedCursor;
   Timer? _blinkTimer;
 
+  // Highlight overlay, positioned as of the last frame read.
+  List<ViewportHighlight> _highlights = const [];
+
   Color? _lastBackground;
   int _rowRecordings = 0;
   int _rowScans = 0;
@@ -633,7 +642,10 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     final recorder = held && _recorder != null
         ? _recorder!
         : _prepareRecorder();
-    if (!held) _pullFrame(recorder);
+    if (!held) {
+      _pullFrame(recorder);
+      _highlights = _source.viewportHighlights();
+    }
 
     final colors = _colors;
     final background = colors == null
@@ -657,6 +669,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
         ..restore();
     }
     final drawn = _paintCursor(canvas, grid, recorder);
+    if (_highlights.isNotEmpty) _paintHighlights(canvas, grid);
     canvas.restore();
     _syncBlink(drawn);
   }
@@ -864,6 +877,35 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     return true;
   }
 
+  /// Fills the cells of every highlight on the visible rows, in order.
+  void _paintHighlights(Canvas canvas, Offset grid) {
+    final rows = _visibleRowIds.length;
+    final cols = math.min(_rowCols, _geometry.cols);
+    if (rows == 0 || cols == 0) return;
+    final width = _geometry.metrics.width;
+    final height = _geometry.metrics.height;
+    final paint = Paint();
+    for (final h in _highlights) {
+      paint.color = h.color;
+      final first = math.max(h.startY, 0);
+      final last = math.min(h.endY, rows - 1);
+      for (var y = first; y <= last; y++) {
+        final from = y == h.startY ? h.startX : 0;
+        final to = math.min(y == h.endY ? h.endX : cols - 1, cols - 1);
+        if (to < from) continue;
+        canvas.drawRect(
+          Rect.fromLTWH(
+            grid.dx + from * width,
+            grid.dy + y * height,
+            (to - from + 1) * width,
+            height,
+          ),
+          paint,
+        );
+      }
+    }
+  }
+
   /// Paints the cursor; returns whether a blinking cursor is shown (so the
   /// blink timer should run).
   bool _paintCursor(Canvas canvas, Offset grid, RowRecorder recorder) {
@@ -1017,6 +1059,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     _recordedTheme = null;
     _colors = null;
     _cursor = null;
+    _highlights = const [];
     _rowCols = 0;
   }
 }

@@ -25,8 +25,15 @@ library;
 export 'src/controller/terminal_controller.dart'
     show
         VtTerminalController,
+        VtTerminalHighlight,
         VtTerminalOutputCallback,
         VtTerminalResizeCallback;
+export 'src/input/input_hooks.dart'
+    show
+        VtTerminalKeyHook,
+        VtTerminalMouseFilter,
+        VtTerminalMouseHook,
+        VtTerminalTextHook;
 export 'src/input/keyboard/key_toolbar.dart' show VtTerminalKeyToolbar;
 export 'src/metrics/cell_metrics.dart' show VtCellMetrics;
 export 'src/render/text_rendering.dart' show VtTextRendering;

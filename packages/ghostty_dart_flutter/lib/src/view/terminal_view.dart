@@ -1,9 +1,12 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
 import '../controller/terminal_controller.dart';
+import '../input/input_hooks.dart';
 import '../input/keyboard/terminal_input_scope.dart';
+import '../input/pointer/mouse_reports.dart';
 import '../input/pointer/terminal_pointer_scope.dart';
 import '../metrics/cell_metrics.dart';
 import '../render/terminal_render.dart';
@@ -57,6 +60,14 @@ import 'terminal_semantics.dart';
 /// presses, motion and the wheel are reported to it (hold Shift to select
 /// instead).
 ///
+/// **Hooks.** [onTerminalKey], [onTerminalText], [mouseReportFilter] and
+/// [onTerminalMouse] let an app change what reaches the program (custom
+/// key bindings, an input method of its own, mouse gating); [readOnly]
+/// views never call them. They run synchronously on the UI isolate and
+/// must not dispose [controller]. The view's actions also answer
+/// [SelectAllTextIntent] (select everything, scrollback included), though
+/// no default shortcut sends it.
+///
 /// **Accessibility.** While an accessibility service is running, the view
 /// exposes its visible text as one semantics node labelled
 /// [semanticsLabel]; [announceOutput] also reads new output aloud.
@@ -97,6 +108,12 @@ class VtTerminalView extends StatefulWidget {
     this.announceOutput = false,
     this.textRendering = VtTextRendering.atlas,
     this.cacheBudget = defaultCacheBudget,
+    this.onTerminalKey,
+    this.onTerminalText,
+    this.mouseReportFilter,
+    this.onTerminalMouse,
+    this.wordBoundaryCodepoints,
+    this.rectangleSelection = false,
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
@@ -271,11 +288,79 @@ class VtTerminalView extends StatefulWidget {
   /// pressure (all but what the screen shows), and when the font changes.
   final int cacheBudget;
 
+  /// Called for every key press and repeat the view would encode or leave
+  /// to the platform text input, after [onKeyEvent], the [shortcuts] and
+  /// the IME (while it composes it owns the keys); never for key
+  /// releases or lone modifier keys, nor for the repeats of a press the
+  /// view encoded or left to the platform.
+  ///
+  /// - `null`: the view handles the key as usual.
+  /// - a non-empty string: the key is consumed
+  ///   ([KeyEventResult.handled]) and the string is sent to the program,
+  ///   in order with text still arriving from the platform, as
+  ///   [VtTerminalController.sendText] does (it scrolls to the bottom);
+  ///   the key toolbar's latched modifiers are cleared.
+  /// - an empty string: nothing is sent and the key is
+  ///   [KeyEventResult.ignored], so it goes on to the rest of the app.
+  ///
+  /// Soft-keyboard Backspace (see [deleteDetection]) and the IME's
+  /// newline, done, go, search and send actions come here too, as a
+  /// synthesised [KeyDownEvent] of Backspace or Enter.
+  ///
+  /// ```dart
+  /// onTerminalKey: (event, modifiers) =>
+  ///     event.logicalKey == LogicalKeyboardKey.f1 ? 'help\r' : null,
+  /// ```
+  final VtTerminalKeyHook? onTerminalKey;
+
+  /// Called with each committed text (IME commits, soft-keyboard input,
+  /// the text of keys left to the platform) just before it is sent, in
+  /// order; not for pastes. Return `null` to send the text, or the string
+  /// to send instead (empty: nothing). A single character typed with
+  /// latched toolbar modifiers is sent as a key and skips this hook.
+  final VtTerminalTextHook? onTerminalText;
+
+  /// Asked, while the program tracks the mouse and Shift is not held,
+  /// whether to report each mouse press (and touch tap), wheel step and
+  /// motion event; `null` reports them all. Not asked for the release of
+  /// a reported press, so the program never sees a button stuck down.
+  ///
+  /// - `false` for a press: the whole gesture acts as if the program did
+  ///   not track the mouse (it selects, and [onTapUp],
+  ///   [onSecondaryTapDown] and [onSecondaryTapUp] are called).
+  /// - `false` for a wheel step: it scrolls as if untracked (arrow keys
+  ///   on the alternate screen with DEC 1007, otherwise the scrollback).
+  /// - `false` for motion: that report is dropped.
+  ///
+  /// The event's `button` is the pressed button for a press,
+  /// [MouseButton.four] to [MouseButton.seven] for wheel up, down, left
+  /// and right, the held button for motion with a button down, and `null`
+  /// for motion with none.
+  final VtTerminalMouseFilter? mouseReportFilter;
+
+  /// Called for every mouse report that passed [mouseReportFilter]
+  /// (releases included) instead of encoding it, with the viewport cell
+  /// under the pointer. Return `null` to encode and send the report as
+  /// usual, or the string to send instead (empty: nothing).
+  final VtTerminalMouseHook? onTerminalMouse;
+
+  /// The codepoints that end a word when a double click or a long press
+  /// selects one; `null` uses libghostty's default set (whitespace and
+  /// common punctuation). For example `' ()[]{}'.runes.toList()`.
+  final List<int>? wordBoundaryCodepoints;
+
+  /// Whether a plain primary drag selects a rectangle (a block of
+  /// columns). When `false` (the default) a drag selects running text,
+  /// and a rectangle still needs Option on Apple platforms or Ctrl+Alt
+  /// elsewhere.
+  final bool rectangleSelection;
+
   @override
   State<VtTerminalView> createState() => VtTerminalViewState();
 }
 
-/// The state of a [VtTerminalView]: shows and hides the soft keyboard.
+/// The state of a [VtTerminalView]: shows and hides the soft keyboard and
+/// tells where the cursor is (for a popup next to it, for example).
 ///
 /// Reach it with a `GlobalKey<VtTerminalViewState>` on the view:
 ///
@@ -306,6 +391,11 @@ class VtTerminalViewState extends State<VtTerminalView> {
   int _cols = 0;
   int _rows = 0;
 
+  // The geometry of the last layout, for cursorRect.
+  TerminalGeometry? _geometry;
+
+  late final _selectAllAction = _SelectAllAction(this);
+
   // A touch press that may become a tap (shows the soft keyboard).
   int? _tapPointer;
   Offset? _tapDown;
@@ -328,6 +418,40 @@ class VtTerminalViewState extends State<VtTerminalView> {
   /// Hides the soft keyboard (closes the text input connection). The view
   /// keeps the focus, so hardware keys still work.
   void closeKeyboard() => _inputKey.currentState?.closeKeyboard();
+
+  /// Whether the text input connection (soft keyboard, IME) is open.
+  bool get hasInputConnection =>
+      _inputKey.currentState?.hasTextInputConnection ?? false;
+
+  /// The cursor's cell in the view's local coordinates (padding included),
+  /// one cell wide; [Rect.zero] before the first layout, while the cursor
+  /// is scrolled out of view, and once the controller is disposed.
+  Rect get cursorRect {
+    final geometry = _geometry;
+    if (geometry == null) return Rect.zero;
+    final cell = _seams.cursorViewportCell;
+    if (cell == null || cell.x >= geometry.cols || cell.y >= geometry.rows) {
+      return Rect.zero;
+    }
+    return geometry.cellRect(cell.x, cell.y);
+  }
+
+  /// [cursorRect] in global coordinates; [Rect.zero] when [cursorRect] is,
+  /// or while the view is not laid out.
+  Rect get globalCursorRect {
+    final rect = cursorRect;
+    final box = context.findRenderObject();
+    if (rect == Rect.zero || box is! RenderBox || !box.hasSize) {
+      return Rect.zero;
+    }
+    return rect.shift(box.localToGlobal(Offset.zero));
+  }
+
+  bool get _canSelectAll => !widget.controller.isDisposed;
+
+  void _selectAll() {
+    if (_canSelectAll) widget.controller.selectAll();
+  }
 
   @override
   void initState() {
@@ -536,6 +660,7 @@ class VtTerminalViewState extends State<VtTerminalView> {
     }
     _cols = geometry.cols;
     _rows = geometry.rows;
+    _geometry = geometry;
     return geometry;
   }
 
@@ -561,7 +686,15 @@ class VtTerminalViewState extends State<VtTerminalView> {
     final TerminalPointerSink pointer = readOnly ?? _seams;
     final TerminalKeySink pointerKeys = readOnly ?? _seams;
     final TerminalTextSink pointerText = readOnly ?? _seams;
-    return Stack(
+    final reports =
+        widget.mouseReportFilter == null && widget.onTerminalMouse == null
+        ? MouseReports.none
+        : MouseReports(
+            filter: widget.mouseReportFilter,
+            hook: widget.onTerminalMouse,
+            text: pointerText,
+          );
+    final grid = Stack(
       fit: StackFit.expand,
       children: [
         TerminalPointerScope(
@@ -574,6 +707,9 @@ class VtTerminalViewState extends State<VtTerminalView> {
           onTapUp: widget.onTapUp,
           onSecondaryTapDown: widget.onSecondaryTapDown,
           onSecondaryTapUp: widget.onSecondaryTapUp,
+          reports: reports,
+          wordBoundaryCodepoints: widget.wordBoundaryCodepoints,
+          rectangleSelection: widget.rectangleSelection,
           child: TerminalInputScope(
             key: _inputKey,
             keys: _seams,
@@ -595,6 +731,8 @@ class VtTerminalViewState extends State<VtTerminalView> {
             macosOptionAsAlt: () => controller.isDisposed
                 ? OptionAsAlt.none
                 : controller.macosOptionAsAlt,
+            onTerminalKey: widget.onTerminalKey,
+            onTerminalText: widget.onTerminalText,
             child: TerminalRenderWidget(
               source: _seams,
               geometry: geometry,
@@ -616,8 +754,27 @@ class VtTerminalViewState extends State<VtTerminalView> {
           pointer: pointer,
           keys: pointerKeys,
           text: pointerText,
+          reports: reports,
         ),
       ],
     );
+    return Actions(
+      actions: <Type, Action<Intent>>{SelectAllTextIntent: _selectAllAction},
+      child: grid,
+    );
   }
+}
+
+/// Selects everything ([VtTerminalController.selectAll]) for
+/// [SelectAllTextIntent]; enabled while the controller is not disposed.
+class _SelectAllAction extends Action<SelectAllTextIntent> {
+  _SelectAllAction(this._state);
+
+  final VtTerminalViewState _state;
+
+  @override
+  bool isEnabled(SelectAllTextIntent intent) => _state._canSelectAll;
+
+  @override
+  void invoke(SelectAllTextIntent intent) => _state._selectAll();
 }
