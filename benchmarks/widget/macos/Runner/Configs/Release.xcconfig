@@ -1,2 +1,10 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Profile and release builds are universal by default, which needs
+// libghostty-vt for both arm64 and x86_64. Local development and CI use
+// `source: path` with a host-only build (.native-cache/host/), so the
+// benchmark app is built for arm64 only. flutter_tools honours
+// EXCLUDED_ARCHS (packages/flutter_tools/lib/src/macos/build_macos.dart,
+// Flutter 3.47.9). Debug builds already target the host architecture only.
+EXCLUDED_ARCHS = x86_64
