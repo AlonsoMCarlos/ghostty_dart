@@ -1,0 +1,110 @@
+# Indicative frame-time benchmark (bench:widget) and device-pixel grid check
+# (test:grid-pixels) on a GitHub-hosted macOS runner (Apple Silicon, Metal).
+#
+# The runner's GPU is virtualised and shared, so these numbers are only
+# indicative: they answer "does the glyph atlas cost more raster time than
+# paragraphs on a GPU?" (ADR 0012), not absolute frame times. CI does not run
+# this on every change; it runs on demand, or when this file changes in a PR.
+#
+# Supply chain (AGENTS.md): actions pinned by commit SHA, no secrets,
+# read-only token, no persisted git credentials.
+name: Widget benchmark (macOS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      passes:
+        description: passes over every scenario and widget
+        default: "3"
+  pull_request:
+    paths:
+      - .github/workflows/bench-widget.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-widget-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bench:
+    name: bench:widget (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 150
+    env:
+      PASSES: ${{ inputs.passes || '3' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools (mise.toml, verified against mise.lock)
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        timeout-minutes: 10
+        with:
+          version: 2026.11.2 # keep in sync with the other workflows (checked by test:release)
+          cache: true
+
+      - name: Locate pub cache
+        run: echo "PUB_CACHE=$RUNNER_TEMP/pub-cache" >> "$GITHUB_ENV"
+
+      - name: Cache pub packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PUB_CACHE }}
+          key: pub-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}
+
+      # Only the downloads are cached; fetch_upstream.sh re-verifies the
+      # minisign signature and the pinned sha256 on every run.
+      - name: Cache upstream libghostty-vt tarballs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .native-cache/*.tar.gz
+          key: native-src-${{ hashFiles('native/upstream.json') }}
+          enableCrossOsArchive: true
+
+      - name: Resolve dependencies
+        run: mise run deps
+
+      - name: Build libghostty-vt for the host
+        run: mise run native:host
+
+      - name: Record the machine
+        run: |
+          {
+            echo "## Runner"
+            echo '```'
+            sw_vers
+            sysctl -n machdep.cpu.brand_string
+            system_profiler SPDisplaysDataType | sed -n '1,20p'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Device-pixel grid check (both text paths)
+        timeout-minutes: 20
+        run: mise run test:grid-pixels macos
+
+      - name: Frame-time benchmark
+        timeout-minutes: 110
+        run: |
+          [[ "$PASSES" =~ ^[1-9]$ ]] || { echo "::error::passes must be 1-9"; exit 1; }
+          mise run bench:widget macos --passes="$PASSES"
+
+      - name: Add the report to the summary
+        if: always()
+        run: |
+          report=benchmarks/widget/build/widget_bench.md
+          if [[ -f "$report" ]]; then cat "$report" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: widget-bench-macos
+          path: benchmarks/widget/build/widget_bench.*
+          if-no-files-found: warn
+          retention-days: 30
