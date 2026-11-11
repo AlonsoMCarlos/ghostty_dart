@@ -1,0 +1,40 @@
+name: ghostty_dart_xterm
+description: >-
+  API-compatible adapter for package:xterm 4.0.0 on top of ghostty_dart and
+  ghostty_dart_flutter (libghostty-vt): same Terminal and TerminalView API.
+# Not published yet: the first release version (0.1.0) is set when the
+# maintainer approves publishing (ADR 0010, ADR 0013).
+version: 0.0.1-dev
+repository: https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_xterm
+issue_tracker: https://github.com/AlonsoMCarlos/ghostty_dart/issues
+topics: [terminal, terminal-emulator, xterm, widget, ghostty]
+
+# Native platforms only, like ghostty_dart_flutter: ghostty_dart has no web
+# (wasm) backend yet, and the package must not claim web until it does
+# (AGENTS.md, ADR 0013).
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  windows:
+
+environment:
+  sdk: ^3.11.0
+  # Same floor as ghostty_dart_flutter, which this package builds on.
+  flutter: ">=3.47.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ghostty_dart: ^0.1.0
+  ghostty_dart_flutter: ^0.0.1-dev
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # analysis_options.yaml includes package:lints; pana keeps hosted
+  # dev_dependencies when it analyses the archive.
+  lints: ^6.1.0

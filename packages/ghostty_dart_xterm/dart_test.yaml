@@ -1,0 +1,7 @@
+tags:
+  # Pixel-exact images (goldens). Text rasterises differently on every OS,
+  # so they run on Linux only, as in ghostty_dart_flutter (ADR 0011).
+  golden:
+    on_platform:
+      "!linux":
+        skip: "Goldens and exact raster checks run on Linux only (ADR 0011)."

@@ -15,6 +15,10 @@ const _packages = {
     // removed (flutter_tools' AnalysisOptionsMigration).
     '- build/**',
   },
+  'packages/ghostty_dart_xterm/analysis_options.yaml': {
+    '- public_member_api_docs',
+    '- build/**',
+  },
 };
 
 /// The significant lines of an analysis_options.yaml: no comments, no blank

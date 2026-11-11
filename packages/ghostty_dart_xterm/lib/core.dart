@@ -1,0 +1,23 @@
+/// The terminal model of `package:xterm` 4.0.0, on libghostty-vt: the
+/// same names as xterm's `package:xterm/core.dart`, so code written for
+/// xterm compiles after changing the import.
+///
+/// Parsing and the screen live in libghostty-vt (through `ghostty_dart`),
+/// not in Dart: xterm's `EscapeParser` and `EscapeHandler` are not
+/// provided (ADR 0004). `COMPATIBILITY.md` lists every xterm member and
+/// whether it is the same, differs, is planned or will not be supported.
+///
+/// Work in progress: this version only has xterm's value types
+/// (`CellOffset`, `BufferRange`, `CursorStyle`, `TerminalState`, …);
+/// `Terminal` and the rest follow (ADR 0013).
+library;
+
+export 'src/core/buffer/cell_offset.dart';
+export 'src/core/buffer/range.dart';
+export 'src/core/buffer/segment.dart';
+export 'src/core/cell.dart';
+export 'src/core/color.dart';
+export 'src/core/cursor.dart';
+export 'src/core/mouse/mode.dart';
+export 'src/core/platform.dart';
+export 'src/core/state.dart';

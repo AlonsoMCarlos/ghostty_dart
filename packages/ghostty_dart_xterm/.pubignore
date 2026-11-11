@@ -1,0 +1,8 @@
+# Files kept out of the pub.dev archive. pub reads .pubignore instead of
+# .gitignore when it exists in a directory, so repeat what .gitignore hides.
+.dart_tool/
+build/
+pubspec_overrides.yaml
+
+# Test-only output: golden failure images.
+test/**/failures/

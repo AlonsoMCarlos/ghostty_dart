@@ -17,3 +17,5 @@ Format: `NNNN-short-title.md` with sections **Status**, **Context**, **Decision*
 | [0009](0009-keep-package-names-without-consultation.md) | Keep the package names without asking the Ghostty maintainers first | Accepted |
 | [0010](0010-first-release-and-publishing.md) | First release and the publishing pipeline | Accepted |
 | [0011](0011-flutter-widget-architecture.md) | `ghostty_dart_flutter` widget architecture | Accepted |
+| [0012](0012-glyph-atlas.md) | Glyph atlas for grid text | Accepted |
+| [0013](0013-xterm-adapter-design.md) | `ghostty_dart_xterm` adapter design | Accepted |

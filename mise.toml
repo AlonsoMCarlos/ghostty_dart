@@ -145,7 +145,7 @@ shell = "bash -c"
 run = 'bash tool/native/fetch_dart_sdk.sh "$usage_platform" "$usage_dest"'
 
 [tasks."deps:no-flutter"]
-description = "Resolve the workspace with plain Dart (no Flutter members: benchmarks, benchmarks/widget, apps/demo, ghostty_dart_flutter), failing on any change from pubspec.lock"
+description = "Resolve the workspace with plain Dart (no Flutter members: benchmarks, benchmarks/widget, apps/demo, ghostty_dart_flutter, ghostty_dart_xterm), failing on any change from pubspec.lock"
 shell = "bash -c"
 run = "bash tool/native/pub_get_without_flutter.sh"
 
@@ -213,6 +213,13 @@ run = "dart test"
 description = "Run the ghostty_dart_flutter tests (flutter test, without the spike tag)"
 dir = "{{config_root}}/packages/ghostty_dart_flutter"
 run = "flutter test --exclude-tags spike"
+
+# The xterm 4.0.0 compatible adapter (ADR 0013); `flutter test` runs the
+# ghostty_dart build hook as for the widget package.
+[tasks."test:xterm"]
+description = "Run the ghostty_dart_xterm tests (flutter test)"
+dir = "{{config_root}}/packages/ghostty_dart_xterm"
+run = "flutter test"
 
 [tasks."test:goldens:update"]
 description = "Regenerate the ghostty_dart_flutter goldens and doc/screenshot.png (Linux only; review the image diff)"
@@ -444,6 +451,7 @@ depends = [
   "analyze",
   "test",
   "test:flutter",
+  "test:xterm",
   "demo:test",
   "bench:widget:test",
   "test:tool",

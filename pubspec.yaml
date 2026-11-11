@@ -7,6 +7,7 @@ environment:
 workspace:
   - packages/ghostty_dart
   - packages/ghostty_dart_flutter
+  - packages/ghostty_dart_xterm
   - benchmarks
   - benchmarks/widget
   - apps/demo
