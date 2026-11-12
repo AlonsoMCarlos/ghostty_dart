@@ -77,7 +77,10 @@ import 'terminal_semantics.dart';
 /// view draws only the background and ignores input. Replacing [controller]
 /// frees the old one for another view and moves the focus report (DEC 1004)
 /// to the new one. One controller drives at most one view at a time (a
-/// debug-mode assert checks it). For [focusNode], see its docs.
+/// debug-mode assert checks it). A view gives the controller up as soon as
+/// it leaves the tree, so a new view of the same controller may paint in
+/// the same frame (an `IndexedStack` after a tab closes, a moved subtree).
+/// For [focusNode], see its docs.
 class VtTerminalView extends StatefulWidget {
   /// Creates a view of [controller].
   const VtTerminalView({
@@ -502,6 +505,19 @@ class VtTerminalViewState extends State<VtTerminalView> {
       if (oldNode.hasFocus) _focusNode.requestFocus();
       _focusNode.addListener(_onFocusChanged);
     }
+  }
+
+  // Frame ownership (one painting view per controller, ADR 0011) ends when
+  // the view leaves the tree, not when it is disposed: dispose runs after
+  // the frame, by which time a new view of the same controller (an
+  // IndexedStack after a tab closes, a reparented subtree) may already
+  // have painted. A deactivated view's render object is detached, so it
+  // cannot paint; if the view is reinserted (GlobalKey), its next paint
+  // takes ownership again.
+  @override
+  void deactivate() {
+    _seams.release();
+    super.deactivate();
   }
 
   @override

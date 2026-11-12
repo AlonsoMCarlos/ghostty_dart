@@ -219,6 +219,9 @@ libghostty-vt.
 
 This package is MIT licensed (see
 [LICENSE](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/LICENSE)).
-libghostty-vt, which `ghostty_dart` provides as a native library, is also
-MIT licensed (Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors);
-apps that ship it must include its notice.
+The libghostty-vt library that `ghostty_dart` provides contains code under
+other licences too (libghostty-vt itself is MIT, Copyright (c) 2024 Mitchell
+Hashimoto, Ghostty contributors). `ghostty_dart` ships every notice in its
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/NOTICES)
+file, and Flutter adds them to your app's licence page
+(`LicenseRegistry`, `showLicensePage`) without any extra step.

@@ -1,4 +1,4 @@
-<!-- source: README.md@25b4f993f073ee644da4282956a5d5a7583f03d4 -->
+<!-- source: README.md@b4e0be474165baee67716be51e46e5474b8b0ba4 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -233,6 +233,10 @@ libghostty-vt.
 
 Este paquete tiene licencia MIT (consulta
 [LICENSE](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/LICENSE)).
-libghostty-vt, que `ghostty_dart` proporciona como biblioteca nativa,
-también tiene licencia MIT (Copyright (c) 2024 Mitchell Hashimoto, Ghostty
-contributors); las aplicaciones que la distribuyan deben incluir su aviso.
+La biblioteca libghostty-vt que proporciona `ghostty_dart` contiene además
+código con otras licencias (la propia libghostty-vt es MIT, Copyright (c)
+2024 Mitchell Hashimoto, Ghostty contributors). `ghostty_dart` incluye todos
+los avisos en su archivo
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/NOTICES),
+y Flutter los añade a la página de licencias de tu aplicación
+(`LicenseRegistry`, `showLicensePage`) sin ningún paso adicional.

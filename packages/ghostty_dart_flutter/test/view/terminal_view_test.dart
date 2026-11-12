@@ -513,6 +513,118 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    group('one view per controller', () {
+      /// One view per controller in an IndexedStack, as a tabbed terminal
+      /// builds it: IndexedStack wraps each child in an unkeyed Visibility,
+      /// so closing a tab re-creates the views after it.
+      Widget tabs(List<VtTerminalController> controllers, int index) =>
+          wrapView(
+            IndexedStack(
+              index: index,
+              children: [
+                for (final controller in controllers)
+                  KeyedSubtree(
+                    key: ObjectKey(controller),
+                    child: VtTerminalView(
+                      controller: controller,
+                      textStyle: viewStyle,
+                    ),
+                  ),
+              ],
+            ),
+          );
+
+      testWidgets('closing a tab re-creates the next view in the same frame', (
+        tester,
+      ) async {
+        setWindow(tester);
+        final first = VtTerminalController();
+        final second = VtTerminalController();
+        addTearDown(first.dispose);
+        addTearDown(second.dispose);
+        second.write('second');
+        await tester.pumpWidget(tabs([first, second], 1));
+        // Close the first tab: the second tab's view is unmounted and a new
+        // one for the same controller paints in the same frame.
+        await tester.pumpWidget(tabs([second], 0));
+        expect(tester.takeException(), isNull);
+        second.write('!');
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a view moved by a GlobalKey keeps reading frames', (
+        tester,
+      ) async {
+        setWindow(tester);
+        final controller = VtTerminalController();
+        addTearDown(controller.dispose);
+        final key = GlobalKey<VtTerminalViewState>();
+        Widget at({required bool left}) => wrapView(
+          Row(
+            children: [
+              Expanded(
+                child: left
+                    ? VtTerminalView(
+                        key: key,
+                        controller: controller,
+                        textStyle: viewStyle,
+                      )
+                    : const SizedBox(),
+              ),
+              Expanded(
+                child: left
+                    ? const SizedBox()
+                    : VtTerminalView(
+                        key: key,
+                        controller: controller,
+                        textStyle: viewStyle,
+                      ),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpWidget(at(left: true));
+        await tester.pumpWidget(at(left: false));
+        expect(tester.takeException(), isNull);
+        controller.write('x');
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('two views painting one controller still fail (debug)', (
+        tester,
+      ) async {
+        setWindow(tester);
+        final controller = VtTerminalController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          wrapView(
+            Row(
+              children: [
+                for (var i = 0; i < 2; i++)
+                  Expanded(
+                    child: VtTerminalView(
+                      controller: controller,
+                      textStyle: viewStyle,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+        expect(
+          tester.takeException(),
+          isA<AssertionError>().having(
+            (e) => e.message,
+            'message',
+            contains('Two views read frames'),
+          ),
+        );
+        await tester.pumpWidget(const SizedBox());
+      });
+    });
+
     group('focus node swap', () {
       /// The node the view's Focus widget holds now.
       FocusNode heldNode(WidgetTester tester) => tester

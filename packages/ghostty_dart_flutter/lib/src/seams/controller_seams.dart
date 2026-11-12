@@ -59,7 +59,9 @@ final class ControllerSeams
   }
 
   /// Gives up reading frames, so another seams object (a new view of the
-  /// same controller) may. The view calls it when it is disposed.
+  /// same controller) may. The view calls it when it leaves the tree
+  /// (deactivate) and when it is disposed; its next paint, if any, takes
+  /// ownership again.
   void release() {
     if (!isDisposed && identical(_internals.frameOwner, this)) {
       _internals.frameOwner = null;
