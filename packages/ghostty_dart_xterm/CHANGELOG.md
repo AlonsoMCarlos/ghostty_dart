@@ -1,3 +1,12 @@
+# Changelog
+
+## [0.1.1](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart_xterm-v0.1.0...ghostty_dart_xterm-v0.1.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **ghostty_dart_xterm:** ship xterm.dart's licence notice in NOTICES ([9fe8cf9](https://github.com/AlonsoMCarlos/ghostty_dart/commit/9fe8cf9dab247e0c6529d5647929825077dfee9f))
+
 ## 0.1.0
 
 - Initial release.
