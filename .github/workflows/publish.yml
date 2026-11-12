@@ -1,7 +1,8 @@
 # Publishes a package of this repo to pub.dev with GitHub's OIDC token
 # (ADR 0010). The tag alone selects the package: <package>-v<X.Y.Z>, with
 # <package> in the allow-list of tool/release/lib.sh (ghostty_dart,
-# ghostty_dart_flutter; test:release keeps the triggers below in sync).
+# ghostty_dart_flutter, ghostty_dart_xterm; test:release keeps the triggers
+# below in sync).
 #
 #   - Tag push <package>-v<X.Y.Z> on a commit of main, or
 #   - Actions > Publish to pub.dev > Run workflow on such a tag (what
@@ -17,7 +18,7 @@
 #      `mise run check` and `dart pub publish --dry-run`.
 #   2. package: `dart pub publish --to-archive` with no network, by the
 #      pinned and sha256-verified Dart SDK (native/toolchain.json), also for
-#      the Flutter package (nothing resolves with --skip-validation, so no
+#      the Flutter packages (nothing resolves with --skip-validation, so no
 #      Flutter SDK is needed; see tool/release/package.sh); the archive
 #      <package>-<version>.tar.gz and its sha256 are the job's outputs.
 #   3. publish: in the protected `pub.dev` environment (required reviewer,
@@ -40,7 +41,7 @@ name: Publish to pub.dev
 
 on:
   push:
-    tags: ['ghostty_dart-v*', 'ghostty_dart_flutter-v*']
+    tags: ['ghostty_dart-v*', 'ghostty_dart_flutter-v*', 'ghostty_dart_xterm-v*']
   workflow_dispatch:
 
 permissions: {}

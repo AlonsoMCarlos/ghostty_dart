@@ -6,8 +6,9 @@
 #   - a tag ref (pub.dev requires an OIDC token with ref_type=tag, so a
 #     dispatch on a branch is refused here, not at upload time);
 #   - a tag named <package>-v<X.Y.Z>, with <package> in the allow-list of
-#     tool/release/lib.sh (ghostty_dart, ghostty_dart_flutter) and no
-#     prerelease (ADR 0010); the tag alone selects the package;
+#     tool/release/lib.sh (ghostty_dart, ghostty_dart_flutter,
+#     ghostty_dart_xterm) and no prerelease (ADR 0010); the tag alone
+#     selects the package;
 #   - <X.Y.Z> equal to packages/<package>/pubspec.yaml `version`, that pubspec
 #     named <package>, and <X.Y.Z> equal to the first heading of its
 #     CHANGELOG.md (pana and pub.dev check both);

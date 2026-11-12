@@ -1,15 +1,17 @@
-<!-- source: README.md@fcaf2d5c96e9ba0d23007bc76595f00d8ae2e588 -->
+<!-- source: README.md@41ace282ee50ed8996ec51c391ad3152888764d3 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/README.md) | **Español**
 
 # ghostty_dart_xterm
 
+[![pub package](https://img.shields.io/pub/v/ghostty_dart_xterm.svg)](https://pub.dev/packages/ghostty_dart_xterm)
+[![pub points](https://img.shields.io/pub/points/ghostty_dart_xterm)](https://pub.dev/packages/ghostty_dart_xterm/score)
 [![CI](https://github.com/AlonsoMCarlos/ghostty_dart/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AlonsoMCarlos/ghostty_dart/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/LICENSE)
 
 La API pública de [`xterm`](https://pub.dev/packages/xterm) 4.0.0
 (`Terminal`, `TerminalView`, `TerminalController`, temas, manejadores de
 teclado y de ratón) sobre
-[`ghostty_dart_flutter`](https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_flutter)
+[`ghostty_dart_flutter`](https://pub.dev/packages/ghostty_dart_flutter)
 y [`ghostty_dart`](https://pub.dev/packages/ghostty_dart), que ejecutan
 [libghostty-vt](https://lib.ghostty.org/vt/) 1.x, el motor de emulación de
 terminal de [Ghostty](https://ghostty.org). La mayoría de las aplicaciones
@@ -22,12 +24,13 @@ pasan de `xterm` a este paquete cambiando el *import*.
 > se usa para describir la base de este paquete.
 
 > [!IMPORTANT]
-> **Aún sin publicar, y no es un reemplazo directo.** Espera a que
-> `ghostty_dart_flutter` esté en pub.dev. Cada miembro de xterm 4.0.0 y su
+> **No es un reemplazo directo.** Cada miembro de xterm 4.0.0 y su
 > estado (igual, distinto, previsto, no se soportará) figura en el
 > [`COMPATIBILITY.md`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/COMPATIBILITY.md)
 > generado, y lo que esas diferencias suponen para una aplicación está en
 > la [guía de migración](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.es.md).
+
+![TerminalView de ghostty_dart_xterm mostrando una aplicación migrada desde xterm, salida ANSI y truecolor, estilos de texto y caracteres de dibujo de cajas](https://raw.githubusercontent.com/AlonsoMCarlos/ghostty_dart/main/packages/ghostty_dart_xterm/doc/screenshot.png)
 
 Todavía no hay demo web en vivo: espera al *backend* web (wasm) de
 `ghostty_dart`.
@@ -55,7 +58,7 @@ Todavía no hay demo web en vivo: espera al *backend* web (wasm) de
 
 ## Inicio rápido
 
-Cuando esté publicado, cambia la dependencia y el *import*:
+Cambia la dependencia y el *import*:
 
 ```yaml
 dependencies:
@@ -133,7 +136,7 @@ frente a `xterm` 4.0.0 con los mismos flujos de bytes:
 Datos a 12-11-2026. `xterm` es hoy la opción madura y más usada, y este
 paquete existe para conservar su API.
 
-| | `ghostty_dart_xterm` (sin publicar) | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 |
+| | `ghostty_dart_xterm` 0.1.0 | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 |
 |---|---|---|
 | Motor | libghostty-vt 1.0.0, FFI | Dart puro |
 | Web | No (previsto) | Sí |

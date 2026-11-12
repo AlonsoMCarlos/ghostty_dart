@@ -44,3 +44,7 @@
 - Keys typed into a `TerminalView` produce libghostty's bytes, which differ from xterm's keytab in places (Kitty, modifyOtherKeys, Ctrl+Backspace); `Terminal.keyInput` and custom handlers keep xterm's bytes.
 - Web apps cannot migrate until the wasm backend exists.
 - The adapter depends on the unpublished `ghostty_dart_flutter`; neither is published before the other is ready.
+
+## Amendment (2026-11-12)
+
+The maintainer approved publishing the adapter once `ghostty_dart_flutter` 0.1.0 was on pub.dev. It is versioned `0.1.0` and released by the same pipeline as the other two packages (ADR 0010, amendment of 2026-11-12 (2)); "Platforms and publishing" and the last consequence above describe the state before that.

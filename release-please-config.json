@@ -16,6 +16,10 @@
     "packages/ghostty_dart_flutter": {
       "component": "ghostty_dart_flutter",
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/ghostty_dart_xterm": {
+      "component": "ghostty_dart_xterm",
+      "changelog-path": "CHANGELOG.md"
     }
   },
   "bootstrap-sha": "35d31c343f534a0f9df837e231a04aa601a69245"

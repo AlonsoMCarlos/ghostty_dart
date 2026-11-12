@@ -7,6 +7,11 @@ pubspec_overrides.yaml
 # Test-only output: golden failure images.
 test/**/failures/
 
+# The pub.dev screenshot's test: it reads ghostty_dart_flutter's pinned test
+# fonts from outside this package, so it cannot run from the archive.
+# doc/screenshot.png stays: pub.dev shows it (pubspec `screenshots`).
+test/screenshot/
+
 # Byte-stream fixtures of the ported xterm tests (test/compat/), ~22 KB:
 # test-only, not needed by users of the package.
 test/compat/_fixture/

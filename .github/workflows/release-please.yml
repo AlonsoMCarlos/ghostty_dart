@@ -1,8 +1,9 @@
 # Opens and updates one release PR per package (separate-pull-requests), and
 # on its merge tags <package>-v<version> and creates the GitHub release
 # (ADR 0010). Config: release-please-config.json and
-# .release-please-manifest.json (manifest mode; packages/ghostty_dart and
-# packages/ghostty_dart_flutter, the allow-list of tool/release/lib.sh).
+# .release-please-manifest.json (manifest mode; packages/ghostty_dart,
+# packages/ghostty_dart_flutter and packages/ghostty_dart_xterm, the
+# allow-list of tool/release/lib.sh).
 #
 # The token is GITHUB_TOKEN: no App, no secret. What it creates starts no
 # workflow run, so this workflow dispatches them (workflow_dispatch is the
@@ -81,6 +82,8 @@ jobs:
       ghostty_dart_tag: ${{ steps.release.outputs['packages/ghostty_dart--tag_name'] }}
       ghostty_dart_flutter_release_created: ${{ steps.release.outputs['packages/ghostty_dart_flutter--release_created'] }}
       ghostty_dart_flutter_tag: ${{ steps.release.outputs['packages/ghostty_dart_flutter--tag_name'] }}
+      ghostty_dart_xterm_release_created: ${{ steps.release.outputs['packages/ghostty_dart_xterm--release_created'] }}
+      ghostty_dart_xterm_tag: ${{ steps.release.outputs['packages/ghostty_dart_xterm--tag_name'] }}
       prs_created: ${{ steps.release.outputs.prs_created }}
       prs: ${{ steps.release.outputs.prs_created == 'true' && steps.release.outputs.prs || '[]' }}
     steps:
@@ -117,6 +120,13 @@ jobs:
         if: needs.release-please.outputs.ghostty_dart_flutter_release_created == 'true'
         env:
           TAG: ${{ needs.release-please.outputs.ghostty_dart_flutter_tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tool/release/dispatch.sh publish "$TAG"
+      - name: Dispatch publish.yml on the new ghostty_dart_xterm tag (if it is on main)
+        if: needs.release-please.outputs.ghostty_dart_xterm_release_created == 'true'
+        env:
+          TAG: ${{ needs.release-please.outputs.ghostty_dart_xterm_tag }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash tool/release/dispatch.sh publish "$TAG"

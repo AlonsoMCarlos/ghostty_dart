@@ -28,7 +28,7 @@ check "validate_tag: dispatch on the tag passes" 0 "^tag=ghostty_dart-v0\.1\.0$"
 check "validate_tag: a branch ref is refused" 1 "needs a tag ref" vt EVENT=workflow_dispatch REF_TYPE=branch REF_NAME=main
 check "validate_tag: other events are refused" 1 "only on push or workflow_dispatch" vt EVENT=release REF_TYPE=tag REF_NAME=ghostty_dart-v0.1.0
 check "validate_tag: another tag family is refused" 1 "'native' is not a package this pipeline publishes" vt EVENT=push REF_TYPE=tag REF_NAME=native-v1.0.0-r1
-check "validate_tag: a package outside the allow-list is refused" 1 "'ghostty_dart_xterm' is not a package this pipeline publishes" vt EVENT=push REF_TYPE=tag REF_NAME=ghostty_dart_xterm-v0.1.0
+check "validate_tag: a package outside the allow-list is refused" 1 "'ghostty_dart_other' is not a package this pipeline publishes" vt EVENT=push REF_TYPE=tag REF_NAME=ghostty_dart_other-v0.1.0
 check "validate_tag: a tag that is not <package>-v<version> is refused" 1 "is not a <package>-v<X.Y.Z> tag" vt EVENT=push REF_TYPE=tag REF_NAME=v0.1.0
 check "validate_tag: prereleases are refused" 1 "not a plain X.Y.Z" vt EVENT=push REF_TYPE=tag REF_NAME=ghostty_dart-v0.1.0-dev.1
 git -C "$r" tag ghostty_dart-v0.1.1
@@ -72,6 +72,18 @@ git -C "$r" tag ghostty_dart_flutter-v0.1.2
 git -C "$r" update-ref refs/remotes/origin/main HEAD
 check "validate_tag: a pubspec named for another package fails" 1 "pubspec.yaml is named 'ghostty_dart'" vt EVENT=push REF_TYPE=tag REF_NAME=ghostty_dart_flutter-v0.1.2
 
+# The third package, the xterm adapter: its tag selects packages/ghostty_dart_xterm.
+mkdir -p "$r/packages/ghostty_dart_xterm"
+printf 'name: ghostty_dart_xterm\nversion: 0.1.0\n' >"$r/packages/ghostty_dart_xterm/pubspec.yaml"
+printf '## 0.1.0\n\n- Initial release.\n' >"$r/packages/ghostty_dart_xterm/CHANGELOG.md"
+git -C "$r" add -A && commit "$r" "chore: release ghostty_dart_xterm 0.1.0" -s
+git -C "$r" tag ghostty_dart_xterm-v0.1.0
+git -C "$r" update-ref refs/remotes/origin/main HEAD
+check "validate_tag: the adapter's tag passes" 0 "^package=ghostty_dart_xterm$" vt EVENT=push REF_TYPE=tag REF_NAME=ghostty_dart_xterm-v0.1.0
+check "validate_tag: the adapter's tag gives its version" 0 "^version=0\.1\.0$" vt EVENT=workflow_dispatch REF_TYPE=tag REF_NAME=ghostty_dart_xterm-v0.1.0
+git -C "$r" tag ghostty_dart_xterm-v0.1.1
+check "validate_tag: the adapter's tag reads only its own pubspec" 1 "packages/ghostty_dart_xterm/pubspec.yaml has version '0.1.0'" vt EVENT=push REF_TYPE=tag REF_NAME=ghostty_dart_xterm-v0.1.1
+
 # ------------------------------------------------------ release_ready
 r="$tmp/ready"
 new_repo "$r"
@@ -83,11 +95,14 @@ git -C "$r" tag ghostty_dart-v0.1.0-dev.1
 check "release_ready: a typo or prerelease tag does not count" 0 "^ready=false$" ready
 git -C "$r" tag ghostty_dart-v0.1.0
 check "release_ready: still false while the widget has no tag" 0 "^ready=false$" ready
-check "release_ready: names the package without a tag" 0 "skipped until ghostty_dart_flutter has" ready
+check "release_ready: names the packages without a tag" 0 "skipped until ghostty_dart_flutter ghostty_dart_xterm has" ready
 git -C "$r" tag ghostty_dart_flutter-v0.1.0-dev.1
-git -C "$r" tag ghostty_dart_xterm-v0.1.0
+git -C "$r" tag ghostty_dart_other-v0.1.0
 check "release_ready: a widget prerelease or another package's tag does not count" 0 "^ready=false$" ready
 git -C "$r" tag ghostty_dart_flutter-v0.1.0
+check "release_ready: still false while the adapter has no tag" 0 "^ready=false$" ready
+check "release_ready: names the adapter" 0 "skipped until ghostty_dart_xterm has" ready
+git -C "$r" tag ghostty_dart_xterm-v0.1.0
 check "release_ready: true once every package has a <package>-v<X.Y.Z> tag" 0 "^ready=true$" ready
 
 # ------------------------------------------------------ check_archive
@@ -102,13 +117,19 @@ check "check_archive: the packaged bytes pass" 0 "verified" ca "$a/good.tar.gz" 
 check "check_archive: another sha256 fails" 1 "differs from the packaged" ca "$a/good.tar.gz" "0000" ghostty_dart-v0.1.1
 check "check_archive: another version fails" 1 "not 0.1.2" ca "$a/good.tar.gz" "$sha" ghostty_dart-v0.1.2
 check "check_archive: another package's tag fails" 1 "name is 'ghostty_dart', not ghostty_dart_flutter" ca "$a/good.tar.gz" "$sha" ghostty_dart_flutter-v0.1.1
-check "check_archive: a tag outside the allow-list fails" 1 "not a <package>-v<X.Y.Z> tag of a published package" ca "$a/good.tar.gz" "$sha" ghostty_dart_xterm-v0.1.1
+check "check_archive: a tag outside the allow-list fails" 1 "not a <package>-v<X.Y.Z> tag of a published package" ca "$a/good.tar.gz" "$sha" ghostty_dart_other-v0.1.1
 check "check_archive: a bare version fails" 1 "not a <package>-v<X.Y.Z> tag" ca "$a/good.tar.gz" "$sha" 0.1.1
 mkdir -p "$a/widget/lib"
 printf 'name: ghostty_dart_flutter\nversion: 0.1.0\n' >"$a/widget/pubspec.yaml"
 touch "$a/widget/lib/w.dart"
 tar -czf "$a/widget.tar.gz" -C "$a/widget" pubspec.yaml lib
 check "check_archive: the widget's archive passes with its tag" 0 "verified .*: ghostty_dart_flutter 0\.1\.0" ca "$a/widget.tar.gz" "$(sha256_of "$a/widget.tar.gz")" ghostty_dart_flutter-v0.1.0
+check "check_archive: the widget's archive fails with the adapter's tag" 1 "name is 'ghostty_dart_flutter', not ghostty_dart_xterm" ca "$a/widget.tar.gz" "$(sha256_of "$a/widget.tar.gz")" ghostty_dart_xterm-v0.1.0
+mkdir -p "$a/adapter/lib"
+printf 'name: ghostty_dart_xterm\nversion: 0.1.0\n' >"$a/adapter/pubspec.yaml"
+touch "$a/adapter/lib/x.dart"
+tar -czf "$a/adapter.tar.gz" -C "$a/adapter" pubspec.yaml lib
+check "check_archive: the adapter's archive passes with its tag" 0 "verified .*: ghostty_dart_xterm 0\.1\.0" ca "$a/adapter.tar.gz" "$(sha256_of "$a/adapter.tar.gz")" ghostty_dart_xterm-v0.1.0
 (cd "$a/pkg" && tar -P -czf "$a/escape.tar.gz" pubspec.yaml lib ../outside)
 check "check_archive: a '..' path fails" 1 "absolute or '\.\.' path" ca "$a/escape.tar.gz" "$(sha256_of "$a/escape.tar.gz")" ghostty_dart-v0.1.1
 printf 'name: ghostty_dart\nversion: 0.1.1\npublish_to: none\n' >"$a/pkg/pubspec.yaml"
@@ -124,7 +145,7 @@ printf "%s\n" "$*" >>"'"$tmp"'/dart-package.log"'
 pkg() { env "$@" bash "$root/tool/release/package.sh" ghostty_dart-v0.1.0 "$tmp/out/a.tar.gz"; }
 check "package: no argument fails" 1 "usage: package.sh" bash "$root/tool/release/package.sh"
 check "package: a tag outside the allow-list fails" 1 "not a <package>-v<X.Y.Z> tag of a published package" \
-  env CI= DART="$bin/dart" bash "$root/tool/release/package.sh" ghostty_dart_xterm-v0.1.0 "$tmp/out/x.tar.gz"
+  env CI= DART="$bin/dart" bash "$root/tool/release/package.sh" ghostty_dart_other-v0.1.0 "$tmp/out/x.tar.gz"
 check "package: a prerelease tag fails" 1 "not a <package>-v<X.Y.Z> tag" \
   env CI= DART="$bin/dart" bash "$root/tool/release/package.sh" ghostty_dart_flutter-v0.1.0-dev.1 "$tmp/out/x.tar.gz"
 check "package: nothing ran for them" 1 "" test -e "$tmp/dart-package.log"
@@ -138,6 +159,10 @@ rm -f "$tmp/dart-package.log"
 check "package: the widget's tag packages the widget" 0 "packaged ghostty_dart_flutter" \
   env CI= DART="$bin/dart" bash "$root/tool/release/package.sh" ghostty_dart_flutter-v0.1.0 "$tmp/out/w.tar.gz"
 check "package: publishes the ghostty_dart_flutter package dir" 0 "/packages/ghostty_dart_flutter$" cat "$tmp/dart-package.log"
+rm -f "$tmp/dart-package.log"
+check "package: the adapter's tag packages the adapter" 0 "packaged ghostty_dart_xterm" \
+  env CI= DART="$bin/dart" bash "$root/tool/release/package.sh" ghostty_dart_xterm-v0.1.0 "$tmp/out/x.tar.gz"
+check "package: publishes the ghostty_dart_xterm package dir" 0 "/packages/ghostty_dart_xterm$" cat "$tmp/dart-package.log"
 
 # ------------------------------------------------------------- upload
 up="$tmp/up"
@@ -164,6 +189,7 @@ o="$tmp/origin"
 new_repo "$o"
 git -C "$o" tag ghostty_dart-v0.1.1
 git -C "$o" tag ghostty_dart_flutter-v0.1.0
+git -C "$o" tag ghostty_dart_xterm-v0.1.0
 git -C "$o" checkout -q -b side
 commit "$o" "feat: off main" -s
 git -C "$o" tag ghostty_dart-v0.1.2
@@ -179,15 +205,19 @@ check "dispatch: refuses a tag off main" 1 "ghostty_dart-v0.1.2 \([0-9a-f]+\) is
 check "dispatch: gh was not called for it" 1 "" test -e "$tmp/gh.log"
 check "dispatch: refuses a non-release tag" 1 "is not a <package>-v<X.Y.Z> tag" disp publish 'ghostty_dart-v0.1.1;x'
 check "dispatch: refuses a branch as tag" 1 "is not a <package>-v<X.Y.Z> tag" disp publish main
-check "dispatch: refuses a tag of a package outside the allow-list" 1 "is not a <package>-v<X.Y.Z> tag of a published package" disp publish ghostty_dart_xterm-v0.1.1
+check "dispatch: refuses a tag of a package outside the allow-list" 1 "is not a <package>-v<X.Y.Z> tag of a published package" disp publish ghostty_dart_other-v0.1.1
 rm -f "$tmp/gh.log"
 check "dispatch: publish runs on the widget's tag of main" 0 "dispatched publish.yml on ghostty_dart_flutter-v0.1.0" disp publish ghostty_dart_flutter-v0.1.0
 check "dispatch: gh got the widget's tag ref" 0 "^gh workflow run publish.yml --ref ghostty_dart_flutter-v0.1.0$" cat "$tmp/gh.log"
+rm -f "$tmp/gh.log"
+check "dispatch: publish runs on the adapter's tag of main" 0 "dispatched publish.yml on ghostty_dart_xterm-v0.1.0" disp publish ghostty_dart_xterm-v0.1.0
+check "dispatch: gh got the adapter's tag ref" 0 "^gh workflow run publish.yml --ref ghostty_dart_xterm-v0.1.0$" cat "$tmp/gh.log"
 check "dispatch: pr runs ci and dco on release-please's branch" 0 "dispatched ci.yml and dco.yml" disp pr release-please--branches--main--components--ghostty_dart
 check "dispatch: gh got both workflows" 0 "^gh workflow run dco.yml --ref release-please--branches--main--components--ghostty_dart$" cat "$tmp/gh.log"
 check "dispatch: refuses other branches" 1 "not a release-please branch" disp pr release-please--branches--main
 check "dispatch: pr runs on the widget's release branch" 0 "dispatched ci.yml and dco.yml" disp pr release-please--branches--main--components--ghostty_dart_flutter
-check "dispatch: refuses the branch of a component outside the allow-list" 1 "not a release-please branch" disp pr release-please--branches--main--components--ghostty_dart_xterm
+check "dispatch: pr runs on the adapter's release branch" 0 "dispatched ci.yml and dco.yml" disp pr release-please--branches--main--components--ghostty_dart_xterm
+check "dispatch: refuses the branch of a component outside the allow-list" 1 "not a release-please branch" disp pr release-please--branches--main--components--ghostty_dart_other
 
 # ------------------------------- allow-list = release-please components
 # tool/release/lib.sh's allow-list, the components and paths of

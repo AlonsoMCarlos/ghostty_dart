@@ -101,7 +101,7 @@ family, and the cells are measured from the font you pass.
 
 ## Migrating from xterm
 
-[`ghostty_dart_xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm) (not on pub.dev yet) mirrors the public API
+[`ghostty_dart_xterm`](https://pub.dev/packages/ghostty_dart_xterm) mirrors the public API
 of [`xterm`](https://pub.dev/packages/xterm) 4.0.0 on top of this widget, so
 most apps move by changing the import; its
 [`COMPATIBILITY.md`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/COMPATIBILITY.md) lists every member that differs and its
@@ -178,16 +178,15 @@ Facts as of 2026-11-10. Each project made a different trade-off, and
 
 | Package | Engine | Web | Repaint strategy | `xterm` 4.0.0 API |
 |---|---|---|---|---|
-| `ghostty_dart_flutter` 0.1.0 | libghostty-vt 1.0.0 (stable C ABI), FFI | No (planned) | Dirty rows only, `drawRawAtlas` glyph atlas (row paragraphs as an option), row pictures cached by content | Through [`ghostty_dart_xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm) (unreleased) |
+| `ghostty_dart_flutter` 0.1.0 | libghostty-vt 1.0.0 (stable C ABI), FFI | No (planned) | Dirty rows only, `drawRawAtlas` glyph atlas (row paragraphs as an option), row pictures cached by content | Through [`ghostty_dart_xterm`](https://pub.dev/packages/ghostty_dart_xterm) |
 | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 | Pure Dart | Yes | Whole screen on every change, paragraph per cell | It is the API |
 | [`xterm2`](https://pub.dev/packages/xterm2) 5.4.0 | Pure Dart (`xterm2_core`) | Yes | Paints per cell | Same API (a fork) |
 | [`flterm`](https://pub.dev/packages/flterm) 0.0.6 (+ [`libghostty`](https://pub.dev/packages/libghostty) 0.0.13) | A pre-1.0 libghostty-vt commit, FFI and wasm | Yes | `drawRawAtlas` glyph atlas | No |
 
 What `ghostty_dart_flutter` does **not** do yet: it does not run on the
 web, it has not been tested on Android and iOS devices, and its own API is
-not xterm's (the `ghostty_dart_xterm` adapter, not published yet, covers
-that). If you
-need any of those today, the packages above already offer them. `flterm`
+not xterm's (the `ghostty_dart_xterm` adapter covers that). If you need
+any of those today, the packages above already offer them. `flterm`
 is not in our frame benchmark because it builds on a different
 libghostty-vt.
 

@@ -1,7 +1,6 @@
-## 0.0.1-dev
+## 0.1.0
 
-- Unreleased, not published: waits for `ghostty_dart_flutter` on pub.dev
-  (ADR 0013).
+- Initial release.
 - The public API of `package:xterm` 4.0.0 on libghostty-vt: the
   `xterm.dart`, `core.dart`, `ui.dart`, `suggestion.dart` and `utils.dart`
   libraries with xterm's names, parameters and defaults.

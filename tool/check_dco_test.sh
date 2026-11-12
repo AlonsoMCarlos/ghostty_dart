@@ -141,8 +141,11 @@ git -C "$r" checkout -q -B release-please--branches--main--components--ghostty_d
 check "dispatch by github-actions[bot] on the widget's release branch allows it" 0 "all 2 commit" \
   range EVENT=workflow_dispatch HEAD_REF=release-please--branches--main--components--ghostty_dart_flutter ACTOR="$bot_name"
 git -C "$r" checkout -q -B release-please--branches--main--components--ghostty_dart_xterm "$release_branch"
-check "dispatch on the branch of a component not yet released does not" 1 "release ghostty_dart 9\.9\.9" \
+check "dispatch by github-actions[bot] on the adapter's release branch allows it" 0 "all 2 commit" \
   range EVENT=workflow_dispatch HEAD_REF=release-please--branches--main--components--ghostty_dart_xterm ACTOR="$bot_name"
+git -C "$r" checkout -q -B release-please--branches--main--components--ghostty_dart_other "$release_branch"
+check "dispatch on the branch of a component outside the allow-list does not" 1 "release ghostty_dart 9\.9\.9" \
+  range EVENT=workflow_dispatch HEAD_REF=release-please--branches--main--components--ghostty_dart_other ACTOR="$bot_name"
 git -C "$r" checkout -q "$release_branch"
 git -C "$r" checkout -q -B other "$forged"
 check "dispatch by github-actions[bot] on another branch does not" 1 "release ghostty_dart 9\.9\.9" \

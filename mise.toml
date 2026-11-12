@@ -223,12 +223,18 @@ dir = "{{config_root}}/packages/ghostty_dart_xterm"
 run = "flutter test"
 
 [tasks."test:goldens:update"]
-description = "Regenerate the ghostty_dart_flutter goldens and doc/screenshot.png (Linux only; review the image diff)"
-dir = "{{config_root}}/packages/ghostty_dart_flutter"
+description = "Regenerate the ghostty_dart_flutter goldens and the doc/screenshot.png of ghostty_dart_flutter and ghostty_dart_xterm (Linux only; review the image diff)"
+dir = "{{config_root}}/packages"
 # The `golden` tag skips every golden off Linux, so elsewhere this would
-# "succeed" and update nothing: fail loudly instead.
+# "succeed" and update nothing: fail loudly instead. The adapter's only
+# golden is its pub.dev screenshot (test/screenshot/).
 shell = "bash -c"
-run = '[ "$(uname -s)" = Linux ] || { echo "error: goldens are rendered on Linux only (ADR 0011)" >&2; exit 1; }; flutter test --update-goldens --tags golden'
+run = '''
+set -e
+[ "$(uname -s)" = Linux ] || { echo "error: goldens are rendered on Linux only (ADR 0011)" >&2; exit 1; }
+(cd ghostty_dart_flutter && flutter test --update-goldens --tags golden)
+(cd ghostty_dart_xterm && flutter test --update-goldens --tags golden)
+'''
 
 [tasks."test:spike"]
 description = "Run the ghostty_dart_flutter measurement spikes (unpinned host fonts; manual, not in CI)"
@@ -354,7 +360,7 @@ run = "dart run tool/check_cooldown.dart"
 # publish archive. Needs network. Separate from `check` (see ci.yml's pana job).
 [tasks.pana]
 description = "Score the published packages with the pinned pana, as pub.dev does (each must be 160/160)"
-usage = 'arg "[package]..." var=#true help="package dirs relative to the repo root (default: packages/ghostty_dart packages/ghostty_dart_flutter)"'
+usage = 'arg "[package]..." var=#true help="package dirs relative to the repo root (default: packages/ghostty_dart packages/ghostty_dart_flutter packages/ghostty_dart_xterm)"'
 shell = "bash -c"
 # usage passes variadic args as one shell-quoted string; `eval set --`
 # splits it back into words without breaking a quoted path with spaces.
@@ -369,11 +375,12 @@ bash tool/pana/run_pana.sh "$@"
 # ../../pubspec.yaml". A dirty git tree is a warning, so run it on committed
 # changes.
 [tasks."publish:dry-run"]
-description = "Validate the publish archives of ghostty_dart and ghostty_dart_flutter (pub publish --dry-run); warnings fail"
+description = "Validate the publish archives of ghostty_dart, ghostty_dart_flutter and ghostty_dart_xterm (pub publish --dry-run); warnings fail"
 dir = "{{config_root}}/packages"
 run = [
   "cd ghostty_dart && dart pub publish --dry-run",
   "cd ghostty_dart_flutter && flutter pub publish --dry-run",
+  "cd ghostty_dart_xterm && flutter pub publish --dry-run",
 ]
 
 [tasks."bench:parser"]

@@ -358,12 +358,118 @@ gh release create ghostty_dart_flutter-v0.1.0 --verify-tag --title "ghostty_dart
   --notes "First release. See packages/ghostty_dart_flutter/CHANGELOG.md and https://pub.dev/packages/ghostty_dart_flutter/versions/0.1.0."
 ```
 
-## First publish of `ghostty_dart_xterm` (later)
+## First publish of `ghostty_dart_xterm`
 
-The adapter (ADR 0013) is a workspace member at `0.0.1-dev` and stays unpublished until the maintainer approves it. It cannot pass pana before `ghostty_dart_flutter` is on pub.dev: pana resolves the archive's dependencies from pub.dev, and the `ghostty_dart_flutter: ^0.1.0` it depends on exists there only after step F5. So it is deliberately **not** in the CI `pana and publish dry run` job, `mise run pana`'s default list or `publish:dry-run`. When `ghostty_dart_flutter` is published:
+Written 2026-11-12 (ADR 0010, amendment of 2026-11-12 (2)), after `ghostty_dart_flutter` 0.1.0 reached pub.dev. The PR that prepares it (`chore/xterm-first-release`) sets the adapter to `0.1.0` (pubspec, `CHANGELOG.md`), depending on `ghostty_dart: ^0.1.0` and `ghostty_dart_flutter: ^0.1.0`; adds it to the release allow-list (`tool/release/lib.sh`), `release-please-config.json` and the manifest, `publish.yml`'s tag triggers and `release-please.yml`'s outputs and dispatch steps; adds it to `mise run pana`'s default list, `publish:dry-run` and the CI `pana and publish dry run` job; and gives it a pubspec screenshot (`doc/screenshot.png`, rendered by `test/screenshot/` with `mise run test:goldens:update`). `mise run pana packages/ghostty_dart_xterm` gave 160/160 on that branch.
 
-1. Check that the dependency still matches the published `ghostty_dart_flutter` (`^0.1.0` today) and choose the first version (`0.1.0`), with a matching `CHANGELOG.md` entry.
-2. Add `packages/ghostty_dart_xterm` to the `pana` task's default list, the `publish:dry-run` task and the CI `pana` job; to the release allow-list `release_packages` in `tool/release/lib.sh`; to release-please's config (`release-please-config.json`, manifest) with its own component; to `publish.yml`'s tag triggers (`ghostty_dart_xterm-v*`); and add its outputs and dispatch step to `release-please.yml`. `mise run test:release` fails until they all agree. Merging this pauses release-please for every package until step 4's tag exists.
-3. `mise run pana packages/ghostty_dart_xterm` must give 160/160. Consider pubspec `screenshots` (AGENTS.md asks for them on widget packages; pana needs `webp` for them).
-4. Extend the `pub.dev` environment's deployment tag policy and the tag ruleset to `ghostty_dart_xterm-v*` (as in F1 and F2, with all three patterns in the ruleset), then publish the first version by hand as in F3 to F6 (`flutter pub publish`: it is a Flutter package), with `ghostty_dart_xterm` in place of `ghostty_dart_flutter`.
-5. Check `COMPATIBILITY.md` is current (`mise run compat:check`) and that `MIGRATING_FROM_XTERM.md` and the README no longer say "not published".
+**Merge it only when you are ready to publish.** From that merge until the tag of step X4 exists, `release-please.yml` skips itself for every package (`mise run release:ready` prints `ghostty_dart_xterm` as missing), for the reason given for the widget above.
+
+### X1. Let the `pub.dev` environment deploy `ghostty_dart_xterm-v*` tags
+
+Before any `ghostty_dart_xterm-v*` tag is pushed; otherwise the environment's tag policy refuses its `publish` job.
+
+```sh
+gh api -X POST repos/AlonsoMCarlos/ghostty_dart/environments/pub.dev/deployment-branch-policies \
+  -f name='ghostty_dart_xterm-v*' -f type=tag
+```
+
+Check it (expect `ghostty_dart-v*`, `ghostty_dart_flutter-v*` and `ghostty_dart_xterm-v*`, type `tag`, and you still the required reviewer):
+
+```sh
+gh api repos/AlonsoMCarlos/ghostty_dart/environments/pub.dev/deployment-branch-policies \
+  --jq '.branch_policies[] | {name, type}'
+gh api repos/AlonsoMCarlos/ghostty_dart/environments/pub.dev --jq '{protection_rules, deployment_branch_policy}'
+```
+
+### X2. Protect the `ghostty_dart_xterm-v*` tags
+
+Extend the `ghostty_dart release tags` ruleset (step 2, then F2) to the adapter's tags: same rules, same admin bypass, still no creation rule. Send the whole ruleset, so nothing else changes by omission:
+
+```sh
+id="$(gh api repos/AlonsoMCarlos/ghostty_dart/rulesets --jq '.[] | select(.name == "ghostty_dart release tags") | .id')"
+echo "$id"   # one number
+gh api "repos/AlonsoMCarlos/ghostty_dart/rulesets/$id" \
+  --jq '{name, enforcement, include: .conditions.ref_name.include, rules: [.rules[].type], bypass: .bypass_actors}'
+# expect the two patterns of F2, rules update/deletion/non_fast_forward, the admin bypass
+gh api -X PUT "repos/AlonsoMCarlos/ghostty_dart/rulesets/$id" --input - <<'JSON'
+{
+  "name": "ghostty_dart release tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": { "ref_name": {
+    "include": ["refs/tags/ghostty_dart-v*", "refs/tags/ghostty_dart_flutter-v*", "refs/tags/ghostty_dart_xterm-v*"],
+    "exclude": [] } },
+  "rules": [{ "type": "update" }, { "type": "deletion" }, { "type": "non_fast_forward" }],
+  "bypass_actors": [{ "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }]
+}
+JSON
+```
+
+Check it again with the first `gh api ... --jq` command: three patterns now, nothing else changed.
+
+### X3. Merge the PR
+
+Once CI (including `pana and publish dry run`, which now scores all three packages) and DCO are green, merge it and take the exact commit it created:
+
+```sh
+sha="$(gh pr view chore/xterm-first-release --repo AlonsoMCarlos/ghostty_dart --json mergeCommit --jq .mergeCommit.oid)"
+git fetch origin main
+git merge-base --is-ancestor "$sha" origin/main && git log -1 "$sha"
+```
+
+### X4. Tag `ghostty_dart_xterm-v0.1.0` on that commit, let CI validate and package, then reject
+
+```sh
+git tag -a ghostty_dart_xterm-v0.1.0 -m "ghostty_dart_xterm 0.1.0" "$sha"
+git push origin ghostty_dart_xterm-v0.1.0
+```
+
+The push starts `publish.yml` ("Publish to pub.dev"):
+- `validate`: the tag names `ghostty_dart_xterm`, matches `packages/ghostty_dart_xterm/pubspec.yaml` (name and version) and its `CHANGELOG.md`, and is on `main`; then `mise run check` and `mise run publish:dry-run`;
+- `package`: `ghostty_dart_xterm-0.1.0.tar.gz`, offline, with the pinned Dart SDK (byte-identical to `flutter pub publish --to-archive`, checked 2026-11-12).
+
+Its `publish` job then waits in the `pub.dev` environment. Use the green `validate` and `package` jobs as the final check, then **reject** the deployment: pub.dev accepts a package's first upload only from a user.
+
+### X5. Publish 0.1.0 by hand from a fresh clone of the tag
+
+As in F5 (`flutter pub publish`: the adapter is a Flutter package):
+
+```sh
+dir="$(mktemp -d)"
+git clone --branch ghostty_dart_xterm-v0.1.0 https://github.com/AlonsoMCarlos/ghostty_dart.git "$dir/ghostty_dart"
+cd "$dir/ghostty_dart"
+git describe --exact-match HEAD          # ghostty_dart_xterm-v0.1.0
+mise trust && mise install
+mise run deps                            # flutter pub get --enforce-lockfile
+mise run publish:dry-run                 # what CI runs: 0 warnings
+(cd packages/ghostty_dart_xterm && mise x -- flutter pub publish)   # lists the files; Google sign-in in the browser, then confirm with `y`
+```
+
+- Read the file list before confirming: `.pubignore` keeps `test/screenshot/` and the ported test fixtures (`test/compat/_fixture/`) out; `doc/screenshot.png` is in (about 105 KB; the archive is about 240 KB).
+- A published version is permanent; within 7 days it can be **retracted** from the package's admin page.
+
+Then check:
+- `https://pub.dev/packages/ghostty_dart_xterm` shows 0.1.0, the screenshot, and depends on `ghostty_dart ^0.1.0` and `ghostty_dart_flutter ^0.1.0`;
+- after pana has run (minutes), the score is 160/160.
+
+### X6. Enable automated publishing on pub.dev
+
+Open `https://pub.dev/packages/ghostty_dart_xterm/admin`, **Automated publishing** > **Enable publishing from GitHub Actions**:
+
+| Setting | Value |
+|---|---|
+| Repository | `AlonsoMCarlos/ghostty_dart` |
+| Tag pattern | `ghostty_dart_xterm-v{{version}}` |
+| Enable publishing from `push` events | on |
+| Enable publishing from `workflow_dispatch` events | **on** |
+| Require GitHub Actions environment | on, environment `pub.dev` |
+
+### Afterwards
+
+- **release-please:** nothing to change, as in F7. The next push to `main` finds all three first tags (`mise run release:ready`), and the adapter's release PR branch is `release-please--branches--main--components--ghostty_dart_xterm`. "Every later release" applies with `ghostty_dart_xterm` in place of `ghostty_dart`.
+- **Optional GitHub release**, as in F8:
+
+  ```sh
+  gh release create ghostty_dart_xterm-v0.1.0 --verify-tag --title "ghostty_dart_xterm 0.1.0" \
+    --notes "First release. See packages/ghostty_dart_xterm/CHANGELOG.md and https://pub.dev/packages/ghostty_dart_xterm/versions/0.1.0."
+  ```

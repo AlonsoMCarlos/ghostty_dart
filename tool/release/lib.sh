@@ -9,13 +9,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
 # The packages release-please and publish.yml release: an allow-list, kept
 # equal to the components of release-please-config.json (checked by
-# test:release). ghostty_dart_xterm is not in it until its first publish
-# (docs/internal/release-checklist.md). Each package lives in
-# packages/<package> and its tags are `<package>-v<X.Y.Z>`
-# (release-please-config.json: component, tag-separator, include-v-in-tag),
-# the pattern pub.dev's automated publishing matches per package.
+# test:release). Each package lives in packages/<package> and its tags are
+# `<package>-v<X.Y.Z>` (release-please-config.json: component,
+# tag-separator, include-v-in-tag), the pattern pub.dev's automated
+# publishing matches per package.
 # shellcheck disable=SC2034 # read by the scripts that source this file
-release_packages=(ghostty_dart ghostty_dart_flutter)
+release_packages=(ghostty_dart ghostty_dart_flutter ghostty_dart_xterm)
 
 # is_release_package <name>: true for a package of the allow-list.
 is_release_package() {

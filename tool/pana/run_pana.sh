@@ -25,9 +25,9 @@
 #
 # Usage: tool/pana/run_pana.sh [package dir...]  (relative to the current
 #   directory; `mise run pana` runs from the repo root)
-#   (default: every published package, packages/ghostty_dart and
-#   packages/ghostty_dart_flutter, scored one after the other; the first
-#   package below 160/160 stops the run)
+#   (default: every published package, packages/ghostty_dart,
+#   packages/ghostty_dart_flutter and packages/ghostty_dart_xterm, scored one
+#   after the other; the first package below 160/160 stops the run)
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -35,7 +35,8 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$root/tool/native/lib.sh"
 
 if [[ $# -eq 0 ]]; then
-  set -- "$root/packages/ghostty_dart" "$root/packages/ghostty_dart_flutter"
+  set -- "$root/packages/ghostty_dart" "$root/packages/ghostty_dart_flutter" \
+    "$root/packages/ghostty_dart_xterm"
 fi
 # Every package is checked before any is scored, so a missing tool fails in
 # seconds rather than after the first package's minutes of scoring.

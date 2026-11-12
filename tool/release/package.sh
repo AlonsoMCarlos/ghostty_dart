@@ -19,10 +19,11 @@
 # two must work (fails closed); locally it warns and keeps the network.
 #
 # Dart: $DART (the pinned, verified SDK in CI), else `dart` on PATH. A plain
-# Dart SDK is enough for the Flutter package ghostty_dart_flutter too: with
-# --skip-validation nothing resolves, so the `flutter` SDK dependency is never
-# looked up, and the archive is byte-identical to `flutter pub publish
-# --to-archive` (checked 2026-11-12 with Dart 3.13.7 and Flutter 3.47.9).
+# Dart SDK is enough for the Flutter packages (ghostty_dart_flutter,
+# ghostty_dart_xterm) too: with --skip-validation nothing resolves, so the
+# `flutter` SDK dependency is never looked up, and the archive is
+# byte-identical to `flutter pub publish --to-archive` (checked 2026-11-12
+# with Dart 3.13.7 and Flutter 3.47.9, for both packages).
 # Prints `archive=<path>` and `sha256=<hex>` (appended to $GITHUB_OUTPUT when
 # set).
 #

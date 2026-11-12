@@ -2,12 +2,15 @@ name: ghostty_dart_xterm
 description: >-
   API-compatible adapter for package:xterm 4.0.0 on top of ghostty_dart and
   ghostty_dart_flutter (libghostty-vt): same Terminal and TerminalView API.
-# Not published yet: the first release version (0.1.0) is set when the
-# maintainer approves publishing (ADR 0010, ADR 0013).
-version: 0.0.1-dev
+version: 0.1.0
 repository: https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_xterm
 issue_tracker: https://github.com/AlonsoMCarlos/ghostty_dart/issues
 topics: [terminal, terminal-emulator, xterm, widget, ghostty]
+screenshots:
+  - description: >-
+      TerminalView of ghostty_dart_xterm showing an app migrated from xterm,
+      ANSI and truecolor output, text styles and box drawing.
+    path: doc/screenshot.png
 
 # Native platforms only, like ghostty_dart_flutter: ghostty_dart has no web
 # (wasm) backend yet, and the package must not claim web until it does

@@ -1,5 +1,7 @@
 # ghostty_dart_xterm
 
+[![pub package](https://img.shields.io/pub/v/ghostty_dart_xterm.svg)](https://pub.dev/packages/ghostty_dart_xterm)
+[![pub points](https://img.shields.io/pub/points/ghostty_dart_xterm)](https://pub.dev/packages/ghostty_dart_xterm/score)
 [![CI](https://github.com/AlonsoMCarlos/ghostty_dart/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AlonsoMCarlos/ghostty_dart/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/LICENSE)
 
@@ -8,7 +10,7 @@
 The public API of [`xterm`](https://pub.dev/packages/xterm) 4.0.0
 (`Terminal`, `TerminalView`, `TerminalController`, themes, key and mouse
 handlers) on top of
-[`ghostty_dart_flutter`](https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_flutter)
+[`ghostty_dart_flutter`](https://pub.dev/packages/ghostty_dart_flutter)
 and [`ghostty_dart`](https://pub.dev/packages/ghostty_dart), which run
 [libghostty-vt](https://lib.ghostty.org/vt/) 1.x, the terminal emulation
 engine of [Ghostty](https://ghostty.org). Most apps move from `xterm` by
@@ -21,12 +23,13 @@ changing their import.
 > owners and is used here only to describe what this package builds on.
 
 > [!IMPORTANT]
-> **Not published yet, and not a drop-in replacement.** It waits for
-> `ghostty_dart_flutter` to be on pub.dev. Every xterm 4.0.0 member and its
+> **Not a drop-in replacement.** Every xterm 4.0.0 member and its
 > status (same, differs, planned, won't support) is listed in the generated
 > [`COMPATIBILITY.md`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/COMPATIBILITY.md),
 > and what the differences mean for an app is in the
 > [migration guide](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.md).
+
+![TerminalView of ghostty_dart_xterm showing an app migrated from xterm, ANSI and truecolor output, text styles and box drawing](https://raw.githubusercontent.com/AlonsoMCarlos/ghostty_dart/main/packages/ghostty_dart_xterm/doc/screenshot.png)
 
 There is no live web demo yet: it waits for the web (wasm) backend of
 `ghostty_dart`.
@@ -53,7 +56,7 @@ There is no live web demo yet: it waits for the web (wasm) backend of
 
 ## Quick start
 
-Once published, swap the dependency and the import:
+Swap the dependency and the import:
 
 ```yaml
 dependencies:
@@ -126,7 +129,7 @@ has been, against `xterm` 4.0.0 on the same byte streams:
 Facts as of 2026-11-12. `xterm` is the mature, widely used choice today,
 and this package exists to keep its API.
 
-| | `ghostty_dart_xterm` (unreleased) | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 |
+| | `ghostty_dart_xterm` 0.1.0 | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 |
 |---|---|---|
 | Engine | libghostty-vt 1.0.0, FFI | Pure Dart |
 | Web | No (planned) | Yes |
@@ -156,7 +159,7 @@ If you need the web, ZModem or xterm's Dart parser today, use `xterm`.
 
 - [Migration guide](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.md)
   and [`COMPATIBILITY.md`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/COMPATIBILITY.md)
-- [`ghostty_dart_flutter`](https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_flutter),
+- [`ghostty_dart_flutter`](https://pub.dev/packages/ghostty_dart_flutter),
   for the widget underneath
 - [Design decision (ADR 0013)](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/docs/internal/adr/0013-xterm-adapter-design.md)
 - [Changelog](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/CHANGELOG.md)

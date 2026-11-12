@@ -3,11 +3,12 @@
 # translation check, workflow and shell lint) on Linux, macOS (arm64) and Windows, against libghostty-vt built
 # on each runner from the minisign- and sha256-verified upstream tarballs.
 # A separate job scans the full git history and the working tree for leaked
-# secrets (gitleaks). The pana job scores both published packages
-# (ghostty_dart, ghostty_dart_flutter) as pub.dev does and validates their
-# publish archives (ADR 0010). On Linux the check job also builds the demo
-# app for the desktop. The frame-time benchmark (bench:widget) is not run in
-# CI: shared runners without a GPU make its numbers noise.
+# secrets (gitleaks). The pana job scores the three published packages
+# (ghostty_dart, ghostty_dart_flutter, ghostty_dart_xterm) as pub.dev does
+# and validates their publish archives (ADR 0010). On Linux the check job
+# also builds the demo app for the desktop. The frame-time benchmark
+# (bench:widget) is not run in CI: shared runners without a GPU make its
+# numbers noise.
 #
 # Supply chain (AGENTS.md): actions pinned by commit SHA to releases at least
 # 3 days old, no secrets, read-only token, no persisted git credentials.
@@ -149,8 +150,9 @@ jobs:
         run: mise run deps
 
       # pana turns pubspec `screenshots` into WebP with libwebp's tools
-      # (ghostty_dart_flutter has one); pub.dev's analyzer has them too. From
-      # the runner image's Ubuntu archive, nothing else is installed.
+      # (ghostty_dart_flutter and ghostty_dart_xterm have one); pub.dev's
+      # analyzer has them too. From the runner image's Ubuntu archive,
+      # nothing else is installed.
       - name: Install libwebp tools (apt)
         timeout-minutes: 5
         run: |
@@ -165,8 +167,9 @@ jobs:
       - name: Score with pana (160/160 required, every package)
         run: mise run pana
 
-      # Warnings fail, hints do not (mise.toml, publish:dry-run). Both
-      # packages: ghostty_dart and ghostty_dart_flutter.
+      # Warnings fail, hints do not (mise.toml, publish:dry-run). Every
+      # published package: ghostty_dart, ghostty_dart_flutter and
+      # ghostty_dart_xterm.
       - name: Publish dry run
         run: mise run publish:dry-run
 
