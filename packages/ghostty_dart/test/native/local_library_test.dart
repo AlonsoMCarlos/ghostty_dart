@@ -50,11 +50,11 @@ void main() {
 
   group('localLibraryMissingMessage', () {
     test('names the path, the repo fix and the app fixes', () {
-      final message = localLibraryMissingMessage(
-        Uri.file('/repo/.native-cache/host/libghostty-vt.so'),
-        OS.linux,
-      );
-      expect(message, contains('/repo/.native-cache/host/libghostty-vt.so'));
+      final library = Uri.file('/repo/.native-cache/host/libghostty-vt.so');
+      final message = localLibraryMissingMessage(library, OS.linux);
+      // The message shows the path in the host's own style (backslashes on
+      // Windows).
+      expect(message, contains(library.toFilePath()));
       expect(message, contains('mise run native:host'));
       expect(message, contains('libghostty-vt.so;'));
       expect(message, contains('remove `source: path`'));
