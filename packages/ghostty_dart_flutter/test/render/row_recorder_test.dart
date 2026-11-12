@@ -153,6 +153,18 @@ void main() {
       ]);
     });
 
+    test('erased cells keep their own background inside a style run', () {
+      // EL with a red pen leaves text-less cells that carry the colour
+      // themselves; the text after them has the default style again.
+      expect(_ops('ab\x1b[41m\x1b[K\x1b[0m\x1b[5Gcd\x1b[7mi'), [
+        'bg 2+2 $_red',
+        'bg 6+1 $_fg',
+        'bg 7+13 $_red',
+        'run 0 "ab  cd" $_fg f0',
+        'run 6 "i" $_bg f0',
+      ]);
+    });
+
     test('the underline colour defaults to the text colour', () {
       expect(_ops('\x1b[4;31mu'), [
         'run 0 "u" $_red f0',

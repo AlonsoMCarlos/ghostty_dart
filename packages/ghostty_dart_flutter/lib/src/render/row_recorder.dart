@@ -797,29 +797,56 @@ final class RowRecorder {
   }
 
   // Backgrounds: equal neighbouring colours merge into one rectangle; the
-  // default background is not drawn (the view fills it once).
+  // default background is not drawn (the view fills it once). Colours are
+  // resolved once per style run: a cell with text has its style's
+  // background, so only text-less cells (which may carry a colour of
+  // their own) are looked at one by one, and those whose colour is the
+  // style's reuse the run's.
   void _scanBackgrounds(RenderRow row, RenderColors colors) {
     final length = row.length;
     var spanStart = 0;
     var spanColor = 0; // 0: default background, nothing to draw
-    for (var x = 0; x <= length; x++) {
-      var color = 0;
-      if (x < length) {
-        final style = row.styleAt(x);
-        if (style.inverse) {
-          color = _argb(colors.resolve(style.foreground) ?? colors.foreground);
-        } else {
-          final rgb = colors.resolve(row.backgroundAt(x));
-          if (rgb != null) color = _argb(rgb);
+    var x = 0;
+    while (x < length) {
+      final end = row.styleRunEnd(x);
+      final style = row.styleAt(x);
+      if (style.inverse) {
+        final color = _argb(
+          colors.resolve(style.foreground) ?? colors.foreground,
+        );
+        if (color != spanColor) {
+          if (spanColor != 0 && x > spanStart) {
+            _op4(_opBackground, spanStart, x - spanStart, spanColor);
+          }
+          spanStart = x;
+          spanColor = color;
+        }
+      } else {
+        final runRef = style.background;
+        final runRgb = colors.resolve(runRef);
+        final runColor = runRgb == null ? 0 : _argb(runRgb);
+        for (var i = x; i < end; i++) {
+          var color = runColor;
+          if (!row.hasTextAt(i)) {
+            final ref = row.backgroundAt(i);
+            if (!identical(ref, runRef) && ref != runRef) {
+              final rgb = colors.resolve(ref);
+              color = rgb == null ? 0 : _argb(rgb);
+            }
+          }
+          if (color != spanColor) {
+            if (spanColor != 0 && i > spanStart) {
+              _op4(_opBackground, spanStart, i - spanStart, spanColor);
+            }
+            spanStart = i;
+            spanColor = color;
+          }
         }
       }
-      if (x == length || color != spanColor) {
-        if (spanColor != 0 && x > spanStart) {
-          _op4(_opBackground, spanStart, x - spanStart, spanColor);
-        }
-        spanStart = x;
-        spanColor = color;
-      }
+      x = end;
+    }
+    if (spanColor != 0 && length > spanStart) {
+      _op4(_opBackground, spanStart, length - spanStart, spanColor);
     }
   }
 
@@ -848,16 +875,26 @@ final class RowRecorder {
             continue;
           }
           final codepoint = row.codepointAt(i);
+          final grapheme = row.hasGraphemeAt(i);
           if (width == CellWidth.wide ||
-              row.hasGraphemeAt(i) ||
+              grapheme ||
               (codepoint != 0 && !isGridSafe(codepoint))) {
             flush();
-            _cluster.clear();
-            row.writeTextTo(i, _cluster);
-            if (_cluster.isNotEmpty) {
+            final String text;
+            if (grapheme) {
+              _cluster.clear();
+              row.writeTextTo(i, _cluster);
+              text = _cluster.toString();
+            } else {
+              // A single codepoint (box drawing, CJK, symbols): what
+              // writeTextTo would write, without building a string per
+              // cell. `tree` and TUI borders put several in every row.
+              text = codepoint == 0 ? '' : _codepointText(codepoint);
+            }
+            if (text.isNotEmpty) {
               _op(_opCluster);
               _op(i);
-              _op(_addText(_cluster.toString()));
+              _op(_addText(text));
               _op(color);
               _op(faces | TextFace.cluster);
               _op(width == CellWidth.wide ? 2 : 1);
@@ -873,6 +910,20 @@ final class RowRecorder {
       x = end;
     }
   }
+
+  // The text of a one-codepoint cell, shared for the box-drawing and
+  // block-element range (U+2500-259F) that fills `tree` output and TUI
+  // borders.
+  static String _codepointText(int codepoint) {
+    final index = codepoint - _sharedTextFirst;
+    if (index < 0 || index >= _sharedTexts.length) {
+      return String.fromCharCode(codepoint);
+    }
+    return _sharedTexts[index] ??= String.fromCharCode(codepoint);
+  }
+
+  static const _sharedTextFirst = 0x2500;
+  static final _sharedTexts = List<String?>.filled(0xA0, null);
 
   // A run of grid-safe cells starting at column [start]; one UTF-16 code
   // unit per cell (every grid-safe codepoint is in the BMP).
