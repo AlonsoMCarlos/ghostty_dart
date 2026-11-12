@@ -114,10 +114,9 @@ void main() {
         seams
           ..addListener(() => notified++)
           ..painted(flooded: true);
-        // The interval is measured with a real clock.
-        await tester.runAsync(
-          () => Future<void>.delayed(ControllerSeams.floodInterval * 1.5),
-        );
+        // The interval is measured on the test's fake clock
+        // (flutter_test_config.dart), which only pump advances.
+        await tester.pump(ControllerSeams.floodInterval * 1.5);
         seams.controller.write('a');
         expect(notified, 1);
         // No paint follows (the frame is slow): the writes after that
@@ -140,10 +139,9 @@ void main() {
         seams
           ..addListener(() => notified++)
           ..painted(flooded: true);
-        // The flood's age is measured with a real clock.
-        await tester.runAsync(
-          () => Future<void>.delayed(ControllerSeams.sustainedFloodAfter),
-        );
+        // The flood's age is measured on the test's fake clock
+        // (flutter_test_config.dart), which only pump advances.
+        await tester.pump(ControllerSeams.sustainedFloodAfter);
         seams
           ..painted(flooded: true)
           ..controller.write('a');

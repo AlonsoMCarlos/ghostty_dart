@@ -554,10 +554,9 @@ void main() {
       await h.write(screenful(1));
       await h.write(screenful(2));
       expect(h.render.debugFlooded, isTrue);
-      // The interval is measured in real time since the last paint.
-      await tester.runAsync(
-        () => Future<void>.delayed(ControllerSeams.floodInterval * 1.5),
-      );
+      // The interval since the last paint is measured on the test's fake
+      // clock (flutter_test_config.dart), which only pump advances.
+      await tester.pump(ControllerSeams.floodInterval * 1.5);
       final scans = h.render.debugRowScans;
       await h.write('x');
       expect(h.render.debugRowScans, greaterThan(scans));

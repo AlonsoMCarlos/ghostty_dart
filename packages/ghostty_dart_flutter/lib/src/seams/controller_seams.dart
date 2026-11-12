@@ -73,23 +73,35 @@ final class ControllerSeams
   /// at any rate, so a sustained flood shows its progress at a lower one.
   static const sustainedFloodInterval = Duration(milliseconds: 60);
 
+  /// The monotonic clock the flood interval is measured with: the time
+  /// since an arbitrary fixed point, never going back.
+  ///
+  /// Defaults to a process-wide [Stopwatch]. Tests replace it with the
+  /// test's fake clock, so the interval advances only with `tester.pump`
+  /// and never depends on how fast the machine runs the test.
+  @visibleForTesting
+  static Duration Function() debugNow = _monotonicNow;
+
+  static final _monotonic = Stopwatch()..start();
+  static Duration _monotonicNow() => _monotonic.elapsed;
+
   final _listeners = <VoidCallback>[];
   bool _listening = false;
   bool _flooded = false;
 
-  /// Time since the current flood started (the first paint that reported
-  /// one); stopped and reset while not flooded.
-  final _floodAge = Stopwatch();
+  /// When the current flood started (the first paint that reported one,
+  /// on [debugNow]'s clock); null while not flooded.
+  Duration? _floodStart;
 
-  /// Time since the last paint or the last notification, whichever came
-  /// later: while flooded, notifications are at least [floodInterval]
-  /// (or [sustainedFloodInterval]) apart from both. Counting from the notification too matters when
-  /// frames are slower than the interval (a large window, a slow GPU, a
-  /// software renderer): without it every write between the
-  /// notification and the paint it scheduled would notify again (one
-  /// round of listeners per pty read, thousands a second) for frames
-  /// that were already coming.
-  final _sinceEvent = Stopwatch();
+  /// When the last paint or the last notification happened, whichever
+  /// came later (on [debugNow]'s clock): while flooded, notifications are
+  /// at least [floodInterval] (or [sustainedFloodInterval]) apart from
+  /// both. Counting from the notification too matters when frames are
+  /// slower than the interval (a large window, a slow GPU, a software
+  /// renderer): without it every write between the notification and the
+  /// paint it scheduled would notify again (one round of listeners per
+  /// pty read, thousands a second) for frames that were already coming.
+  Duration _lastEvent = Duration.zero;
   Timer? _floodTimer;
 
   @override
@@ -115,26 +127,18 @@ final class ControllerSeams
 
   @override
   void painted({required bool flooded}) {
+    final now = debugNow();
     _flooded = flooded;
-    if (!flooded) {
-      _floodAge
-        ..stop()
-        ..reset();
-    } else if (!_floodAge.isRunning) {
-      _floodAge.start();
-    }
+    _floodStart = flooded ? (_floodStart ?? now) : null;
     _cancelFloodTimer();
-    _restartEventClock();
+    _lastEvent = now;
   }
-
-  void _restartEventClock() => _sinceEvent
-    ..reset()
-    ..start();
 
   void _onControllerChanged() {
     if (_flooded) {
       if (_floodTimer != null) return;
-      final wait = _interval - _sinceEvent.elapsed;
+      final now = debugNow();
+      final wait = _intervalAt(now) - (now - _lastEvent);
       if (wait > Duration.zero) {
         _floodTimer = Timer(wait, _onFloodTimer);
         return;
@@ -143,7 +147,8 @@ final class ControllerSeams
     _notifyListeners();
   }
 
-  Duration get _interval => _floodAge.elapsed >= sustainedFloodAfter
+  Duration _intervalAt(Duration now) =>
+      now - (_floodStart ?? now) >= sustainedFloodAfter
       ? sustainedFloodInterval
       : floodInterval;
 
@@ -164,7 +169,7 @@ final class ControllerSeams
   // As ChangeNotifier does: a listener removed by an earlier one is not
   // called, and an error in one is reported without skipping the others.
   void _notifyListeners() {
-    _restartEventClock();
+    _lastEvent = debugNow();
     for (final listener in List.of(_listeners)) {
       if (!_listeners.contains(listener)) continue;
       try {
