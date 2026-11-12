@@ -80,7 +80,7 @@ const _configs = String.fromEnvironment(
 /// `view` configurations run with, comma-separated, in order.
 const _pacings = String.fromEnvironment(
   'FIREHOSE_PACING',
-  defaultValue: 'smooth,balanced,efficient',
+  defaultValue: 'smooth,balanced',
 );
 
 Future<void> main() async {
@@ -144,7 +144,7 @@ Future<void> main() async {
     }
     pacings.add(pacing);
   }
-  if (pacings.isEmpty) pacings.add(VtFloodPacing.balanced);
+  if (pacings.isEmpty) pacings.add(VtFloodPacing.smooth);
   for (var run = 1; run <= _runs; run++) {
     int? noViewUiMs;
     for (final config in configs) {
@@ -168,11 +168,11 @@ Future<Map<String, Object>> _run(
   required String config,
   required VtFloodPacing? pacing,
 }) async {
-  final subject = GhosttySubject(floodPacing: pacing ?? VtFloodPacing.balanced);
+  final subject = GhosttySubject(floodPacing: pacing ?? VtFloodPacing.smooth);
   final view = PlatformDispatcher.instance.views.first;
   final dpr = view.devicePixelRatio;
   final blank = _BlankClock(
-    pacing ?? VtFloodPacing.balanced,
+    pacing ?? VtFloodPacing.smooth,
     view.display.refreshRate,
   );
   host.value = switch (config) {

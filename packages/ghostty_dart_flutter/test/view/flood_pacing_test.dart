@@ -41,13 +41,11 @@ void main() {
     }
   }
 
-  testWidgets('defaults to balanced at the display refresh rate', (
-    tester,
-  ) async {
+  testWidgets('defaults to smooth at the display refresh rate', (tester) async {
     tester.view.display.refreshRate = 120;
     addTearDown(tester.view.display.resetRefreshRate);
     final h = await pumpTerminalView(tester, autofocus: false);
-    expectEvery(await floodFrames(tester, h, 120, 4), 4);
+    expectEvery(await floodFrames(tester, h, 120, 2), 2);
   });
 
   testWidgets('floodPacing picks the vsyncs per flood frame and can change', (
@@ -65,8 +63,8 @@ void main() {
         floodPacing: pacing,
       ),
     );
-    await pump(VtFloodPacing.efficient);
-    expectEvery(await floodFrames(tester, h, 60, 3), 3);
+    await pump(VtFloodPacing.balanced);
+    expectEvery(await floodFrames(tester, h, 60, 2), 2);
     await pump(VtFloodPacing.smooth);
     expectEvery(await floodFrames(tester, h, 60, 1), 1);
   });

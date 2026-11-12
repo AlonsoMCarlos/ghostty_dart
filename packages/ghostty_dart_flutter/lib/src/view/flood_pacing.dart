@@ -22,33 +22,24 @@
 /// ```dart
 /// VtTerminalView(
 ///   controller: controller,
-///   floodPacing: VtFloodPacing.smooth, // Kitty-like, at more CPU
+///   floodPacing: VtFloodPacing.balanced, // half the frames, less CPU
 /// )
 /// ```
 enum VtFloodPacing {
-  /// At most about 60 frames a second: every vsync at 60 Hz, every second
-  /// one at 120 and 144 Hz. The smoothest scroll, at about twice the
-  /// frame cost of [balanced] during a flood.
+  /// The default: at most about 60 frames a second, every vsync at 60 Hz
+  /// and every second one at 120 and 144 Hz. The smoothest scroll, at
+  /// about 1.5 times the CPU per megabyte of [balanced] during a flood.
   smooth(60),
 
-  /// The default: at most about 30 frames a second, every second vsync at
-  /// 60 Hz and every fourth at 120 Hz. An even cadence at about half the
-  /// frame cost of [smooth].
-  balanced(30),
-
-  /// At most about 20 frames a second, every third vsync at 60 Hz: the
-  /// least CPU while a flood lasts, for battery-powered devices or many
-  /// views flooding at once.
+  /// At most about 30 frames a second, every second vsync at 60 Hz and
+  /// every fourth at 120 Hz: an even cadence at less CPU than [smooth],
+  /// for battery-powered devices or many views flooding at once.
   ///
-  /// Not lower on purpose: when no frame is scheduled for 51 ms, Flutter's
-  /// engine tells the Dart VM that the UI thread is idle for the next
-  /// 100 ms (`kNotifyIdleTaskWaitTime`, `shell/common/animator.cc`,
-  /// Flutter 3.47.9), and work the VM does in that window (garbage
-  /// collection) can delay the next frame. In the firehose benchmark
-  /// (2026-11-12) every fourth vsync at 60 Hz gave gaps of 90–160 ms
-  /// instead of 67; every third vsync asks for its frame before that
-  /// deadline.
-  efficient(20);
+  /// There is no slower policy on purpose: on a real GPU (2026-11-12),
+  /// painting every third vsync at 60 Hz missed about every third due
+  /// vsync, so its frame gaps alternated between 50 and 67 ms, which reads
+  /// as jumps rather than as a slower scroll.
+  balanced(30);
 
   const VtFloodPacing(this.maxFramesPerSecond);
 

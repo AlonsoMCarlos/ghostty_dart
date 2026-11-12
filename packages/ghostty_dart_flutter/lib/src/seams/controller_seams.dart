@@ -56,7 +56,7 @@ final class ControllerSeams
   /// after a pause, and output that does not replace every row
   /// (full-screen programs, slower scrolling), are delivered at once as
   /// before.
-  VtFloodPacing floodPacing = VtFloodPacing.balanced;
+  VtFloodPacing floodPacing = VtFloodPacing.smooth;
 
   /// The display's refresh rate in Hz (`FlutterView.display.refreshRate`);
   /// the view sets it on every build. Values the platform reports as
@@ -75,9 +75,8 @@ final class ControllerSeams
   /// How many vsyncs a flood frame waits after the previous frame under
   /// [pacing] on a display of [refreshRate] Hz: the refresh rate divided
   /// by [VtFloodPacing.maxFramesPerSecond], rounded, at least one. For
-  /// [VtFloodPacing.smooth], [VtFloodPacing.balanced] and
-  /// [VtFloodPacing.efficient]: 1, 2 and 3 at 60 Hz; 2, 4 and 6 at
-  /// 120 Hz; 2, 5 and 7 at 144 Hz.
+  /// [VtFloodPacing.smooth] and [VtFloodPacing.balanced]: 1 and 2 at
+  /// 60 Hz, 2 and 4 at 120 Hz, 2 and 5 at 144 Hz.
   static int floodVsyncs(VtFloodPacing pacing, double refreshRate) {
     final hz = 1e6 / vsyncPeriod(refreshRate).inMicroseconds;
     return math.max(1, (hz / pacing.maxFramesPerSecond).round());

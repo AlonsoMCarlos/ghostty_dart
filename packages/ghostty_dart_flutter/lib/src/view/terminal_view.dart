@@ -112,7 +112,7 @@ class VtTerminalView extends StatefulWidget {
     this.announceOutput = false,
     this.textRendering = VtTextRendering.atlas,
     this.cacheBudget = defaultCacheBudget,
-    this.floodPacing = VtFloodPacing.balanced,
+    this.floodPacing = VtFloodPacing.smooth,
     this.onTerminalKey,
     this.onTerminalText,
     this.mouseReportFilter,
@@ -295,13 +295,13 @@ class VtTerminalView extends StatefulWidget {
 
   /// How often the view paints while a program floods it with output
   /// (every visible row new in each of the last two frames, as `tree` or
-  /// `cat` of a large log do): [VtFloodPacing.balanced] by default, at
-  /// most about 30 evenly spaced frames a second.
+  /// `cat` of a large log do): [VtFloodPacing.smooth] by default, at
+  /// most about 60 evenly spaced frames a second.
   ///
   /// Each frame then draws a whole new screen of text nobody can read,
-  /// and costs CPU to draw and present; the policy trades the smoothness
-  /// of that scroll ([VtFloodPacing.smooth], about 60 frames a second)
-  /// against CPU ([VtFloodPacing.efficient], about 20). Typing,
+  /// and costs CPU to draw and present; [VtFloodPacing.balanced] (about
+  /// 30 frames a second) trades some smoothness of that scroll for less
+  /// CPU. Typing,
   /// full-screen programs, slower output and the first change after a
   /// pause paint at the next vsync with every policy. See
   /// [VtFloodPacing].

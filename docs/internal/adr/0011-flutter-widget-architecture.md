@@ -178,3 +178,23 @@ The firehose benchmark runs `blank` and `view` once per policy (`--pacing`, all 
 | blank, balanced | 92–167 | 33 / 33–61 / 34–112 | 4–33 | 1–89 (4 of 6 runs ≤ 15) | 34–49 | 0.82–1.18 |
 
 The deterministic tests (`test/render/terminal_render_test.dart`, `test/view/flood_pacing_test.dart`, on the test's fake clock and frames) hold every policy at 60, 120 and 144 Hz to frames exactly *n* vsyncs apart once the flood is detected. On a real GPU, where a frame fits in a vsync, the cadence should be that of `blank`; the maintainer's run (`mise run bench:firehose`) decides whether `balanced` stays the default.
+
+## Amendment (2026-11-12, real-GPU pacing: `smooth` by default, `efficient` removed)
+
+**Context.** The previous amendment left the default to a run on a real GPU. The maintainer ran `mise run bench:firehose` (2026-11-12) on CachyOS, Wayland, AMD GPU, a 60 Hz monitor, window 3600 × 2200 px, with the benchmark's view configuration (200 × 60, JetBrains Mono 12 px, atlas path, 40 MB at 7 MB/s):
+
+| policy | frame rate | frame gaps, ms | irregular gaps | CPU, ms/MB |
+|---|---:|---|---:|---:|
+| smooth | 60 fps | 16 / 16.8 / 17.2 (p10/p50/p90) | 1–3 % | 118 |
+| balanced | 30 fps | 33 | 12–16 % | 74–80 |
+| efficient | 20 fps | 35 / 50 / 67, alternating | 44–50 % | 57–61 |
+
+Where a frame fits in a vsync the pacing does what decision 1 intended for `smooth` and `balanced`. `efficient` does not: about every third due vsync is missed and the gaps alternate between 50 and 67 ms, which reads as jumps. The cause is not established. The engine's idle notification (`kNotifyIdleTaskWaitTime`, 51 ms) is the likely suspect, but under `efficient` the seams already ask for the frame about 35 ms after the previous one (the timer wakes in the vsync period before the due vsync), under that deadline, so asking one vsync earlier or adding a heartbeat frame would be a guess. A heartbeat would also cost frames, which is the opposite of what the policy is for. Xvfb + llvmpipe cannot reproduce it, because there a view frame does not fit in a period at all.
+
+**Decision.**
+
+1. **`VtFloodPacing.smooth` is the default** of `VtTerminalView.floodPacing` (and of `ControllerSeams.floodPacing`): steady 60 fps with 1–3 % irregular gaps, the scroll the maintainer wanted from Kitty, for about 1.5× the CPU per MB of `balanced`. This supersedes decision 3 of the previous amendment. `balanced` stays as the opt-in for less CPU at a still-even cadence.
+2. **`efficient` is removed** from `VtFloodPacing`, which is unpublished, so the removal breaks nobody. A policy that promises to save CPU but stutters on real hardware is worse than none. The enum is now `{ smooth (≤ 60 fps, default), balanced (≤ 30 fps) }`, with 1/2 vsyncs at 60 Hz, 2/4 at 120 Hz and 2/5 at 144 Hz. A slower policy can come back only with a cause, a fix and a real-GPU run that shows regular gaps.
+3. `bench:firehose` runs `smooth,balanced` by default.
+
+Still to measure: the same run at 120/144 Hz on a platform whose embedder gives the engine real vsync (Linux ticks at 60 Hz whatever the monitor, see the previous amendment).

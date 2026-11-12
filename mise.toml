@@ -361,7 +361,7 @@ flag "--mb <n>" default="40" help="MB of output per run"
 flag "--rate <kBps>" default="7000" help="output rate in kB/s (0: unlimited)"
 flag "--runs <n>" default="3" help="runs per configuration"
 flag "--configs <list>" default="no view,blank,view" help="configurations to run, comma-separated (no view, blank, view)"
-flag "--pacing <list>" default="smooth,balanced,efficient" help="VtFloodPacing policies the blank and view configurations run with, comma-separated"
+flag "--pacing <list>" default="smooth,balanced" help="VtFloodPacing policies the blank and view configurations run with, comma-separated"
 '''
 dir = "{{config_root}}/benchmarks/widget"
 shell = "bash -c"

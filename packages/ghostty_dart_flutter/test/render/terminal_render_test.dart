@@ -529,13 +529,14 @@ void main() {
     testWidgets('output that scrolls a screen per frame paints on the '
         'pacing\'s vsyncs', (tester) async {
       final h = await pumpRenderer(tester, initial: 'start');
+      h.seams.floodPacing = VtFloodPacing.balanced;
       final period = ControllerSeams.vsyncPeriod(60);
       await h.write(screenful(1));
       expect(h.render.debugFlooded, isFalse); // one frame is not a flood
       await h.write(screenful(2));
       expect(h.render.debugFlooded, isTrue);
 
-      // Balanced at 60 Hz (the default): every second vsync.
+      // Balanced at 60 Hz: every second vsync.
       final scans = h.render.debugRowScans;
       h.controller.write(screenful(3));
       expect(h.render.debugNeedsPaint, isFalse);

@@ -707,7 +707,7 @@ xvfb-run -a -s "-screen 0 2560x1600x24" mise run bench:firehose   # headless
   which also presents every frame through GTK, so `blank` is the per-frame
   floor no terminal widget can go under; `view` minus `blank` is the
   view's own cost. `blank` and `view` run once per `VtFloodPacing` policy
-  (`--pacing`, default `smooth,balanced,efficient`); `blank` repaints with
+  (`--pacing`, default `smooth,balanced`); `blank` repaints with
   the same vsync pacing as the view's seams.
 - **Reported:** wall time, process CPU (`/proc/self/stat`) and CPU per
   thread name (`/proc/self/task/*/stat`), frames and build/raster time per
@@ -795,16 +795,33 @@ flood pacing". Ranges over runs:
 |---|---:|---:|---:|---:|---:|
 | view, before | 38–49 | 127–161 | 32–53 | 65–96 | 27–32 |
 | view, smooth | 88–154 | 33–53 | 15–35 | 31–74 | 42–60 |
-| view, balanced (default) | 86–104 | 56–66 | 10–28 | 29–78 | 41–47 |
-| view, efficient | 62–90 | 66–87 | 13–48 | 19–79 | 34–42 |
+| view, balanced | 86–104 | 56–66 | 10–28 | 29–78 | 41–47 |
+| view, efficient (removed) | 62–90 | 66–87 | 13–48 | 19–79 | 34–42 |
 | blank, balanced | 92–167 | 33–61 | 4–33 | 1–89 | 34–49 |
 
 Here a view frame does not fit in a 33 ms period (software raster, then
 GTK's present on the UI thread), so the policies converge near 15 fps; the
 `blank` runs (4 of 6 at ≤ 15 % irregular gaps, p50 33.3 ms) show the
-cadence when frames fit. The numbers that decide the default must come from
-a real GPU:
+cadence when frames fit. The numbers that decide the default come from a
+real GPU (next section).
+
+### Results, flood pacing on a real GPU (2026-11-12)
+
+The maintainer's machine: CachyOS, Wayland, AMD GPU, 60 Hz monitor, window
+3600 × 2200 px, the `view` configuration above, 40 MB at 7 MB/s:
+
+| policy | frame rate | frame gaps, ms | irregular gaps | CPU, ms/MB |
+|---|---:|---|---:|---:|
+| smooth (default) | 60 fps | 16 / 16.8 / 17.2 (p10/p50/p90) | 1–3 % | 118 |
+| balanced | 30 fps | 33 | 12–16 % | 74–80 |
+| efficient (removed) | 20 fps | 35 / 50 / 67, alternating | 44–50 % | 57–61 |
+
+With a GPU every view frame fits in a vsync, so `smooth` and `balanced`
+paint on their vsyncs. `efficient` (every third vsync) missed about every
+third due vsync, so its gaps alternated between 50 and 67 ms. It was
+removed, and `smooth` became the default (ADR 0011, amendment "real-GPU
+pacing"). To reproduce:
 
 ```sh
-mise run bench:firehose -- --configs "no view,blank,view" --pacing smooth,balanced,efficient --runs 3
+mise run bench:firehose -- --configs "no view,blank,view" --pacing smooth,balanced --runs 3
 ```

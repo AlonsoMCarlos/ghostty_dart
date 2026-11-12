@@ -79,14 +79,14 @@ final class GhosttySubject implements BenchSubject {
   /// Creates the 200×60 controller.
   GhosttySubject({
     this.textRendering = VtTextRendering.atlas,
-    this.floodPacing = VtFloodPacing.balanced,
+    this.floodPacing = VtFloodPacing.smooth,
   });
 
   /// The text path (the view's default is the atlas).
   final VtTextRendering textRendering;
 
   /// How often the view paints while output floods it (the view's
-  /// default is [VtFloodPacing.balanced]).
+  /// default is [VtFloodPacing.smooth]).
   final VtFloodPacing floodPacing;
 
   final _controller = VtTerminalController(cols: benchCols, rows: benchRows);

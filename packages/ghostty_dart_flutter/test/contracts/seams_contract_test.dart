@@ -80,19 +80,19 @@ void main() {
     });
 
     test('flood frames are a whole number of vsyncs apart', () {
+      expect(_seams().floodPacing, VtFloodPacing.smooth); // the default
       int vsyncs(VtFloodPacing pacing, double hz) =>
           ControllerSeams.floodVsyncs(pacing, hz);
-      for (final (hz, smooth, balanced, efficient) in const [
-        (60.0, 1, 2, 3),
-        (120.0, 2, 4, 6),
-        (144.0, 2, 5, 7),
-        (90.0, 2, 3, 5),
-        (0.0, 1, 2, 3), // unknown: 60 Hz
-        (double.nan, 1, 2, 3),
+      for (final (hz, smooth, balanced) in const [
+        (60.0, 1, 2),
+        (120.0, 2, 4),
+        (144.0, 2, 5),
+        (90.0, 2, 3),
+        (0.0, 1, 2), // unknown: 60 Hz
+        (double.nan, 1, 2),
       ]) {
         expect(vsyncs(VtFloodPacing.smooth, hz), smooth, reason: '$hz Hz');
         expect(vsyncs(VtFloodPacing.balanced, hz), balanced, reason: '$hz');
-        expect(vsyncs(VtFloodPacing.efficient, hz), efficient, reason: '$hz');
       }
       expect(
         ControllerSeams.floodFrameInterval(VtFloodPacing.balanced, 120),
@@ -104,7 +104,8 @@ void main() {
     testWidgets('while flooded, notifies every listener once, at the start '
         'of the frame the pacing allows', (tester) async {
       {
-        final seams = _seams(); // balanced, 60 Hz: every second vsync
+        // Balanced at 60 Hz: every second vsync.
+        final seams = _seams()..floodPacing = VtFloodPacing.balanced;
         final period = ControllerSeams.vsyncPeriod(60);
         final calls = <String>[];
         seams
@@ -168,15 +169,15 @@ void main() {
     ) async {
       {
         final seams = _seams()
-          ..floodPacing = VtFloodPacing.efficient
-          ..refreshRate = 120; // every sixth vsync
+          ..floodPacing = VtFloodPacing.balanced
+          ..refreshRate = 120; // every fourth vsync
         final period = ControllerSeams.vsyncPeriod(120);
         var notified = 0;
         seams
           ..addListener(() => notified++)
           ..painted(flooded: true)
           ..controller.write('a');
-        for (var vsync = 1; vsync < 6; vsync++) {
+        for (var vsync = 1; vsync < 4; vsync++) {
           await tester.pump(period);
           expect(notified, 0, reason: 'vsync $vsync');
         }
