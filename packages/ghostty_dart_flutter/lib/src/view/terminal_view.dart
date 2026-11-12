@@ -16,6 +16,7 @@ import '../seams/controller_seams.dart';
 import '../seams/read_only_seams.dart';
 import '../seams/terminal_geometry.dart';
 import '../seams/terminal_seams.dart';
+import 'flood_pacing.dart';
 import 'terminal_semantics.dart';
 
 /// A terminal view: draws a [VtTerminalController]'s terminal and sends the
@@ -111,6 +112,7 @@ class VtTerminalView extends StatefulWidget {
     this.announceOutput = false,
     this.textRendering = VtTextRendering.atlas,
     this.cacheBudget = defaultCacheBudget,
+    this.floodPacing = VtFloodPacing.balanced,
     this.onTerminalKey,
     this.onTerminalText,
     this.mouseReportFilter,
@@ -290,6 +292,20 @@ class VtTerminalView extends StatefulWidget {
   /// released when the view is hidden for a few seconds, on memory
   /// pressure (all but what the screen shows), and when the font changes.
   final int cacheBudget;
+
+  /// How often the view paints while a program floods it with output
+  /// (every visible row new in each of the last two frames, as `tree` or
+  /// `cat` of a large log do): [VtFloodPacing.balanced] by default, at
+  /// most about 30 evenly spaced frames a second.
+  ///
+  /// Each frame then draws a whole new screen of text nobody can read,
+  /// and costs CPU to draw and present; the policy trades the smoothness
+  /// of that scroll ([VtFloodPacing.smooth], about 60 frames a second)
+  /// against CPU ([VtFloodPacing.efficient], about 20). Typing,
+  /// full-screen programs, slower output and the first change after a
+  /// pause paint at the next vsync with every policy. See
+  /// [VtFloodPacing].
+  final VtFloodPacing floodPacing;
 
   /// Called for every key press and repeat the view would encode or leave
   /// to the platform text input, after [onKeyEvent], the [shortcuts] and
@@ -606,6 +622,19 @@ class VtTerminalViewState extends State<VtTerminalView> {
     _tapDown = null;
   }
 
+  // The refresh rate of the display the view is on; 0 (unknown) when the
+  // platform does not say, which the seams read as 60 Hz.
+  static double _refreshRate(BuildContext context) {
+    final view = View.maybeOf(context);
+    if (view == null) return 0;
+    try {
+      return view.display.refreshRate;
+    } on Object {
+      // A view whose display the engine has not reported yet.
+      return 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
@@ -619,6 +648,11 @@ class VtTerminalViewState extends State<VtTerminalView> {
         TextScaler.noScaling;
     final style = VtTerminalView.defaultTextStyle.merge(widget.textStyle);
     final metrics = _measure(style, dpr, scaler);
+    // Read on every build: a window moved to another display changes its
+    // metrics, which rebuilds the view through MediaQuery.
+    _seams
+      ..floodPacing = widget.floodPacing
+      ..refreshRate = _refreshRate(context);
 
     Widget view = LayoutBuilder(
       builder: (context, constraints) {

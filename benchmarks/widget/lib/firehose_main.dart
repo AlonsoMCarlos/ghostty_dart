@@ -26,17 +26,21 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' show Timeline;
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
 
 import 'src/firehose.dart';
 import 'src/frame_streams.dart';
+import 'src/report.dart' show frameGapRegularity;
 import 'src/subjects.dart';
 
 /// MB (10^6 bytes) of `tree -C` output per run.
@@ -72,14 +76,12 @@ const _configs = String.fromEnvironment(
   defaultValue: 'no view,blank,view',
 );
 
-/// How often the `blank` configuration repaints while output arrives: the
-/// view's flood cadence (`ControllerSeams.floodInterval`, then
-/// `sustainedFloodInterval` once the flood has lasted
-/// `sustainedFloodAfter`; internal to ghostty_dart_flutter), counted the
-/// same way, from the last paint or repaint request.
-const _blankInterval = Duration(milliseconds: 25);
-const _blankSustainedInterval = Duration(milliseconds: 60);
-const _blankSustainedAfter = Duration(seconds: 1);
+/// The flood pacing policies (`VtFloodPacing` names) the `blank` and
+/// `view` configurations run with, comma-separated, in order.
+const _pacings = String.fromEnvironment(
+  'FIREHOSE_PACING',
+  defaultValue: 'smooth,balanced,efficient',
+);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -116,6 +118,7 @@ Future<void> main() async {
     'grid': '$benchCols x $benchRows',
     'dpr': PlatformDispatcher.instance.views.first.devicePixelRatio,
     'window px': _windowSize(),
+    'refresh Hz': PlatformDispatcher.instance.views.first.display.refreshRate,
     'display': _display(),
     'Dart': Platform.version.split(' ').first,
     'OS': Platform.operatingSystemVersion,
@@ -131,16 +134,29 @@ Future<void> main() async {
       exit(2);
     }
   }
+  final pacings = <VtFloodPacing>[];
+  for (final name in _pacings.split(',')) {
+    if (name.trim().isEmpty) continue;
+    final pacing = VtFloodPacing.values.asNameMap()[name.trim()];
+    if (pacing == null) {
+      stderr.writeln('unknown FIREHOSE_PACING entry: $name');
+      exit(2);
+    }
+    pacings.add(pacing);
+  }
+  if (pacings.isEmpty) pacings.add(VtFloodPacing.balanced);
   for (var run = 1; run <= _runs; run++) {
     int? noViewUiMs;
     for (final config in configs) {
-      final result = await _run(host, data, config: config);
-      final uiMs = result['ui thread ms']! as int;
-      final frames = result['frames']! as int;
-      if (config == 'no view') noViewUiMs = uiMs;
-      stdout.writeln(
-        'FIREHOSE ${jsonEncode({'run': run, ...result, if (config != 'no view' && noViewUiMs != null && frames > 0) 'ui ms/frame over no view': _round((uiMs - noViewUiMs) / frames)})}',
-      );
+      for (final pacing in config == 'no view' ? [null] : pacings) {
+        final result = await _run(host, data, config: config, pacing: pacing);
+        final uiMs = result['ui thread ms']! as int;
+        final frames = result['frames']! as int;
+        if (config == 'no view') noViewUiMs = uiMs;
+        stdout.writeln(
+          'FIREHOSE ${jsonEncode({'run': run, ...result, if (config != 'no view' && noViewUiMs != null && frames > 0) 'ui ms/frame over no view': _round((uiMs - noViewUiMs) / frames)})}',
+        );
+      }
     }
   }
   exit(0);
@@ -150,10 +166,15 @@ Future<Map<String, Object>> _run(
   ValueNotifier<Widget> host,
   Uint8List data, {
   required String config,
+  required VtFloodPacing? pacing,
 }) async {
-  final subject = GhosttySubject();
-  final dpr = PlatformDispatcher.instance.views.first.devicePixelRatio;
-  final blank = _BlankClock();
+  final subject = GhosttySubject(floodPacing: pacing ?? VtFloodPacing.balanced);
+  final view = PlatformDispatcher.instance.views.first;
+  final dpr = view.devicePixelRatio;
+  final blank = _BlankClock(
+    pacing ?? VtFloodPacing.balanced,
+    view.display.refreshRate,
+  );
   host.value = switch (config) {
     'view' => subject.build(_style, dpr),
     'blank' => _BlankFrames(blank, ghosttyGridSize(_style, dpr)),
@@ -203,13 +224,20 @@ Future<Map<String, Object>> _run(
     build += t.buildDuration.inMicroseconds;
     raster += t.rasterDuration.inMicroseconds;
   }
-  final gaps = [
+  List<int> gapsOf(FramePhase phase) => [
     for (var i = 1; i < timings.length; i++)
-      timings[i].timestampInMicroseconds(FramePhase.buildStart) -
-          timings[i - 1].timestampInMicroseconds(FramePhase.buildStart),
+      timings[i].timestampInMicroseconds(phase) -
+          timings[i - 1].timestampInMicroseconds(phase),
   ]..sort();
-  double gapMs(double q) =>
-      gaps.isEmpty ? 0 : gaps[((gaps.length - 1) * q).round()] / 1000;
+  final gaps = gapsOf(FramePhase.buildStart);
+  final presents = gapsOf(FramePhase.rasterFinish);
+  double quantileMs(List<int> sorted, double q) =>
+      sorted.isEmpty ? 0 : sorted[((sorted.length - 1) * q).round()] / 1000;
+  double gapMs(double q) => quantileMs(gaps, q);
+  final regularity = frameGapRegularity(
+    gaps,
+    vsyncPeriod: _vsyncPeriod(view.display.refreshRate),
+  );
   final megabytes = data.length / 1e6;
   final seconds = clock.elapsedMicroseconds / 1e6;
   return {
@@ -230,6 +258,14 @@ Future<Map<String, Object>> _run(
       _round(gapMs(0.1)),
       _round(gapMs(0.5)),
       _round(gapMs(0.9)),
+    ],
+    'pacing': ?pacing?.name,
+    'frame gap jitter ms': _round(regularity.jitterMs),
+    'frame gap irregular %': _round(regularity.irregularPercent),
+    'present gap ms p10/p50/p90': [
+      _round(quantileMs(presents, 0.1)),
+      _round(quantileMs(presents, 0.5)),
+      _round(quantileMs(presents, 0.9)),
     ],
     'rss start MiB': rss0 >> 20,
     'rss peak MiB': peakRss >> 20,
@@ -274,50 +310,90 @@ String _mainThreadName() {
   return file.readAsStringSync().trim().replaceAll(RegExp('[0-9]+'), '#');
 }
 
+/// The time between two vsyncs at [refreshRate] Hz, 60 Hz when unknown:
+/// as the view's seams count it (`ControllerSeams.vsyncPeriod`, internal
+/// to ghostty_dart_flutter).
+Duration _vsyncPeriod(double refreshRate) {
+  final hz = refreshRate.isFinite && refreshRate >= 24
+      ? math.min(refreshRate, 1000.0)
+      : 60.0;
+  return Duration(microseconds: (1e6 / hz).round());
+}
+
 /// Drives the `blank` configuration: [changed] after each write asks for
-/// a repaint, at most once per [_blankInterval] (later
-/// [_blankSustainedInterval]) after the last paint or repaint request, as
-/// the view's seams do in a flood.
+/// a repaint at the start of the frame a whole number of vsyncs after the
+/// last paint, the view's flood pacing (`ControllerSeams`, ADR 0011,
+/// amendment of 2026-11-12: a timer wakes up in the vsync period before
+/// the due vsync and schedules a frame callback).
 final class _BlankClock {
+  _BlankClock(VtFloodPacing pacing, double refreshRate)
+    : _period = _vsyncPeriod(refreshRate),
+      _vsyncs = math.max(
+        1,
+        (1e6 /
+                _vsyncPeriod(refreshRate).inMicroseconds /
+                pacing.maxFramesPerSecond)
+            .round(),
+      );
+
   final repaints = ValueNotifier(0);
-  final _sinceEvent = Stopwatch()..start();
-  final _age = Stopwatch();
+  final Duration _period;
+  final int _vsyncs;
+  Duration? _lastFrame;
   Timer? _timer;
+  int? _frame;
+
+  static Duration _now() => Duration(microseconds: Timeline.now);
 
   void changed() {
-    if (_timer != null) return;
-    if (!_age.isRunning) _age.start();
-    final interval = _age.elapsed >= _blankSustainedAfter
-        ? _blankSustainedInterval
-        : _blankInterval;
-    final wait = interval - _sinceEvent.elapsed;
+    if (_timer != null || _frame != null) return;
+    final last = _lastFrame;
+    final margin = _period ~/ 8 > const Duration(milliseconds: 1)
+        ? _period ~/ 8
+        : const Duration(milliseconds: 1);
+    final wait = last == null
+        ? Duration.zero
+        : last + _period * (_vsyncs - 1) + margin - _now();
     if (wait <= Duration.zero) {
-      _repaint();
+      _request();
     } else {
-      _timer = Timer(wait, () {
-        _timer = null;
-        _repaint();
-      });
+      _timer = Timer(
+        Duration(milliseconds: (wait.inMicroseconds + 999) ~/ 1000),
+        () {
+          _timer = null;
+          _request();
+        },
+      );
     }
   }
 
-  void _repaint() {
-    _restart();
-    repaints.value++;
+  void _request() {
+    _frame = SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _frame = null;
+      _lastFrame = _frameTime();
+      repaints.value++;
+    });
   }
 
-  void _restart() => _sinceEvent
-    ..reset()
-    ..start();
+  Duration _frameTime() {
+    final now = _now();
+    final age = now - SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    return age.isNegative || age > const Duration(seconds: 1) ? now : now - age;
+  }
 
   void painted() {
-    _restart();
     _timer?.cancel();
     _timer = null;
+    final frame = _frame;
+    if (frame != null) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(frame);
+      _frame = null;
+    }
+    _lastFrame = _frameTime();
   }
 
   void dispose() {
-    _timer?.cancel();
+    painted();
     repaints.dispose();
   }
 }

@@ -3,6 +3,8 @@
 /// Pure Dart (no `dart:ui`), so the driver script on the host can use it.
 library;
 
+import 'dart:math' as math;
+
 /// Report key of one measured run: `<scenario>__<subject>__p<pass>`,
 /// file-name safe.
 String reportKey(String scenario, String subject, int pass) =>
@@ -120,6 +122,36 @@ int percentile(List<int> sorted, double p) {
   if (sorted.isEmpty) throw ArgumentError.value(sorted, 'sorted', 'empty');
   final rank = (sorted.length * p / 100).ceil().clamp(1, sorted.length);
   return sorted[rank - 1];
+}
+
+/// How regular the gaps between frames are (the firehose benchmark).
+///
+/// [jitterMs] is the standard deviation of the gaps, in ms.
+/// [irregularPercent] is the share of gaps, in percent, that are not the
+/// median gap's whole number of vsyncs (a gap rounded to vsyncs of
+/// [vsyncPeriod] differs from the median's): the outliers a viewer sees as
+/// jumps, such as one 33 ms gap among 16.7 ms ones. Both are 0 with fewer
+/// than two gaps.
+({double jitterMs, double irregularPercent}) frameGapRegularity(
+  List<int> gapsMicros, {
+  required Duration vsyncPeriod,
+}) {
+  if (gapsMicros.length < 2) return (jitterMs: 0, irregularPercent: 0);
+  final n = gapsMicros.length;
+  final mean = gapsMicros.reduce((a, b) => a + b) / n;
+  var squares = 0.0;
+  for (final gap in gapsMicros) {
+    squares += (gap - mean) * (gap - mean);
+  }
+  final period = vsyncPeriod.inMicroseconds;
+  int vsyncs(int gap) => (gap / period).round();
+  final sorted = [...gapsMicros]..sort();
+  final typical = vsyncs(sorted[(n - 1) ~/ 2]);
+  final irregular = gapsMicros.where((gap) => vsyncs(gap) != typical).length;
+  return (
+    jitterMs: math.sqrt(squares / n) / 1000,
+    irregularPercent: 100 * irregular / n,
+  );
 }
 
 /// The median of [values] (mean of the middle two for an even count).

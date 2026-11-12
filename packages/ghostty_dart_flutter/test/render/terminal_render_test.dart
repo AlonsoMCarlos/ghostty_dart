@@ -526,37 +526,74 @@ void main() {
     String screenful(int frame) =>
         [for (var i = 0; i < 10; i++) '\r\nframe $frame line $i'].join();
 
-    testWidgets('output that scrolls a screen per frame paints at most '
-        'every floodInterval', (tester) async {
+    testWidgets('output that scrolls a screen per frame paints on the '
+        'pacing\'s vsyncs', (tester) async {
       final h = await pumpRenderer(tester, initial: 'start');
+      final period = ControllerSeams.vsyncPeriod(60);
       await h.write(screenful(1));
       expect(h.render.debugFlooded, isFalse); // one frame is not a flood
       await h.write(screenful(2));
       expect(h.render.debugFlooded, isTrue);
 
+      // Balanced at 60 Hz (the default): every second vsync.
       final scans = h.render.debugRowScans;
       h.controller.write(screenful(3));
       expect(h.render.debugNeedsPaint, isFalse);
       expect(h.seams.debugNotificationPending, isTrue);
-      await tester.pump();
+      await tester.pump(period);
       expect(h.render.debugRowScans, scans); // not painted at this vsync
       h.controller.write(screenful(4)); // coalesced into the same frame
-      await tester.pump(ControllerSeams.floodInterval);
+      await tester.pump(period);
       expect(h.render.debugRowScans, scans + 5);
       expect(h.seams.isDisposed, isFalse);
       expect(h.render.debugFlooded, isTrue);
     });
 
-    testWidgets('after a pause the first change paints at once', (
+    for (final pacing in VtFloodPacing.values) {
+      for (final hz in const [60.0, 120.0, 144.0]) {
+        testWidgets('a steady flood paints once every '
+            '${ControllerSeams.floodVsyncs(pacing, hz)} vsyncs '
+            '(${pacing.name}, $hz Hz)', (tester) async {
+          final h = await pumpRenderer(tester, initial: 'start');
+          h.seams
+            ..floodPacing = pacing
+            ..refreshRate = hz;
+          final period = ControllerSeams.vsyncPeriod(hz);
+          final vsyncs = ControllerSeams.floodVsyncs(pacing, hz);
+          // A program writing a screenful between every two vsyncs: each
+          // pump is one vsync.
+          final painted = <int>[];
+          for (var vsync = 0; vsync < 12 * vsyncs; vsync++) {
+            final scans = h.render.debugRowScans;
+            h.controller.write(screenful(vsync));
+            await tester.pump(period);
+            if (h.render.debugRowScans != scans) painted.add(vsync);
+          }
+          // After the two frames that detect the flood, frames are exactly
+          // `vsyncs` apart: no gap of twice the interval.
+          final steady = painted.skip(2).toList();
+          expect(steady.length, greaterThanOrEqualTo(8));
+          for (var i = 1; i < steady.length; i++) {
+            expect(
+              steady[i] - steady[i - 1],
+              vsyncs,
+              reason: 'frames at vsyncs $painted',
+            );
+          }
+        });
+      }
+    }
+
+    testWidgets('after a pause the first change paints at the next vsync', (
       tester,
     ) async {
       final h = await pumpRenderer(tester, initial: 'start');
       await h.write(screenful(1));
       await h.write(screenful(2));
       expect(h.render.debugFlooded, isTrue);
-      // The interval since the last paint is measured on the test's fake
-      // clock (flutter_test_config.dart), which only pump advances.
-      await tester.pump(ControllerSeams.floodInterval * 1.5);
+      // The pacing is measured on the test's fake clock
+      // (flutter_test_config.dart), which only pump advances.
+      await tester.pump(ControllerSeams.vsyncPeriod(60) * 3);
       final scans = h.render.debugRowScans;
       await h.write('x');
       expect(h.render.debugRowScans, greaterThan(scans));

@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:developer' show Timeline;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
 import '../controller/controller_internals.dart';
 import '../controller/terminal_controller.dart';
 import '../theme/terminal_theme.dart';
+import '../view/flood_pacing.dart';
 import 'terminal_geometry.dart';
 import 'terminal_seams.dart';
 
@@ -40,69 +44,83 @@ final class ControllerSeams
   // listeners (the renderer, the scrollbar, the pointer and text input
   // layers), so a flood can delay all of them together (see [painted]).
 
-  /// The shortest time from a paint, or from the last notification, to
-  /// the next notification while output floods the view, during the
-  /// first [sustainedFloodAfter] of a flood: 25 ms (ADR 0011, amendments
-  /// of 2026-11-12). The frame that notification schedules starts at the
-  /// next vsync, so a flood is painted about 30 times a second on 60 and
-  /// 120 Hz displays (every second or fourth vsync) and 36 on 144 Hz.
+  /// How often the view paints while output floods it; the view sets it
+  /// from `VtTerminalView.floodPacing` on every build.
   ///
   /// In a flood every frame draws a whole new screen, and every listener
   /// that schedules a frame (the scrollbar follows the growing
   /// scrollback, the pointer and IME layers follow the cursor) would make
   /// the view paint at the display's refresh rate for text nobody can
-  /// read. Changes after a pause, and output that does not replace every
-  /// row (full-screen programs, slower scrolling), are delivered at once
-  /// as before.
-  static const floodInterval = Duration(milliseconds: 25);
+  /// read; on Linux each of those frames also costs the UI thread the
+  /// embedder's present (ADR 0011, amendments of 2026-11-12). Changes
+  /// after a pause, and output that does not replace every row
+  /// (full-screen programs, slower scrolling), are delivered at once as
+  /// before.
+  VtFloodPacing floodPacing = VtFloodPacing.balanced;
 
-  /// How long a flood lasts before [sustainedFloodInterval] replaces
-  /// [floodInterval]: 1 second. Bursts shorter than that (a long `ls`, a
-  /// build log) keep the smoother rate.
-  static const sustainedFloodAfter = Duration(seconds: 1);
+  /// The display's refresh rate in Hz (`FlutterView.display.refreshRate`);
+  /// the view sets it on every build. Values the platform reports as
+  /// unknown (0) or implausible count as 60 Hz ([vsyncPeriod]).
+  double refreshRate = 60;
 
-  /// [floodInterval] once a flood has lasted [sustainedFloodAfter]: 60 ms,
-  /// about 15 frames a second at 60, 120 and 144 Hz (every fourth, eighth
-  /// or ninth vsync).
+  /// The time between two vsyncs at [refreshRate] Hz: 60 Hz when the
+  /// rate is unknown (Flutter reports 0) or below 24 Hz, at most 1000 Hz.
+  static Duration vsyncPeriod(double refreshRate) {
+    final hz = refreshRate.isFinite && refreshRate >= 24
+        ? math.min(refreshRate, 1000.0)
+        : 60.0;
+    return Duration(microseconds: (1e6 / hz).round());
+  }
+
+  /// How many vsyncs a flood frame waits after the previous frame under
+  /// [pacing] on a display of [refreshRate] Hz: the refresh rate divided
+  /// by [VtFloodPacing.maxFramesPerSecond], rounded, at least one. For
+  /// [VtFloodPacing.smooth], [VtFloodPacing.balanced] and
+  /// [VtFloodPacing.efficient]: 1, 2 and 3 at 60 Hz; 2, 4 and 6 at
+  /// 120 Hz; 2, 5 and 7 at 144 Hz.
+  static int floodVsyncs(VtFloodPacing pacing, double refreshRate) {
+    final hz = 1e6 / vsyncPeriod(refreshRate).inMicroseconds;
+    return math.max(1, (hz / pacing.maxFramesPerSecond).round());
+  }
+
+  /// The time between flood frames under [pacing] at [refreshRate] Hz:
+  /// [floodVsyncs] vsync periods.
+  static Duration floodFrameInterval(
+    VtFloodPacing pacing,
+    double refreshRate,
+  ) => vsyncPeriod(refreshRate) * floodVsyncs(pacing, refreshRate);
+
+  /// The monotonic clock flood frames are scheduled on: microseconds on
+  /// Dart's timeline clock ([Timeline.now]), which is the clock of the
+  /// engine's vsync timestamps (`fml::TimePoint` takes its time from
+  /// Dart's timeline since the engine starts the VM,
+  /// `runtime/dart_vm_initializer.cc`, Flutter 3.47.9).
   ///
-  /// Each frame costs a fixed amount on the UI thread besides the view's
-  /// own work: on Linux the embedder presents it through GTK on that same
-  /// thread, and that took several times the view's ~1–2 ms per frame in
-  /// the firehose benchmark (ADR 0011, amendment of 2026-11-12, frame
-  /// cost). Text that scrolls a screen per frame for seconds is unreadable
-  /// at any rate, so a sustained flood shows its progress at a lower one.
-  static const sustainedFloodInterval = Duration(milliseconds: 60);
-
-  /// The monotonic clock the flood interval is measured with: the time
-  /// since an arbitrary fixed point, never going back.
-  ///
-  /// Defaults to a process-wide [Stopwatch]. Tests replace it with the
-  /// test's fake clock, so the interval advances only with `tester.pump`
-  /// and never depends on how fast the machine runs the test.
+  /// Tests replace it with the test's fake clock, which is also the clock
+  /// of the frames `tester.pump` draws, so the pacing advances only with
+  /// `tester.pump` and never depends on how fast the machine runs.
   @visibleForTesting
   static Duration Function() debugNow = _monotonicNow;
 
-  static final _monotonic = Stopwatch()..start();
-  static Duration _monotonicNow() => _monotonic.elapsed;
+  static Duration _monotonicNow() => Duration(microseconds: Timeline.now);
 
   final _listeners = <VoidCallback>[];
   bool _listening = false;
   bool _flooded = false;
 
-  /// When the current flood started (the first paint that reported one,
-  /// on [debugNow]'s clock); null while not flooded.
-  Duration? _floodStart;
+  /// The vsync time of the last frame that painted the view or received
+  /// a flood notification, on [debugNow]'s clock; null until the first
+  /// flooded paint. Flood frames are counted in vsyncs from it, so a
+  /// notification that waits for a slow frame never schedules another
+  /// one before that frame's interval has passed.
+  Duration? _lastFrame;
 
-  /// When the last paint or the last notification happened, whichever
-  /// came later (on [debugNow]'s clock): while flooded, notifications are
-  /// at least [floodInterval] (or [sustainedFloodInterval]) apart from
-  /// both. Counting from the notification too matters when frames are
-  /// slower than the interval (a large window, a slow GPU, a software
-  /// renderer): without it every write between the notification and the
-  /// paint it scheduled would notify again (one round of listeners per
-  /// pty read, thousands a second) for frames that were already coming.
-  Duration _lastEvent = Duration.zero;
+  /// Wakes up within the vsync period before the next flood frame is due
+  /// and requests that frame ([_floodFrame]).
   Timer? _floodTimer;
+
+  /// The frame callback that delivers a flood notification, if requested.
+  int? _floodFrame;
 
   @override
   void addListener(VoidCallback listener) {
@@ -121,55 +139,107 @@ final class ControllerSeams
     if (_listeners.isEmpty && _listening) {
       _listening = false;
       controller.removeListener(_onControllerChanged);
-      _cancelFloodTimer();
+      _cancelFlood();
     }
   }
 
   @override
   void painted({required bool flooded}) {
-    final now = debugNow();
     _flooded = flooded;
-    _floodStart = flooded ? (_floodStart ?? now) : null;
-    _cancelFloodTimer();
-    _lastEvent = now;
+    _cancelFlood();
+    if (flooded) _lastFrame = _frameTime();
   }
 
   void _onControllerChanged() {
-    if (_flooded) {
-      if (_floodTimer != null) return;
-      final now = debugNow();
-      final wait = _intervalAt(now) - (now - _lastEvent);
-      if (wait > Duration.zero) {
-        _floodTimer = Timer(wait, _onFloodTimer);
-        return;
-      }
+    if (!_flooded) {
+      _notifyListeners();
+      return;
     }
-    _notifyListeners();
+    if (debugNotificationPending) return;
+    final last = _lastFrame;
+    final now = debugNow();
+    // Asking for a frame at any time during the vsync period before the
+    // due vsync gets exactly that vsync, so the timer wakes up early in
+    // that period and may run late by most of it (the UI thread may be
+    // busy) without missing it. The margin (an eighth of a period, at
+    // least 1 ms) keeps the request after the previous vsync if the
+    // refresh rate or the frame's timestamp is slightly off; the wait is
+    // rounded up because Dart timers count whole milliseconds.
+    final period = vsyncPeriod(refreshRate);
+    final margin = period ~/ 8 > _minMargin ? period ~/ 8 : _minMargin;
+    final wait = last == null
+        ? Duration.zero
+        : last +
+              period * (floodVsyncs(floodPacing, refreshRate) - 1) +
+              margin -
+              now;
+    if (wait <= Duration.zero) {
+      _requestFloodFrame();
+    } else {
+      _floodTimer = Timer(
+        Duration(milliseconds: (wait.inMicroseconds + 999) ~/ 1000),
+        _onFloodTimer,
+      );
+    }
   }
 
-  Duration _intervalAt(Duration now) =>
-      now - (_floodStart ?? now) >= sustainedFloodAfter
-      ? sustainedFloodInterval
-      : floodInterval;
+  static const _minMargin = Duration(milliseconds: 1);
 
   void _onFloodTimer() {
     _floodTimer = null;
+    _requestFloodFrame();
+  }
+
+  void _requestFloodFrame() {
+    _floodFrame = SchedulerBinding.instance.scheduleFrameCallback(
+      _onFloodFrameStart,
+    );
+  }
+
+  // At the start of the frame, before it builds, lays out and paints:
+  // every listener's change lands in this frame.
+  void _onFloodFrameStart(Duration _) {
+    _floodFrame = null;
+    _lastFrame = _frameTime();
     _notifyListeners();
   }
 
-  void _cancelFloodTimer() {
+  /// The vsync time of the frame being drawn on [debugNow]'s clock, or
+  /// now outside a frame (and if the scheduler's timestamp is not on that
+  /// clock, which the sanity check catches).
+  Duration _frameTime() {
+    final now = debugNow();
+    final scheduler = SchedulerBinding.instance;
+    switch (scheduler.schedulerPhase) {
+      case SchedulerPhase.idle || SchedulerPhase.postFrameCallbacks:
+        return now;
+      case SchedulerPhase.transientCallbacks ||
+          SchedulerPhase.midFrameMicrotasks ||
+          SchedulerPhase.persistentCallbacks:
+        final vsync = scheduler.currentSystemFrameTimeStamp;
+        final age = now - vsync;
+        return age.isNegative || age > const Duration(seconds: 1) ? now : vsync;
+    }
+  }
+
+  void _cancelFlood() {
     _floodTimer?.cancel();
     _floodTimer = null;
+    final frame = _floodFrame;
+    if (frame != null) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(frame);
+      _floodFrame = null;
+    }
   }
 
   /// Whether a delayed notification is pending (tests).
   @visibleForTesting
-  bool get debugNotificationPending => _floodTimer != null;
+  bool get debugNotificationPending =>
+      _floodTimer != null || _floodFrame != null;
 
   // As ChangeNotifier does: a listener removed by an earlier one is not
   // called, and an error in one is reported without skipping the others.
   void _notifyListeners() {
-    _lastEvent = debugNow();
     for (final listener in List.of(_listeners)) {
       if (!_listeners.contains(listener)) continue;
       try {
@@ -209,7 +279,7 @@ final class ControllerSeams
   /// (deactivate) and when it is disposed; its next paint, if any, takes
   /// ownership again.
   void release() {
-    _cancelFloodTimer();
+    _cancelFlood();
     if (!isDisposed && identical(_internals.frameOwner, this)) {
       _internals.frameOwner = null;
     }

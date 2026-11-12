@@ -682,6 +682,7 @@ Linux only (it reads `/proc`), on a display:
 ```sh
 mise run bench:firehose                       # 40 MB at 7 MB/s, 3 runs
 mise run bench:firehose -- --rate 0 --runs 1  # as fast as it is taken
+mise run bench:firehose -- --configs "no view,view" --pacing balanced  # one policy
 xvfb-run -a -s "-screen 0 2560x1600x24" mise run bench:firehose   # headless
 ```
 
@@ -705,7 +706,9 @@ xvfb-run -a -s "-screen 0 2560x1600x24" mise run bench:firehose   # headless
   12 px, atlas path). On Linux the UI isolate runs on the platform thread,
   which also presents every frame through GTK, so `blank` is the per-frame
   floor no terminal widget can go under; `view` minus `blank` is the
-  view's own cost.
+  view's own cost. `blank` and `view` run once per `VtFloodPacing` policy
+  (`--pacing`, default `smooth,balanced,efficient`); `blank` repaints with
+  the same vsync pacing as the view's seams.
 - **Reported:** wall time, process CPU (`/proc/self/stat`) and CPU per
   thread name (`/proc/self/task/*/stat`), frames and build/raster time per
   frame (`FrameTiming`), frame interval percentiles, RSS at start, peak
@@ -715,7 +718,12 @@ xvfb-run -a -s "-screen 0 2560x1600x24" mise run bench:firehose   # headless
   that minus the same run's `no view`, per frame. The `FIREHOSE_ENV` line
   adds `window px` (what the embedder presents each frame) and `display`
   (`x11` or `wayland`: on X11, Flutter's Linux embedder copies every frame
-  through the CPU, `fl_view_renderer.cc` at the pinned engine).
+  through the CPU, `fl_view_renderer.cc` at the pinned engine) and
+  `refresh Hz` (`display.refreshRate`; 0 under Xvfb, read as 60). Cadence:
+  `frame gap jitter ms` is the standard deviation of the gaps between
+  frame starts, `frame gap irregular %` the share of gaps that are not the
+  median gap's whole number of vsyncs (the jumps a viewer sees), and
+  `present gap ms p10/p50/p90` the gaps between raster finishes.
 - **Harness cost:** the producer isolate (a `DartWorker` thread), its
   1 ms pacing timer (the `dart:io EventHandler` thread) and the message
   hop to the UI isolate are the harness's, in every configuration. A Dart
@@ -775,3 +783,28 @@ view's listeners on every write while a slow frame was pending (126 ms per
 MB (`pty_session_ack_output` wakes its reactor with a pipe write on every
 call). ADR 0011's amendment "frame cost and sustained floods" has the
 details.
+
+### Results, vsync-aligned flood pacing (2026-11-12)
+
+Same machine, Xvfb + llvmpipe, DPR 1 (window 1800 × 1100 px), 40 MB at
+7 MB/s, three runs per policy. `before` is the wall-clock timer (25 ms, then
+60 ms after a second); the policies are ADR 0011's amendment "vsync-aligned
+flood pacing". Ranges over runs:
+
+| | frames | gap p50, ms | jitter, ms | irregular % | ms/MB without llvmpipe |
+|---|---:|---:|---:|---:|---:|
+| view, before | 38–49 | 127–161 | 32–53 | 65–96 | 27–32 |
+| view, smooth | 88–154 | 33–53 | 15–35 | 31–74 | 42–60 |
+| view, balanced (default) | 86–104 | 56–66 | 10–28 | 29–78 | 41–47 |
+| view, efficient | 62–90 | 66–87 | 13–48 | 19–79 | 34–42 |
+| blank, balanced | 92–167 | 33–61 | 4–33 | 1–89 | 34–49 |
+
+Here a view frame does not fit in a 33 ms period (software raster, then
+GTK's present on the UI thread), so the policies converge near 15 fps; the
+`blank` runs (4 of 6 at ≤ 15 % irregular gaps, p50 33.3 ms) show the
+cadence when frames fit. The numbers that decide the default must come from
+a real GPU:
+
+```sh
+mise run bench:firehose -- --configs "no view,blank,view" --pacing smooth,balanced,efficient --runs 3
+```

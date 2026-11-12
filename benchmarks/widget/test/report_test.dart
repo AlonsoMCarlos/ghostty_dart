@@ -189,4 +189,35 @@ void main() {
     expect(report, contains('94/100 ⚠'));
     expect(report, contains('do not publish'));
   });
+
+  group('frameGapRegularity', () {
+    const vsync = Duration(microseconds: 16667);
+    test('a steady cadence has no jitter and no irregular gaps', () {
+      final r = frameGapRegularity([
+        33300,
+        33400,
+        33334,
+        33350,
+      ], vsyncPeriod: vsync);
+      expect(r.jitterMs, lessThan(0.1));
+      expect(r.irregularPercent, 0);
+    });
+
+    test('counts gaps of another whole number of vsyncs', () {
+      final r = frameGapRegularity([
+        33333,
+        33333,
+        66667,
+        33333,
+      ], vsyncPeriod: vsync);
+      expect(r.irregularPercent, 25);
+      expect(r.jitterMs, closeTo(14.43, 0.01));
+    });
+
+    test('is zero with fewer than two gaps', () {
+      final r = frameGapRegularity([50000], vsyncPeriod: vsync);
+      expect(r.jitterMs, 0);
+      expect(r.irregularPercent, 0);
+    });
+  });
 }

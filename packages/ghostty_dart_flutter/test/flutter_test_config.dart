@@ -1,11 +1,13 @@
 // Runs around every test file in this directory (flutter_test picks it up
 // by name).
 //
-// The view delays notifications while output floods it, measured on
-// ControllerSeams.debugNow (a monotonic clock). Inside testWidgets that
-// clock is the test's fake clock, so the flood interval advances only with
-// `tester.pump` and every test sees the same timings on a fast machine and
-// on a slow CI runner. Plain `test`s keep the real clock.
+// The view delays notifications while output floods it, to a frame a
+// whole number of vsyncs after the last paint, timed on
+// ControllerSeams.debugNow (the engine's vsync clock). Inside testWidgets
+// that clock is the test's fake clock, which is also the timestamp of the
+// frames tester.pump draws, so the pacing advances only with `tester.pump`
+// and every test sees the same timings on a fast machine and on a slow CI
+// runner. Plain `test`s keep the real clock.
 
 import 'dart:async';
 

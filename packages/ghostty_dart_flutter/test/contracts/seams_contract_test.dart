@@ -79,10 +79,33 @@ void main() {
       expect(notified, 1);
     });
 
-    testWidgets('while flooded, notifies every listener once per '
-        'floodInterval', (tester) async {
+    test('flood frames are a whole number of vsyncs apart', () {
+      int vsyncs(VtFloodPacing pacing, double hz) =>
+          ControllerSeams.floodVsyncs(pacing, hz);
+      for (final (hz, smooth, balanced, efficient) in const [
+        (60.0, 1, 2, 3),
+        (120.0, 2, 4, 6),
+        (144.0, 2, 5, 7),
+        (90.0, 2, 3, 5),
+        (0.0, 1, 2, 3), // unknown: 60 Hz
+        (double.nan, 1, 2, 3),
+      ]) {
+        expect(vsyncs(VtFloodPacing.smooth, hz), smooth, reason: '$hz Hz');
+        expect(vsyncs(VtFloodPacing.balanced, hz), balanced, reason: '$hz');
+        expect(vsyncs(VtFloodPacing.efficient, hz), efficient, reason: '$hz');
+      }
+      expect(
+        ControllerSeams.floodFrameInterval(VtFloodPacing.balanced, 120),
+        ControllerSeams.vsyncPeriod(120) * 4,
+      );
+      expect(ControllerSeams.vsyncPeriod(0).inMicroseconds, 16667);
+    });
+
+    testWidgets('while flooded, notifies every listener once, at the start '
+        'of the frame the pacing allows', (tester) async {
       {
-        final seams = _seams();
+        final seams = _seams(); // balanced, 60 Hz: every second vsync
+        final period = ControllerSeams.vsyncPeriod(60);
         final calls = <String>[];
         seams
           ..addListener(() => calls.add('render'))
@@ -93,12 +116,19 @@ void main() {
           ..write('b');
         expect(calls, isEmpty);
         expect(seams.debugNotificationPending, isTrue);
-        await tester.pump(ControllerSeams.floodInterval);
+        // The pacing runs on the test's fake clock (flutter_test_config
+        // .dart), which only pump advances; pump draws a frame only when
+        // one was scheduled, as vsync does.
+        await tester.pump(period);
+        expect(calls, isEmpty); // one vsync after the paint: too early
+        await tester.pump(period);
         expect(calls, ['render', 'scrollbar']);
+        expect(seams.debugNotificationPending, isFalse);
 
         // A paint cancels the pending notification (it showed the change);
         // not flooded, changes are delivered at once.
         seams.controller.write('c');
+        expect(seams.debugNotificationPending, isTrue);
         seams.painted(flooded: false);
         expect(seams.debugNotificationPending, isFalse);
         seams.controller.write('d');
@@ -107,60 +137,51 @@ void main() {
     });
 
     testWidgets('while flooded and waiting for a slow frame, writes do not '
-        'notify again before floodInterval', (tester) async {
+        'notify again before the next flood frame', (tester) async {
       {
-        final seams = _seams();
+        final seams = _seams()..floodPacing = VtFloodPacing.smooth;
+        final period = ControllerSeams.vsyncPeriod(60);
         var notified = 0;
         seams
           ..addListener(() => notified++)
           ..painted(flooded: true);
-        // The interval is measured on the test's fake clock
-        // (flutter_test_config.dart), which only pump advances.
-        await tester.pump(ControllerSeams.floodInterval * 1.5);
+        await tester.pump(period * 3); // a pause
         seams.controller.write('a');
+        // Due already: delivered at the start of the next frame.
+        expect(notified, 0);
+        await tester.pump();
         expect(notified, 1);
         // No paint follows (the frame is slow): the writes after that
-        // notification wait for an interval after it, not after the paint.
+        // notification wait for the vsync after its frame.
         seams.controller
           ..write('b')
           ..write('c');
         expect(notified, 1);
         expect(seams.debugNotificationPending, isTrue);
-        await tester.pump(ControllerSeams.floodInterval);
+        await tester.pump(period);
         expect(notified, 2);
       }
     });
 
-    testWidgets('a flood that lasts sustainedFloodAfter notifies once per '
-        'sustainedFloodInterval until it ends', (tester) async {
+    testWidgets('the pacing follows floodPacing and refreshRate', (
+      tester,
+    ) async {
       {
-        final seams = _seams();
+        final seams = _seams()
+          ..floodPacing = VtFloodPacing.efficient
+          ..refreshRate = 120; // every sixth vsync
+        final period = ControllerSeams.vsyncPeriod(120);
         var notified = 0;
         seams
           ..addListener(() => notified++)
-          ..painted(flooded: true);
-        // The flood's age is measured on the test's fake clock
-        // (flutter_test_config.dart), which only pump advances.
-        await tester.pump(ControllerSeams.sustainedFloodAfter);
-        seams
           ..painted(flooded: true)
           ..controller.write('a');
-        expect(seams.debugNotificationPending, isTrue);
-        await tester.pump(ControllerSeams.floodInterval);
-        expect(notified, 0);
-        await tester.pump(
-          ControllerSeams.sustainedFloodInterval -
-              ControllerSeams.floodInterval,
-        );
+        for (var vsync = 1; vsync < 6; vsync++) {
+          await tester.pump(period);
+          expect(notified, 0, reason: 'vsync $vsync');
+        }
+        await tester.pump(period);
         expect(notified, 1);
-
-        // The flood ends: the next one starts with floodInterval again.
-        seams
-          ..painted(flooded: false)
-          ..painted(flooded: true)
-          ..controller.write('b');
-        await tester.pump(ControllerSeams.floodInterval);
-        expect(notified, 2);
       }
     });
 

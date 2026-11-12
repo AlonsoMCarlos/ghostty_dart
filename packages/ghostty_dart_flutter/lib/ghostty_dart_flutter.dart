@@ -38,4 +38,5 @@ export 'src/input/keyboard/key_toolbar.dart' show VtTerminalKeyToolbar;
 export 'src/metrics/cell_metrics.dart' show VtCellMetrics;
 export 'src/render/text_rendering.dart' show VtTextRendering;
 export 'src/theme/terminal_theme.dart' show VtTerminalTheme;
+export 'src/view/flood_pacing.dart' show VtFloodPacing;
 export 'src/view/terminal_view.dart' show VtTerminalView, VtTerminalViewState;

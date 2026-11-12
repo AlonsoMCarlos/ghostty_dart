@@ -77,10 +77,17 @@ Size _xtermGridSize(TextStyle style) {
 /// [textRendering].
 final class GhosttySubject implements BenchSubject {
   /// Creates the 200×60 controller.
-  GhosttySubject({this.textRendering = VtTextRendering.atlas});
+  GhosttySubject({
+    this.textRendering = VtTextRendering.atlas,
+    this.floodPacing = VtFloodPacing.balanced,
+  });
 
   /// The text path (the view's default is the atlas).
   final VtTextRendering textRendering;
+
+  /// How often the view paints while output floods it (the view's
+  /// default is [VtFloodPacing.balanced]).
+  final VtFloodPacing floodPacing;
 
   final _controller = VtTerminalController(cols: benchCols, rows: benchRows);
 
@@ -99,6 +106,7 @@ final class GhosttySubject implements BenchSubject {
         controller: _controller,
         textStyle: style,
         textRendering: textRendering,
+        floodPacing: floodPacing,
       ),
     );
   }
