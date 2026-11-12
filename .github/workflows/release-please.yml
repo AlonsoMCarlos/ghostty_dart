@@ -107,6 +107,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # dispatch.sh checks that each tag is an ancestor of main: that needs
+          # main's history, not a depth-1 clone. With one release PR merged
+          # per push the tag was main's tip and a shallow clone sufficed; with
+          # several (one merge commit each) the earlier tags are not the tip
+          # and the check failed (2026-11-12, the three 0.1.1 releases).
+          fetch-depth: 0
       # One step per package of the config; dispatch.sh refuses any tag
       # outside the allow-list or off main.
       - name: Dispatch publish.yml on the new ghostty_dart tag (if it is on main)
