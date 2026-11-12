@@ -1,3 +1,19 @@
+# Changelog
+
+## [0.1.1](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart_flutter-v0.1.0...ghostty_dart_flutter-v0.1.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **ghostty_dart_flutter:** free the controller when a view leaves the tree ([e924817](https://github.com/AlonsoMCarlos/ghostty_dart/commit/e924817027e5f1dbb18ed9ded8a2e91af3312c9f))
+
+
+### Performance Improvements
+
+* **ghostty_dart_flutter:** cap the view's frame rate while output floods it ([77e26f6](https://github.com/AlonsoMCarlos/ghostty_dart/commit/77e26f629d29f9d6e67d7b4028502f3a2844dd19))
+* **ghostty_dart_flutter:** draw box-drawing characters from the glyph atlas ([cfcb639](https://github.com/AlonsoMCarlos/ghostty_dart/commit/cfcb6398fbf16ea2c2f88203fe639ecf73a50378))
+* **ghostty_dart_flutter:** fewer notifications and frames in sustained floods ([bedafb2](https://github.com/AlonsoMCarlos/ghostty_dart/commit/bedafb2f9617f32cca28e16ad9deb0895e6c2e0e))
+
 ## 0.1.0
 
 - First release. `VtTerminalView` renders a `VtTerminalController`'s terminal
