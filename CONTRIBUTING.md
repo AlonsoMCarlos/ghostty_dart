@@ -19,7 +19,7 @@ in `mise.toml` (Flutter and its Dart SDK, Zig, minisign, jq and others):
 ```sh
 mise install            # the pinned tools
 mise run deps           # flutter pub get --enforce-lockfile
-mise run native:host    # build libghostty-vt for this machine (tests need it)
+mise run native:host    # libghostty-vt for this machine (every test, demo and bench task needs it)
 mise run check          # everything CI runs
 ```
 

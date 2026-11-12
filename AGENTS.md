@@ -83,6 +83,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 mise install            # tools
 mise run deps           # flutter pub get --enforce-lockfile
 mise run native:host    # libghostty-vt for this machine -> .native-cache/host/ (needed by test)
+mise run native:require-host  # fails fast with that fix when .native-cache/host/ is empty; every task that runs the build hook depends on it
 mise run native:build   # libghostty-vt for any zig target (default x86_64-linux-gnu)
 mise run ffigen         # regenerate bindings
 mise run format
@@ -102,7 +103,7 @@ mise run pana [pkg...]  # pub.dev score of each publish archive (default: ghostt
 mise run publish:dry-run  # validate the three publish archives (run on committed changes)
 mise run docs:translations  # Spanish translations in sync with their English source
 mise run lint:ci        # actionlint + shellcheck
-mise run test:tool      # tests of the release tools and repo hygiene (nothing ignored, secret or >1 MiB is tracked)
+mise run test:tool      # tests of the release tools, repo hygiene (nothing ignored, secret or >1 MiB is tracked) and licence notices
 mise run native:release-asset <asset>  # one ADR 0008 asset -> .native-cache/release/
 mise run native:check <asset> [file]   # verify a release asset
 mise run native:ndk     # pinned Android NDK sysroot (Linux only)
@@ -177,6 +178,7 @@ Five members need the Flutter SDK: `packages/ghostty_dart_flutter`, `packages/gh
 This machine had a real compromise via build-time code (2026-08-20). Our build hook runs on users' machines, so it is held to the same standard.
 
 - The hook only downloads the pinned artefact for the target, verifies its sha256 against the value in source, and **fails closed**. It never runs downloaded code at build time and never resolves anything unpinned.
+- Licence notices travel with the code. `packages/ghostty_dart/NOTICES` holds the licence of every project compiled into the prebuilt libghostty-vt binaries (upstream's `deps/libghostty-vt-third-party.json`, `"use": "linked"`, plus the Zig runtime and the mingw-w64 / bionic start-up code of the Windows and Android binaries); `packages/ghostty_dart_xterm/NOTICES` holds xterm.dart's. Flutter reads a package's `NOTICES` instead of its `LICENSE` (flutter_tools `LicenseCollector`), so each `NOTICES` repeats the package's own `LICENSE`, which stays plain MIT for pana. `tool/test/notices_test.dart` (`test:tool`) fails if a notice goes missing. Update `NOTICES` whenever the pinned libghostty-vt, Zig or NDK changes.
 - Never commit `pubspec_overrides.yaml`, secrets, signing material or build output. `.gitignore` blocks them and `tool/test/repo_hygiene_test.dart` (`test:tool`) fails if one is tracked anyway. Published packages carry a `.pubignore` that keeps test-only assets out of the archive.
 - Every `pubspec.lock` is committed: the workspace's and `tool/pana/`'s.
 - Never run `dart pub upgrade` blindly. Review every lockfile diff.

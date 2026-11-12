@@ -14,6 +14,7 @@ program:
 Unofficial, not affiliated with the Ghostty project.
 
 ```sh
+mise run native:host         # once: libghostty-vt for this machine
 mise run demo:run            # Linux desktop, your $SHELL
 mise run demo:run --fake     # the fake shell
 mise run demo:run macos      # on a Mac

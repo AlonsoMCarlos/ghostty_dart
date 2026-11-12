@@ -285,3 +285,23 @@ String systemLibraryName(OS os) => switch (os) {
   OS.macOS || OS.iOS => 'libghostty-vt.1.dylib',
   _ => 'libghostty-vt.so.1',
 };
+
+/// The build hook's error message when the library that `source: path`
+/// names does not exist: [library] is the resolved file (see
+/// [localLibraryUri]), for [os].
+///
+/// It says how to fix it in both cases that happen: a fresh clone of the
+/// ghostty_dart repository, whose root pubspec points at
+/// `.native-cache/host/` before `mise run native:host` filled it, and an
+/// app whose `path` is wrong.
+String localLibraryMissingMessage(Uri library, OS os) => [
+  'ghostty_dart: source "path" found no libghostty-vt library at '
+      '${library.toFilePath()}.',
+  'In the ghostty_dart repository, build it first with `mise run native:host` '
+      '(it stages the host library in .native-cache/host/).',
+  'Elsewhere, point `path:` in `hooks: user_defines: ghostty_dart:` of the '
+      'root pubspec.yaml at a libghostty-vt $targetLibghosttyVtVersion '
+      'library file, or at a directory holding it as '
+      '${bundledLibraryName(os)}; or remove `source: path` to use the '
+      'prebuilt binaries.',
+].join('\n');

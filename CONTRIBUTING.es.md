@@ -1,4 +1,4 @@
-<!-- source: CONTRIBUTING.md@be47a80d0b225c11087d3eda3773d09420c74783 -->
+<!-- source: CONTRIBUTING.md@541619b33a31261c392acac324ed10a95c02396c -->
 [English](CONTRIBUTING.md) | **Español**
 
 # Cómo contribuir
@@ -23,7 +23,7 @@ jq y otras):
 ```sh
 mise install            # the pinned tools
 mise run deps           # flutter pub get --enforce-lockfile
-mise run native:host    # build libghostty-vt for this machine (tests need it)
+mise run native:host    # libghostty-vt for this machine (every test, demo and bench task needs it)
 mise run check          # everything CI runs
 ```
 

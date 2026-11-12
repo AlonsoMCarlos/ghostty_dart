@@ -61,9 +61,19 @@ void main(List<String> args) async {
         final path = localLibraryUri(
           define,
           code.targetOS,
-          isDirectory: FileSystemEntity.isDirectorySync(define.toFilePath()),
+          // A trailing slash means a directory even before it exists, so a
+          // missing `.native-cache/host/` names the library it lacks.
+          isDirectory:
+              define.path.endsWith('/') ||
+              FileSystemEntity.isDirectorySync(define.toFilePath()),
         );
         output.dependencies.add(path);
+        if (!File.fromUri(path).existsSync()) {
+          throw FileSystemException(
+            localLibraryMissingMessage(path, code.targetOS),
+            path.toFilePath(),
+          );
+        }
         final copy = await _copyInto(
           File.fromUri(path),
           input.outputDirectory,

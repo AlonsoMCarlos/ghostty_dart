@@ -38,6 +38,15 @@ description = "Build libghostty-vt for this machine and stage it in .native-cach
 shell = "bash -c"
 run = "bash tool/native/build_host.sh"
 
+# Every task that runs ghostty_dart's build hook through the root pubspec's
+# `source: path` depends on this: on a fresh clone it stops with "run `mise
+# run native:host` first" instead of Flutter's bare "Building native assets
+# failed".
+[tasks."native:require-host"]
+description = "Fail fast with the fix when .native-cache/host/ lacks the library the root pubspec builds with"
+shell = "bash -c"
+run = "bash tool/native/require_host.sh"
+
 # Prebuilt release pipeline (ADR 0008): .github/workflows/native-*.yml runs
 # exactly these tasks, so every workflow step can be reproduced locally.
 [tasks."native:release-asset"]
@@ -164,7 +173,7 @@ dart tool/native/pin_prebuilt.dart "$usage_tag" ${usage_no_verify:+--no-verify} 
 '''
 
 [tasks."test:tool"]
-description = "Test the repo tools (binary checker, pin logic, asset manifest, cooldown lock parsing, translation check, analysis options sync, repo hygiene, xterm compat generator)"
+description = "Test the repo tools (binary checker, pin logic, asset manifest, cooldown lock parsing, translation check, analysis options sync, repo hygiene, xterm compat generator, licence notices)"
 run = [
   "dart tool/native/test/tool_test.dart",
   "dart tool/test/check_cooldown_test.dart",
@@ -172,6 +181,7 @@ run = [
   "dart tool/test/analysis_options_test.dart",
   "dart tool/test/repo_hygiene_test.dart",
   "dart tool/test/xterm_compat_test.dart",
+  "dart tool/test/notices_test.dart",
 ]
 
 # The name is the one CI and the task list use; it covers workflows and the
@@ -203,6 +213,7 @@ run = ["dart format -o none --set-exit-if-changed .", "dart analyze --fatal-info
 
 [tasks.test]
 description = "Run all tests"
+depends = ["native:require-host"]
 # Run inside the package: `dart test <dir>` from the workspace root does not
 # run the package's build hook, so the native library would be missing.
 dir = "{{config_root}}/packages/ghostty_dart"
@@ -212,6 +223,7 @@ run = "dart test"
 # Spikes on unpinned host fonts are tagged `spike` and left out.
 [tasks."test:flutter"]
 description = "Run the ghostty_dart_flutter tests (flutter test, without the spike tag)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/packages/ghostty_dart_flutter"
 run = "flutter test --exclude-tags spike"
 
@@ -219,11 +231,13 @@ run = "flutter test --exclude-tags spike"
 # ghostty_dart build hook as for the widget package.
 [tasks."test:xterm"]
 description = "Run the ghostty_dart_xterm tests (flutter test)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/packages/ghostty_dart_xterm"
 run = "flutter test"
 
 [tasks."test:goldens:update"]
 description = "Regenerate the ghostty_dart_flutter goldens and the doc/screenshot.png of ghostty_dart_flutter and ghostty_dart_xterm (Linux only; review the image diff)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/packages"
 # The `golden` tag skips every golden off Linux, so elsewhere this would
 # "succeed" and update nothing: fail loudly instead. The adapter's only
@@ -238,6 +252,7 @@ set -e
 
 [tasks."test:spike"]
 description = "Run the ghostty_dart_flutter measurement spikes (unpinned host fonts; manual, not in CI)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/packages/ghostty_dart_flutter"
 run = "flutter test --tags spike"
 
@@ -249,6 +264,7 @@ run = "flutter test --tags spike"
 # g++ brings) from the distribution.
 [tasks."demo:test"]
 description = "Run the demo app tests (fake shell, app wiring, pty shell with a fake session)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/apps/demo"
 run = "flutter test"
 
@@ -257,6 +273,7 @@ run = "flutter test"
 # `check`: demo:test covers the wiring with fakes.
 [tasks."demo:integration"]
 description = "Run the demo against a real pty on a desktop device (default: linux; needs a display)"
+depends = ["native:require-host"]
 usage = 'arg "[device]" default="linux" help="flutter device id: linux, macos, windows"'
 dir = "{{config_root}}/apps/demo"
 shell = "bash -c"
@@ -264,6 +281,7 @@ run = 'flutter test integration_test -d "$usage_device"'
 
 [tasks."demo:run"]
 description = "Run the demo on a device (default: linux); --fake uses the web's fake shell"
+depends = ["native:require-host"]
 usage = '''
 arg "[device]" default="linux" help="flutter device id: linux, macos, windows, chrome"
 flag "--fake" help="use the fake shell instead of a pty (--dart-define=DEMO_SHELL=fake)"
@@ -274,6 +292,7 @@ run = 'flutter run -d "$usage_device" ${usage_fake:+--dart-define=DEMO_SHELL=fak
 
 [tasks."demo:build-linux"]
 description = "Build the demo for Linux desktop (release)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/apps/demo"
 run = "flutter build linux"
 
@@ -299,11 +318,13 @@ flutter build web --wasm
 # ghostty_dart_flutter.
 [tasks."bench:widget:test"]
 description = "Test the frame benchmark harness headlessly (streams, report, same screen on every widget)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/benchmarks/widget"
 run = "flutter test"
 
 [tasks."bench:widget"]
 description = "Frame-time benchmark (flutter drive --profile) of 4 widgets x 6 scenarios x N passes -> benchmarks/widget/build/widget_bench.md"
+depends = ["native:require-host"]
 usage = '''
 arg "[device]" default="linux" help="desktop device id: linux or macos"
 flag "--frames <n>" default="300" help="traced frames per run"
@@ -335,6 +356,7 @@ flutter drive --profile -d "$usage_device" "$impeller" --endless-trace-buffer \
 # display, like bench:widget.
 [tasks."test:grid-pixels"]
 description = "Check on a desktop device that glyphs land on the device-pixel grid (200 columns, 4 DPRs x 3 sizes x 2 text paths)"
+depends = ["native:require-host"]
 usage = '''
 arg "[device]" default="linux" help="desktop device id: linux or macos"
 flag "--renderer <renderer>" default="impeller" help="impeller or skia" {
@@ -385,6 +407,7 @@ run = [
 
 [tasks."bench:parser"]
 description = "Parser throughput benchmark vs xterm 4.0.0 and xterm2_core, JIT and AOT (options: see benchmarks/README.md)"
+depends = ["native:require-host"]
 dir = "{{config_root}}/benchmarks"
 run = "dart run bin/parser_bench.dart"
 

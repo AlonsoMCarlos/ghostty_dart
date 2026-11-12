@@ -47,4 +47,17 @@ void main() {
       );
     });
   });
+
+  group('localLibraryMissingMessage', () {
+    test('names the path, the repo fix and the app fixes', () {
+      final message = localLibraryMissingMessage(
+        Uri.file('/repo/.native-cache/host/libghostty-vt.so'),
+        OS.linux,
+      );
+      expect(message, contains('/repo/.native-cache/host/libghostty-vt.so'));
+      expect(message, contains('mise run native:host'));
+      expect(message, contains('libghostty-vt.so;'));
+      expect(message, contains('remove `source: path`'));
+    });
+  });
 }
