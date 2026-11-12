@@ -392,25 +392,28 @@ run = "dart tool/check_translations.dart"
 # release-please.yml and dco.yml install no tools, so they call the scripts
 # directly; release:ready, release:dispatch and dco mirror those steps.
 [tasks."release:validate-tag"]
-description = "Validate a publish ref: ghostty_dart-v<X.Y.Z> tag on main matching pubspec and CHANGELOG (env: EVENT, REF_TYPE, REF_NAME)"
+description = "Validate a publish ref: <package>-v<X.Y.Z> tag of an allow-listed package, on main, matching its pubspec and CHANGELOG (env: EVENT, REF_TYPE, REF_NAME)"
 shell = "bash -c"
 run = "bash tool/release/validate_tag.sh"
 
 [tasks."release:package"]
-description = "Write the ghostty_dart publish archive offline (dart pub publish --to-archive) and print its sha256"
-usage = 'arg "<archive>" help="output .tar.gz"'
+description = "Write the publish archive of the package a release tag names, offline (dart pub publish --to-archive), and print its sha256"
+usage = '''
+arg "<tag>" help="<package>-v<X.Y.Z>"
+arg "<archive>" help="output .tar.gz"
+'''
 shell = "bash -c"
-run = 'bash tool/release/package.sh "$usage_archive"'
+run = 'bash tool/release/package.sh "$usage_tag" "$usage_archive"'
 
 [tasks."release:check-archive"]
-description = "Check a publish archive: sha256, pubspec name and version, no publish_to"
+description = "Check a publish archive: sha256, pubspec name and version from the tag, no publish_to"
 usage = '''
 arg "<archive>"
 arg "<sha256>" help="the package job's output"
-arg "<version>"
+arg "<tag>" help="<package>-v<X.Y.Z>"
 '''
 shell = "bash -c"
-run = 'bash tool/release/check_archive.sh "$usage_archive" "$usage_sha256" "$usage_version"'
+run = 'bash tool/release/check_archive.sh "$usage_archive" "$usage_sha256" "$usage_tag"'
 
 [tasks."release:upload"]
 description = "Mint the pub.dev OIDC token and upload a checked archive with the pinned Dart (GitHub Actions only; id-token: write)"
@@ -419,15 +422,15 @@ shell = "bash -c"
 run = 'bash tool/release/upload.sh "$usage_archive"'
 
 [tasks."release:ready"]
-description = "Print ready=true once a ghostty_dart-v<X.Y.Z> tag exists (release-please.yml's bootstrap gate)"
+description = "Print ready=true once every released package has a <package>-v<X.Y.Z> tag (release-please.yml's bootstrap gate)"
 shell = "bash -c"
 run = "bash tool/release/release_ready.sh"
 
 [tasks."release:dispatch"]
-description = "Dispatch publish.yml on a tag of main, or ci.yml and dco.yml on the release PR branch (needs GH_TOKEN, GH_REPO)"
+description = "Dispatch publish.yml on a tag of main, or ci.yml and dco.yml on a release PR branch (needs GH_TOKEN, GH_REPO)"
 usage = '''
 arg "<what>" help="publish | pr"
-arg "<ref>" help="ghostty_dart-v<X.Y.Z> tag, or release-please's branch"
+arg "<ref>" help="<package>-v<X.Y.Z> tag, or a release-please branch"
 '''
 shell = "bash -c"
 run = 'bash tool/release/dispatch.sh "$usage_what" "$usage_ref"'

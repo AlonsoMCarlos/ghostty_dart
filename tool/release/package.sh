@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Writes the publish archive of packages/ghostty_dart, offline, and prints its
-# sha256 (ADR 0010, publish.yml `package` job).
+# Writes the publish archive of the package a release tag names
+# (<package>-v<X.Y.Z>, a package of the allow-list in tool/release/lib.sh),
+# offline, and prints its sha256 (ADR 0010, publish.yml `package` job).
 #
 # `dart pub publish --to-archive=<file> --skip-validation` is the hidden pub
 # flag that setup-dart's three-job publish.yml uses (dart-lang/setup-dart
@@ -17,18 +18,27 @@
 # setup-dart uses (`sudo -E unshare -n sudo -u <user> ...`). In CI one of the
 # two must work (fails closed); locally it warns and keeps the network.
 #
-# Dart: $DART (the pinned, verified SDK in CI), else `dart` on PATH.
+# Dart: $DART (the pinned, verified SDK in CI), else `dart` on PATH. A plain
+# Dart SDK is enough for the Flutter package ghostty_dart_flutter too: with
+# --skip-validation nothing resolves, so the `flutter` SDK dependency is never
+# looked up, and the archive is byte-identical to `flutter pub publish
+# --to-archive` (checked 2026-11-12 with Dart 3.13.7 and Flutter 3.47.9).
 # Prints `archive=<path>` and `sha256=<hex>` (appended to $GITHUB_OUTPUT when
 # set).
 #
-# Usage: tool/release/package.sh <archive.tar.gz>
+# Usage: tool/release/package.sh <tag> <archive.tar.gz>
 set -euo pipefail
 
-out="${1:?usage: package.sh <archive.tar.gz>}"
+tag="${1:?usage: package.sh <tag> <archive.tar.gz>}"
+out="${2:?usage: package.sh <tag> <archive.tar.gz>}"
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 # shellcheck source=tool/release/lib.sh
 source "$here/lib.sh"
+
+is_release_tag "$tag" || die "'$tag' is not a <package>-v<X.Y.Z> tag of a published package (${release_packages[*]})"
+package="$(release_tag_package "$tag")"
+package_dir="$(release_package_dir "$package")"
 
 mkdir -p "$(dirname "$out")"
 out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
@@ -49,9 +59,9 @@ fi
 
 rm -f "$out"
 ${offline[@]+"${offline[@]}"} "$dart" pub publish --to-archive="$out" --skip-validation \
-  --directory="$root/$release_package_dir" >&2
+  --directory="$root/$package_dir" >&2
 [[ -s "$out" ]] || die "pub wrote no archive at $out"
 
 sha="$(sha256_of "$out")"
-echo "packaged $release_package into $out" >&2
+echo "packaged $package into $out" >&2
 write_outputs "archive=$out" "sha256=$sha"

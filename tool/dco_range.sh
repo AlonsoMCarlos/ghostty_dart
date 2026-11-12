@@ -12,7 +12,8 @@
 #     that main lacks. The base is always main, never an input: another
 #     base could make a branch's range empty and its check green. The
 #     release-bot exception is allowed only for the run release-please.yml
-#     dispatches: on release-please's own branch, started by
+#     dispatches: on one of release-please's own branches (one per released
+#     package, tool/release/lib.sh), started by
 #     github-actions[bot] (GITHUB_TOKEN; no person can be that actor).
 #
 # Inputs (environment): EVENT; for pull_request PR_HEAD and BASE_REF (the
@@ -41,8 +42,8 @@ case "${EVENT:?EVENT is required}" in
     DCO_BASE_LABEL="origin/$base_ref" exec bash "$check" "$(git -C "$root" rev-parse 'HEAD^1')" "$pr_head"
     ;;
   workflow_dispatch)
-    if [[ "${HEAD_REF:-}" == "$release_pr_branch" && "${ACTOR:-}" == 'github-actions[bot]' ]]; then
-      echo "release-please's dispatched run on $release_pr_branch: its own commits may carry the configured sign-off" >&2
+    if is_release_pr_branch "${HEAD_REF:-}" && [[ "${ACTOR:-}" == 'github-actions[bot]' ]]; then
+      echo "release-please's dispatched run on $HEAD_REF: its own commits may carry the configured sign-off" >&2
       export DCO_ALLOW_RELEASE_BOT=1
     fi
     DCO_BASE_LABEL=origin/main exec bash "$check" refs/remotes/origin/main HEAD

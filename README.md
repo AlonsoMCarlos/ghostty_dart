@@ -19,7 +19,7 @@ we can support.
 | Package | What it is | Status |
 |---|---|---|
 | [`ghostty_dart`](packages/ghostty_dart) | Pure Dart bindings: the whole libghostty-vt 1.0 C API, with prebuilt, pinned and attested native binaries | [![pub package](https://img.shields.io/pub/v/ghostty_dart.svg)](https://pub.dev/packages/ghostty_dart) |
-| [`ghostty_dart_flutter`](packages/ghostty_dart_flutter) | A Flutter terminal widget: rendering, keyboard, mouse, IME, selection and scrolling | In this repository, not published yet |
+| [`ghostty_dart_flutter`](packages/ghostty_dart_flutter) | A Flutter terminal widget: rendering, keyboard, mouse, IME, selection and scrolling | [![pub package](https://img.shields.io/pub/v/ghostty_dart_flutter.svg)](https://pub.dev/packages/ghostty_dart_flutter) |
 | [`ghostty_dart_xterm`](packages/ghostty_dart_xterm) | An adapter with the public API of [`xterm`](https://pub.dev/packages/xterm) 4.0.0, with a generated [compatibility list](packages/ghostty_dart_xterm/COMPATIBILITY.md) and a [migration guide](packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.md) | In this repository, not published yet |
 
 Web support (a wasm backend) is planned too. Until it exists, the packages

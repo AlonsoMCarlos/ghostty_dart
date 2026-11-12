@@ -1,23 +1,30 @@
-# Publishes ghostty_dart to pub.dev with GitHub's OIDC token (ADR 0010).
+# Publishes a package of this repo to pub.dev with GitHub's OIDC token
+# (ADR 0010). The tag alone selects the package: <package>-v<X.Y.Z>, with
+# <package> in the allow-list of tool/release/lib.sh (ghostty_dart,
+# ghostty_dart_flutter; test:release keeps the triggers below in sync).
 #
-#   - Tag push ghostty_dart-v<X.Y.Z> on a commit of main, or
-#   - Actions > Publish ghostty_dart > Run workflow on such a tag (what
+#   - Tag push <package>-v<X.Y.Z> on a commit of main, or
+#   - Actions > Publish to pub.dev > Run workflow on such a tag (what
 #     release-please.yml does: `gh workflow run publish.yml --ref <tag>`).
 #     A dispatch on a branch is refused: pub.dev needs ref_type=tag.
 #
 # The three jobs mirror dart-lang/setup-dart's publish.yml on main at
 # a1d8526c926344e01ba48a7368788c05ac98cb29 (2026-10-31, PRs #203 and #206,
 # not yet in a release), adapted to mise:
-#   1. validate: the tag matches pubspec.yaml and CHANGELOG.md and is on main;
+#   1. validate: the tag names an allow-listed package, matches its
+#      pubspec.yaml (name and version) and CHANGELOG.md, and is on main;
 #      the mise-pinned toolchain resolves with --enforce-lockfile and runs
 #      `mise run check` and `dart pub publish --dry-run`.
 #   2. package: `dart pub publish --to-archive` with no network, by the
-#      pinned and sha256-verified Dart SDK (native/toolchain.json); the
-#      archive and its sha256 are the job's outputs.
+#      pinned and sha256-verified Dart SDK (native/toolchain.json), also for
+#      the Flutter package (nothing resolves with --skip-validation, so no
+#      Flutter SDK is needed; see tool/release/package.sh); the archive
+#      <package>-<version>.tar.gz and its sha256 are the job's outputs.
 #   3. publish: in the protected `pub.dev` environment (required reviewer,
-#      tags ghostty_dart-v* only; pub.dev requires that environment too), the
-#      only job with id-token: write. It checks the archive against job 2's
-#      sha256, then `mise run release:upload` mints the OIDC token for
+#      tags <package>-v* of the allow-listed packages only; pub.dev requires
+#      that environment too, and each package's own tag pattern), the only
+#      job with id-token: write. It checks the archive against job 2's
+#      sha256 and the tag's package and version, then `mise run release:upload` mints the OIDC token for
 #      https://pub.dev itself (the steps of setup-dart's OIDC setup, so no
 #      unverified Dart ever sees the token), registers it with the pinned
 #      Dart and runs `dart pub publish --from-archive --force` on those exact
@@ -29,11 +36,11 @@
 # Every step is a mise task (reproducible locally). No secrets, no caches,
 # no persisted git credentials; every step runs `bash -euo pipefail`
 # (defaults.run.shell) and gets untrusted values through env only.
-name: Publish ghostty_dart
+name: Publish to pub.dev
 
 on:
   push:
-    tags: ['ghostty_dart-v*']
+    tags: ['ghostty_dart-v*', 'ghostty_dart_flutter-v*']
   workflow_dispatch:
 
 permissions: {}
@@ -65,6 +72,7 @@ jobs:
       contents: read
     outputs:
       tag: ${{ steps.ref.outputs.tag }}
+      package: ${{ steps.ref.outputs.package }}
       version: ${{ steps.ref.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,7 +87,7 @@ jobs:
           version: ${{ env.MISE_VERSION }}
           install_args: jq
           cache: false
-      - name: Validate the tag against pubspec.yaml, CHANGELOG.md and main
+      - name: Validate the tag against the allow-list, pubspec.yaml, CHANGELOG.md and main
         id: ref
         env:
           EVENT: ${{ github.event_name }}
@@ -132,8 +140,10 @@ jobs:
       - name: Write the archive (no network)
         id: archive
         env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          PACKAGE: ${{ needs.validate.outputs.package }}
           VERSION: ${{ needs.validate.outputs.version }}
-        run: mise run release:package "$RUNNER_TEMP/out/ghostty_dart-$VERSION.tar.gz"
+        run: mise run release:package "$TAG" "$RUNNER_TEMP/out/$PACKAGE-$VERSION.tar.gz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-archive
@@ -170,11 +180,13 @@ jobs:
           name: package-archive
           path: ${{ runner.temp }}/archive/
       # The approval wait can last hours; refuse anything but the packaged bytes.
-      - name: Check the archive against the packaged sha256
+      - name: Check the archive against the packaged sha256 and the tag
         env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          PACKAGE: ${{ needs.validate.outputs.package }}
           VERSION: ${{ needs.validate.outputs.version }}
           SHA256: ${{ needs.package.outputs.sha256 }}
-        run: mise run release:check-archive "$RUNNER_TEMP/archive/ghostty_dart-$VERSION.tar.gz" "$SHA256" "$VERSION"
+        run: mise run release:check-archive "$RUNNER_TEMP/archive/$PACKAGE-$VERSION.tar.gz" "$SHA256" "$TAG"
       - name: Fetch the pinned Dart SDK
         run: |
           bin="$(mise run native:dart-sdk linux-x64 "$RUNNER_TEMP/dart-sdk")"
@@ -184,5 +196,6 @@ jobs:
       # $GITHUB_ENV or any other step. See tool/release/upload.sh.
       - name: Publish the archive
         env:
+          PACKAGE: ${{ needs.validate.outputs.package }}
           VERSION: ${{ needs.validate.outputs.version }}
-        run: mise run release:upload "$RUNNER_TEMP/archive/ghostty_dart-$VERSION.tar.gz"
+        run: mise run release:upload "$RUNNER_TEMP/archive/$PACKAGE-$VERSION.tar.gz"

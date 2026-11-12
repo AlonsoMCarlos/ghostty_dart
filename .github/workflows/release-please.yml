@@ -1,18 +1,22 @@
-# Opens and updates the release PR of ghostty_dart, and on its merge tags
-# ghostty_dart-v<version> and creates the GitHub release (ADR 0010).
-# Config: release-please-config.json and .release-please-manifest.json
-# (manifest mode; only packages/ghostty_dart is released).
+# Opens and updates one release PR per package (separate-pull-requests), and
+# on its merge tags <package>-v<version> and creates the GitHub release
+# (ADR 0010). Config: release-please-config.json and
+# .release-please-manifest.json (manifest mode; packages/ghostty_dart and
+# packages/ghostty_dart_flutter, the allow-list of tool/release/lib.sh).
 #
 # The token is GITHUB_TOKEN: no App, no secret. What it creates starts no
 # workflow run, so this workflow dispatches them (workflow_dispatch is the
 # documented exception):
-#   - a release was created -> publish.yml on the new tag (pub.dev's
-#     "Enable publishing from workflow_dispatch events" must be on);
-#   - the release PR was opened or updated -> ci.yml and dco.yml on its
+#   - a release was created -> publish.yml on each new tag (pub.dev's
+#     "Enable publishing from workflow_dispatch events" must be on for that
+#     package);
+#   - a release PR was opened or updated -> ci.yml and dco.yml on each such
 #     branch, so the PR gets its checks.
 #
-# Until the first version is published by hand and tagged (see
-# docs/internal/release-checklist.md), the `ready` job skips everything.
+# Until the first version of every package in the config is published by
+# hand and tagged (see docs/internal/release-checklist.md), the `ready` job
+# skips everything: one release-please run always handles every component
+# (tool/release/release_ready.sh explains why it cannot skip only one).
 #
 # These jobs install no tools (git and gh come with the runner), so their
 # steps run the scripts directly instead of mise tasks (AGENTS.md); the local
@@ -51,7 +55,7 @@ jobs:
         with:
           fetch-depth: 0 # tags
           persist-credentials: false
-      - name: Look for a ghostty_dart-v<X.Y.Z> tag
+      - name: Look for a <package>-v<X.Y.Z> tag of every package
         id: check
         run: bash tool/release/release_ready.sh
 
@@ -68,11 +72,17 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+    # Per-path release outputs are `<path>--<key>` (setPathOutput in the
+    # action's src/index.ts); `prs` is the JSON list of every release PR
+    # opened or updated by this run (outputPRs), one per package.
     outputs:
-      release_created: ${{ steps.release.outputs['packages/ghostty_dart--release_created'] }}
-      tag: ${{ steps.release.outputs['packages/ghostty_dart--tag_name'] }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      ghostty_dart_release_created: ${{ steps.release.outputs['packages/ghostty_dart--release_created'] }}
+      ghostty_dart_tag: ${{ steps.release.outputs['packages/ghostty_dart--tag_name'] }}
+      ghostty_dart_flutter_release_created: ${{ steps.release.outputs['packages/ghostty_dart_flutter--release_created'] }}
+      ghostty_dart_flutter_tag: ${{ steps.release.outputs['packages/ghostty_dart_flutter--tag_name'] }}
       prs_created: ${{ steps.release.outputs.prs_created }}
-      pr_branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+      prs: ${{ steps.release.outputs.prs_created == 'true' && steps.release.outputs.prs || '[]' }}
     steps:
       # Bundles release-please 17.6.0 (its package-lock.json).
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -84,7 +94,7 @@ jobs:
   dispatch-publish:
     name: dispatch publish.yml
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -94,17 +104,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Dispatch publish.yml on the new tag (if it is on main)
+      # One step per package of the config; dispatch.sh refuses any tag
+      # outside the allow-list or off main.
+      - name: Dispatch publish.yml on the new ghostty_dart tag (if it is on main)
+        if: needs.release-please.outputs.ghostty_dart_release_created == 'true'
         env:
-          TAG: ${{ needs.release-please.outputs.tag }}
+          TAG: ${{ needs.release-please.outputs.ghostty_dart_tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tool/release/dispatch.sh publish "$TAG"
+      - name: Dispatch publish.yml on the new ghostty_dart_flutter tag (if it is on main)
+        if: needs.release-please.outputs.ghostty_dart_flutter_release_created == 'true'
+        env:
+          TAG: ${{ needs.release-please.outputs.ghostty_dart_flutter_tag }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash tool/release/dispatch.sh publish "$TAG"
 
   dispatch-pr-checks:
-    name: dispatch the release PR's checks
+    name: dispatch the release PR's checks (${{ matrix.pr.headBranchName }})
     needs: release-please
     if: needs.release-please.outputs.prs_created == 'true'
+    # One run per release PR; dispatch.sh refuses any branch but a
+    # release-please branch of an allow-listed package.
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJSON(needs.release-please.outputs.prs) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -116,7 +142,7 @@ jobs:
           persist-credentials: false
       - name: Dispatch ci.yml and dco.yml on the release PR branch
         env:
-          BRANCH: ${{ needs.release-please.outputs.pr_branch }}
+          BRANCH: ${{ matrix.pr.headBranchName }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash tool/release/dispatch.sh pr "$BRANCH"

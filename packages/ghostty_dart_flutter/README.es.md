@@ -1,4 +1,4 @@
-<!-- source: README.md@49bbe29ac0b4905ca124e5a61344c5f9b95c0e3b -->
+<!-- source: README.md@053ff782511bb408662cebe0e346a4d5e88c9273 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -190,7 +190,7 @@ distinto y, en particular, `xterm` es hoy la opción madura y más usada.
 
 | Paquete | Motor | Web | Estrategia de repintado | API de `xterm` 4.0.0 |
 |---|---|---|---|---|
-| `ghostty_dart_flutter` (sin publicar) | libghostty-vt 1.0.0 (ABI en C estable), FFI | No (previsto) | Solo filas modificadas, atlas de glifos con `drawRawAtlas` (párrafos por fila como opción), imágenes de fila en caché por contenido | Con [`ghostty_dart_xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm) (sin publicar) |
+| `ghostty_dart_flutter` 0.1.0 | libghostty-vt 1.0.0 (ABI en C estable), FFI | No (previsto) | Solo filas modificadas, atlas de glifos con `drawRawAtlas` (párrafos por fila como opción), imágenes de fila en caché por contenido | Con [`ghostty_dart_xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm) (sin publicar) |
 | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 | Dart puro | Sí | Toda la pantalla en cada cambio, un párrafo por celda | Es la API |
 | [`xterm2`](https://pub.dev/packages/xterm2) 5.4.0 | Dart puro (`xterm2_core`) | Sí | Pinta celda a celda | La misma API (es un *fork*) |
 | [`flterm`](https://pub.dev/packages/flterm) 0.0.6 (+ [`libghostty`](https://pub.dev/packages/libghostty) 0.0.13) | Un *commit* de libghostty-vt anterior a 1.0, FFI y wasm | Sí | Atlas de glifos con `drawRawAtlas` | No |

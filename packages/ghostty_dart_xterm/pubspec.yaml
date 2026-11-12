@@ -30,7 +30,7 @@ dependencies:
   flutter:
     sdk: flutter
   ghostty_dart: ^0.1.0
-  ghostty_dart_flutter: ^0.0.1-dev
+  ghostty_dart_flutter: ^0.1.0
 
 dev_dependencies:
   flutter_test:

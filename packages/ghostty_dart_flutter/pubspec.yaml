@@ -2,9 +2,7 @@ name: ghostty_dart_flutter
 description: >-
   Flutter terminal widget on top of ghostty_dart (libghostty-vt): dirty-row
   rendering, keyboard, IME, mouse and scrollback input, pty-agnostic.
-# Not published yet: the first release version (0.1.0) is set when the
-# maintainer approves publishing (ADR 0010).
-version: 0.0.1-dev
+version: 0.1.0
 repository: https://github.com/AlonsoMCarlos/ghostty_dart/tree/main/packages/ghostty_dart_flutter
 issue_tracker: https://github.com/AlonsoMCarlos/ghostty_dart/issues
 topics: [terminal, terminal-emulator, widget, console, ghostty]

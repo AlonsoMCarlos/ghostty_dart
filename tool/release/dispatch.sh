@@ -7,12 +7,14 @@
 # workflow"). So:
 #
 #   dispatch.sh publish <tag>
-#       gh workflow run publish.yml --ref <tag>. A dispatch on a tag ref gives
-#       the OIDC token ref_type=tag, which pub.dev requires; pub.dev's
+#       gh workflow run publish.yml --ref <tag>, for a <package>-v<X.Y.Z> tag
+#       of a package in tool/release/lib.sh's allow-list. A dispatch on a tag
+#       ref gives the OIDC token ref_type=tag, which pub.dev requires; pub.dev's
 #       "Enable publishing from workflow_dispatch events" must be on.
 #   dispatch.sh pr <branch>
-#       gh workflow run ci.yml and dco.yml on the release PR branch, so the
-#       release PR gets the checks a pull_request event would have given it.
+#       gh workflow run ci.yml and dco.yml on a release PR branch (one per
+#       package, release-please--branches--main--components--<package>), so
+#       the release PR gets the checks a pull_request event would have given it.
 #
 # Needs GH_TOKEN (actions: write), GH_REPO (owner/name) and, for publish, a
 # checkout whose origin it fetches the tag and main from. The names come from action outputs, so they are
@@ -31,7 +33,7 @@ ref="${2:?$usage}"
 
 case "$what" in
   publish)
-    is_release_tag "$ref" || die "'$ref' is not a ${release_tag_prefix}<X.Y.Z> tag"
+    is_release_tag "$ref" || die "'$ref' is not a <package>-v<X.Y.Z> tag of a published package (${release_packages[*]})"
     # publish.yml's checks are defined by the workflow file at the tag, so a
     # tag off main could carry its own; refuse it before dispatching.
     git -C "$root" fetch --quiet --no-tags origin \
@@ -41,7 +43,7 @@ case "$what" in
     echo "dispatched publish.yml on $ref" >&2
     ;;
   pr)
-    [[ "$ref" == "$release_pr_branch" ]] || die "'$ref' is not the release-please branch $release_pr_branch"
+    is_release_pr_branch "$ref" || die "'$ref' is not a release-please branch ($(release_pr_branch '<package>'), for ${release_packages[*]})"
     gh workflow run ci.yml --ref "$ref"
     gh workflow run dco.yml --ref "$ref"
     echo "dispatched ci.yml and dco.yml on $ref" >&2

@@ -1,4 +1,4 @@
-<!-- source: README.md@d0a2d56e3de4b595d6a10935bbb410dad203a557 -->
+<!-- source: README.md@11ffc752fea4c1a116d325613c804646a8ea8b02 -->
 [English](README.md) | **Español**
 
 # ghostty_dart
@@ -20,7 +20,7 @@ todas las plataformas que podamos soportar.
 | Paquete | Qué es | Estado |
 |---|---|---|
 | [`ghostty_dart`](packages/ghostty_dart/README.es.md) | *Bindings* en Dart puro: toda la API en C de libghostty-vt 1.0, con binarios nativos precompilados, fijados y con atestación | [![pub package](https://img.shields.io/pub/v/ghostty_dart.svg)](https://pub.dev/packages/ghostty_dart) |
-| [`ghostty_dart_flutter`](packages/ghostty_dart_flutter/README.es.md) | Un *widget* de terminal para Flutter: renderizado, teclado, ratón, IME, selección y desplazamiento | En este repositorio, aún sin publicar |
+| [`ghostty_dart_flutter`](packages/ghostty_dart_flutter/README.es.md) | Un *widget* de terminal para Flutter: renderizado, teclado, ratón, IME, selección y desplazamiento | [![pub package](https://img.shields.io/pub/v/ghostty_dart_flutter.svg)](https://pub.dev/packages/ghostty_dart_flutter) |
 | [`ghostty_dart_xterm`](packages/ghostty_dart_xterm/README.es.md) | Un adaptador con la API pública de [`xterm`](https://pub.dev/packages/xterm) 4.0.0, con una [lista de compatibilidad](packages/ghostty_dart_xterm/COMPATIBILITY.md) generada y una [guía de migración](packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.es.md) | En este repositorio, aún sin publicar |
 
 También está previsto el soporte web (un *backend* wasm). Mientras no

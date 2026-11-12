@@ -1,6 +1,6 @@
-## 0.0.1-dev
+## 0.1.0
 
-- Unreleased. `VtTerminalView` renders a `VtTerminalController`'s terminal
+- First release. `VtTerminalView` renders a `VtTerminalController`'s terminal
   (cached row pictures, cursor overlay, padding, background opacity) and
   takes keyboard (legacy and Kitty encoding, shell-safe shortcuts), IME and
   soft-keyboard text, mouse reports, selection, wheel and touch scrolling,

@@ -135,6 +135,15 @@ check "dispatch by github-actions[bot] on release-please's branch allows it" 0 "
   range EVENT=workflow_dispatch HEAD_REF="$release_branch" ACTOR="$bot_name"
 check "dispatch by a person on release-please's branch does not" 1 "release ghostty_dart 9\.9\.9" \
   range EVENT=workflow_dispatch HEAD_REF="$release_branch" ACTOR=mallory
+# Every released package has its own release branch (separate-pull-requests);
+# a component outside tool/release/lib.sh's allow-list does not count.
+git -C "$r" checkout -q -B release-please--branches--main--components--ghostty_dart_flutter "$release_branch"
+check "dispatch by github-actions[bot] on the widget's release branch allows it" 0 "all 2 commit" \
+  range EVENT=workflow_dispatch HEAD_REF=release-please--branches--main--components--ghostty_dart_flutter ACTOR="$bot_name"
+git -C "$r" checkout -q -B release-please--branches--main--components--ghostty_dart_xterm "$release_branch"
+check "dispatch on the branch of a component not yet released does not" 1 "release ghostty_dart 9\.9\.9" \
+  range EVENT=workflow_dispatch HEAD_REF=release-please--branches--main--components--ghostty_dart_xterm ACTOR="$bot_name"
+git -C "$r" checkout -q "$release_branch"
 git -C "$r" checkout -q -B other "$forged"
 check "dispatch by github-actions[bot] on another branch does not" 1 "release ghostty_dart 9\.9\.9" \
   range EVENT=workflow_dispatch HEAD_REF=other ACTOR="$bot_name"
