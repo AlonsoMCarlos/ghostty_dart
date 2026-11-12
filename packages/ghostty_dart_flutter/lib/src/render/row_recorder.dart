@@ -128,14 +128,17 @@ final class RowContent {
   /// which stores the row's `drawRawAtlas` sprites and rectangles but not
   /// the paragraphs it draws): this content itself, ~1 KiB, plus 96 bytes
   /// per character of the clusters drawn as paragraphs (wide characters,
-  /// emoji, box drawing). The two together match the RSS of cached
+  /// emoji; box drawing is drawn from the atlas). The two together match the RSS of cached
   /// 200-column atlas rows of the benchmark's styled text: 8.8-9.3 KiB per
   /// row measured over 6,000 rows, 9.3 KiB estimated (flutter_tester, DPR
   /// 2, 2026-11-11). An estimate, never exact.
   late final int atlasOverheadBytes = () {
     var clusterChars = 0;
     for (var i = 0; i < _ops.length; i += RowRecorder._opLength(_ops[i])) {
-      if (_ops[i] == _opCluster) clusterChars += _texts[_ops[i + 2]].length;
+      if (_ops[i] == _opCluster &&
+          !RowRecorder._atlasCluster(_texts[_ops[i + 2]], _ops[i + 5])) {
+        clusterChars += _texts[_ops[i + 2]].length;
+      }
     }
     return 1024 + 96 * clusterChars;
   }();
@@ -285,7 +288,9 @@ final class RowRecorder {
   ) {
     var count = 0;
     for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
-      if (ops[i] == _opRun) count += texts[ops[i + 2]].length;
+      if (ops[i] == _opRun || ops[i] == _opCluster) {
+        count += texts[ops[i + 2]].length;
+      }
     }
     if (count == 0) return;
     if (_spriteSlots.length < count) {
@@ -303,11 +308,15 @@ final class RowRecorder {
     var missed = false;
     _fallback.clear();
     for (var i = 0; i < ops.length; i += _opLength(ops[i])) {
-      if (ops[i] != _opRun) continue;
+      final op = ops[i];
+      if (op != _opRun &&
+          !(op == _opCluster && _atlasCluster(texts[ops[i + 2]], ops[i + 5]))) {
+        continue;
+      }
       final col = ops[i + 1];
       final text = texts[ops[i + 2]];
       final color = ops[i + 3];
-      final faces = ops[i + 4];
+      final faces = ops[i + 4] & (TextFace.bold | TextFace.italic);
       // 0: drawn untinted, without the per-sprite colour blend (the glyph
       // is rasterised in exactly this colour: the default foreground,
       // white, black).
@@ -576,12 +585,15 @@ final class RowRecorder {
           }
           i += 5;
         case _opCluster:
-          _drawCluster(
-            canvas,
-            (texts[ops[i + 2]], ops[i + 3], ops[i + 4]),
-            ops[i + 1],
-            ops[i + 5],
-          );
+          // With an atlas, box drawing is among the row's sprites.
+          if (atlas == null || !_atlasCluster(texts[ops[i + 2]], ops[i + 5])) {
+            _drawCluster(
+              canvas,
+              (texts[ops[i + 2]], ops[i + 3], ops[i + 4]),
+              ops[i + 1],
+              ops[i + 5],
+            );
+          }
           i += 6;
         default:
           _paintDecorations(
@@ -1142,11 +1154,14 @@ final class RowRecorder {
 
   /// Whether [text] is one box-drawing or block-element character
   /// (U+2500-259F), which is stretched to fill its cell.
-  static bool _stretches(String text) {
-    if (text.length != 1) return false;
-    final unit = text.codeUnitAt(0);
-    return unit >= 0x2500 && unit < 0x25A0;
-  }
+  static bool _stretches(String text) =>
+      text.length == 1 && GlyphAtlas.stretches(text.codeUnitAt(0));
+
+  /// Whether a cluster of [text] over [span] cells is drawn from the glyph
+  /// atlas when there is one: a narrow box-drawing or block-element
+  /// character (ADR 0012, amendment of 2026-11-12).
+  static bool _atlasCluster(String text, int span) =>
+      span == 1 && _stretches(text);
 
   static int _argb(RgbColor rgb) => colorOfRgb(rgb).toARGB32();
 

@@ -379,14 +379,14 @@ void main() {
     });
 
     testWidgets('wide characters, clusters and emoji stay paragraphs; '
-        'faces use the atlas', (tester) async {
+        'box drawing and faces use the atlas', (tester) async {
       final h = await pumpRenderer(tester, initial: 'ab中é🙂x́─');
       final atlas = h.render.debugAtlas!;
-      // "é" (Latin-1) is the only new slot: the rest is ASCII (prefilled)
-      // or not grid-safe.
-      expect(atlas.slotCount, 95);
+      // "é" (Latin-1) and "─" (box drawing, stretched to its cell) are the
+      // only new slots: the rest is ASCII (prefilled) or not grid-safe.
+      expect(atlas.slotCount, 96);
       await h.write('\r\n\x1b[1mA\x1b[3mB\x1b[22mC');
-      expect(atlas.slotCount, 98);
+      expect(atlas.slotCount, 99);
     });
 
     testWidgets('misses are rasterised once per frame', (tester) async {

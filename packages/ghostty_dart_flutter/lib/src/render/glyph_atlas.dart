@@ -118,6 +118,14 @@ final class AtlasImage {
 /// flushes once per frame, so a page gets at most one new image per frame
 /// and a full page never changes again.
 ///
+/// **Box drawing.** Box-drawing and block-element characters
+/// (U+2500-259F, [stretches]) join their neighbours, so they are not
+/// placed by their advance: their glyph is stretched horizontally to the
+/// cell and clipped to it when rasterised (as the paragraph path draws
+/// them, laid out without the grid letter spacing), and the slot's
+/// margins stay empty. A `tree` or TUI border row then costs sprites in
+/// the row's `drawRawAtlas`, not one clipped paragraph per cell.
+///
 /// **Fallbacks.** [slotOf] returns -1 for a glyph whose advance is not one
 /// cell (within half a device pixel), i.e. one from a fallback font: the
 /// caller draws it another way.
@@ -169,8 +177,18 @@ final class GlyphAtlas {
   /// The cell size and baseline.
   final VtCellMetrics metrics;
 
-  /// The engine style of a glyph in `color` (ARGB) and `faces`.
+  /// The engine style of a glyph in `color` (ARGB) and `faces`: bold 1,
+  /// italic 2, and [unspaced] for a glyph laid out on its own, without
+  /// the grid letter spacing (box drawing).
   final ui.TextStyle Function(int color, int faces) styleOf;
+
+  /// The `faces` bit that asks [styleOf] for no grid letter spacing
+  /// (`TextFace.cluster` of the row recorder).
+  static const unspaced = 4;
+
+  /// Whether [unit] is a box-drawing or block-element character
+  /// (U+2500-259F), stretched to fill its cell (see the class docs).
+  static bool stretches(int unit) => unit >= 0x2500 && unit < 0x25A0;
 
   /// Where the page images are counted.
   final AtlasLedger ledger;
@@ -213,7 +231,7 @@ final class GlyphAtlas {
   final _slots = <int, int>{};
   // The same for ASCII, indexed by (bucket * 4 + faces) * 128 + unit.
   final _ascii = Int32List(lumaBuckets * 4 * 128);
-  final _pending = <(int, ui.Paragraph)>[];
+  final _pending = <(int, ui.Paragraph, {bool stretch})>[];
   final _pages = <AtlasImage>[];
   final _prefilled = <int>{};
   int _count = 0;
@@ -297,20 +315,24 @@ final class GlyphAtlas {
 
   int _newSlot(int unit, int faces, int bucket) {
     assert(!_disposed, 'used a disposed glyph atlas');
+    final stretch = stretches(unit);
     final paragraph =
         (ui.ParagraphBuilder(_paragraphStyle)
-              ..pushStyle(styleOf(rasterColor(bucket), faces))
+              ..pushStyle(
+                styleOf(rasterColor(bucket), faces | (stretch ? unspaced : 0)),
+              )
               ..addText(String.fromCharCode(unit)))
             .build()
           ..layout(const ui.ParagraphConstraints(width: double.infinity));
-    if ((paragraph.maxIntrinsicWidth - metrics.width).abs() *
-            metrics.devicePixelRatio >
-        0.5) {
+    final advance = paragraph.maxIntrinsicWidth;
+    if (stretch
+        ? advance <= 0
+        : (advance - metrics.width).abs() * metrics.devicePixelRatio > 0.5) {
       paragraph.dispose();
       return -1;
     }
     final slot = _count++;
-    _pending.add((slot, paragraph));
+    _pending.add((slot, paragraph, stretch: stretch));
     return slot;
   }
 
@@ -370,17 +392,26 @@ final class GlyphAtlas {
       }
       canvas.scale(dpr);
       for (var i = start; i < end; i++) {
-        final (slot, paragraph) = _pending[i];
+        final (slot, paragraph, :stretch) = _pending[i];
         final inPage = slot % slotsPerPage;
         final x = (inPage % columns) * slotWidth + padX;
         final y = (inPage ~/ columns) * slotHeight + padTop;
-        canvas.drawParagraph(
-          paragraph,
-          Offset(
-            x / dpr,
-            y / dpr + metrics.baseline - paragraph.alphabeticBaseline,
-          ),
-        );
+        final top = metrics.baseline - paragraph.alphabeticBaseline;
+        if (stretch) {
+          // Exactly what the paragraph path does in the row (stretch to
+          // the cell, clip to it), here once per glyph.
+          canvas
+            ..save()
+            ..clipRect(
+              Rect.fromLTWH(x / dpr, y / dpr, metrics.width, metrics.height),
+            )
+            ..translate(x / dpr, y / dpr)
+            ..scale(metrics.width / paragraph.maxIntrinsicWidth, 1)
+            ..drawParagraph(paragraph, Offset(0, top))
+            ..restore();
+        } else {
+          canvas.drawParagraph(paragraph, Offset(x / dpr, y / dpr + top));
+        }
       }
       final picture = recorder.endRecording();
       final height = imageHeight(page);
@@ -401,7 +432,7 @@ final class GlyphAtlas {
       }
       start = end;
     }
-    for (final (_, paragraph) in _pending) {
+    for (final (_, paragraph, stretch: _) in _pending) {
       paragraph.dispose();
     }
     debugRasterised += _pending.length;
@@ -415,7 +446,7 @@ final class GlyphAtlas {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    for (final (_, paragraph) in _pending) {
+    for (final (_, paragraph, stretch: _) in _pending) {
       paragraph.dispose();
     }
     _pending.clear();
