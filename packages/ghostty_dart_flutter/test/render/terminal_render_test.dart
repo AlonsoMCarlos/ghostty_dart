@@ -37,6 +37,8 @@ class _CountingSource extends Fake implements TerminalFrameSource {
   @override
   List<ViewportHighlight> viewportHighlights() => inner.viewportHighlights();
   @override
+  void painted({required bool flooded}) => inner.painted(flooded: flooded);
+  @override
   void addListener(VoidCallback listener) => inner.addListener(listener);
   @override
   void removeListener(VoidCallback listener) => inner.removeListener(listener);
@@ -515,6 +517,82 @@ void main() {
       h.controller.write('\x1b[?2026l');
       await h.rebuild(textStyle: gridStyle.copyWith(fontSize: 14));
       expect(h.render.debugRowRecordings, recorded + 2);
+    });
+  });
+
+  group('flood', () {
+    // Lines that scroll the whole 5-row grid past: every visible row is
+    // new.
+    String screenful(int frame) =>
+        [for (var i = 0; i < 10; i++) '\r\nframe $frame line $i'].join();
+
+    testWidgets('output that scrolls a screen per frame paints at most '
+        'every floodInterval', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'start');
+      await h.write(screenful(1));
+      expect(h.render.debugFlooded, isFalse); // one frame is not a flood
+      await h.write(screenful(2));
+      expect(h.render.debugFlooded, isTrue);
+
+      final scans = h.render.debugRowScans;
+      h.controller.write(screenful(3));
+      expect(h.render.debugNeedsPaint, isFalse);
+      expect(h.seams.debugNotificationPending, isTrue);
+      await tester.pump();
+      expect(h.render.debugRowScans, scans); // not painted at this vsync
+      h.controller.write(screenful(4)); // coalesced into the same frame
+      await tester.pump(ControllerSeams.floodInterval);
+      expect(h.render.debugRowScans, scans + 5);
+      expect(h.seams.isDisposed, isFalse);
+      expect(h.render.debugFlooded, isTrue);
+    });
+
+    testWidgets('after a pause the first change paints at once', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'start');
+      await h.write(screenful(1));
+      await h.write(screenful(2));
+      expect(h.render.debugFlooded, isTrue);
+      // The interval is measured in real time since the last paint.
+      await tester.runAsync(
+        () => Future<void>.delayed(ControllerSeams.floodInterval * 1.5),
+      );
+      final scans = h.render.debugRowScans;
+      await h.write('x');
+      expect(h.render.debugRowScans, greaterThan(scans));
+      expect(h.render.debugFlooded, isFalse);
+    });
+
+    testWidgets('one screenful (a clear) or rows redrawn in place never '
+        'flood', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'start');
+      await h.write(screenful(1));
+      final scans = h.render.debugRowScans;
+      await h.write('\r\n> ');
+      expect(h.render.debugRowScans, greaterThan(scans));
+      for (var frame = 0; frame < 4; frame++) {
+        await h.write(
+          [
+            for (var y = 1; y <= 5; y++) '\x1b[$y;1Hredraw $frame row $y',
+          ].join(),
+        );
+        expect(h.render.debugFlooded, isFalse);
+      }
+    });
+
+    testWidgets('a pending flood repaint is cancelled on detach', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'start');
+      await h.write(screenful(1));
+      await h.write(screenful(2));
+      h.controller.write(screenful(3));
+      expect(h.seams.debugNotificationPending, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      // The renderer stopped listening: no timer is left pending (the
+      // test framework checks at the end too).
+      expect(h.seams.debugNotificationPending, isFalse);
     });
   });
 

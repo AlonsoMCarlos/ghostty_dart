@@ -350,6 +350,33 @@ flutter drive --profile -d "$usage_device" "$impeller" --endless-trace-buffer \
   --dart-define=BENCH_FONT_DIR="{{config_root}}/packages/ghostty_dart_flutter/test/fonts"
 '''
 
+# Firehose benchmark: `tree -C`-like output fed like a pty (4 KiB chunks,
+# 256 KiB window, fixed rate) with and without the view; reports process
+# CPU time per MB, frames and memory. Needs a display (xvfb-run on headless
+# Linux).
+[tasks."bench:firehose"]
+description = "Firehose benchmark (profile build): CPU per MB of tree-like output fed like a pty, with and without the view"
+usage = '''
+flag "--mb <n>" default="40" help="MB of output per run"
+flag "--rate <kBps>" default="7000" help="output rate in kB/s (0: unlimited)"
+flag "--runs <n>" default="3" help="runs per configuration"
+'''
+dir = "{{config_root}}/benchmarks/widget"
+shell = "bash -c"
+run = '''
+set -euo pipefail
+case "$(uname -s)" in
+  Linux) device=linux ;;
+  *) echo "bench:firehose reads /proc: Linux only" >&2; exit 1 ;;
+esac
+flutter build "$device" --profile -t lib/firehose_main.dart \
+  --dart-define=FIREHOSE_MB="$usage_mb" \
+  --dart-define=FIREHOSE_RATE="$usage_rate" \
+  --dart-define=FIREHOSE_RUNS="$usage_runs" \
+  --dart-define=BENCH_FONT_DIR="{{config_root}}/packages/ghostty_dart_flutter/test/fonts"
+build/linux/*/profile/bundle/ghostty_dart_widget_benchmarks | grep '^FIREHOSE'
+'''
+
 # The grid pixel check (ADR 0011) on the device's own renderer, which
 # flutter_tester's software raster cannot show: glyphs of a 200-column row
 # must land on the device-pixel grid under Impeller (or Skia) too. Needs a

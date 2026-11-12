@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
@@ -33,15 +35,109 @@ final class ControllerSeams
   bool get isDisposed => controller.isDisposed;
 
   // Listenable (frame source, text sink and viewport).
+  //
+  // The seams listen to the controller once and notify their own
+  // listeners (the renderer, the scrollbar, the pointer and text input
+  // layers), so a flood can delay all of them together (see [painted]).
+
+  /// The shortest time from a paint to the next notification while output
+  /// floods the view: 25 ms (ADR 0011, amendment of 2026-11-12). The frame
+  /// that notification schedules starts at the next vsync, so a flood is
+  /// painted about 30 times a second on 60 and 120 Hz displays (every
+  /// second or fourth vsync) and 36 on 144 Hz.
+  ///
+  /// In a flood every frame draws a whole new screen, and every listener
+  /// that schedules a frame (the scrollbar follows the growing
+  /// scrollback, the pointer and IME layers follow the cursor) would make
+  /// the view paint at the display's refresh rate for text nobody can
+  /// read. Changes after a pause, and output that does not replace every
+  /// row (full-screen programs, slower scrolling), are delivered at once
+  /// as before.
+  static const floodInterval = Duration(milliseconds: 25);
+
+  final _listeners = <VoidCallback>[];
+  bool _listening = false;
+  bool _flooded = false;
+  final _sincePaint = Stopwatch();
+  Timer? _floodTimer;
 
   @override
   void addListener(VoidCallback listener) {
-    if (!isDisposed) controller.addListener(listener);
+    if (isDisposed) return;
+    _listeners.add(listener);
+    if (!_listening) {
+      _listening = true;
+      controller.addListener(_onControllerChanged);
+    }
   }
 
   @override
-  void removeListener(VoidCallback listener) =>
-      controller.removeListener(listener); // allowed after dispose
+  void removeListener(VoidCallback listener) {
+    // Allowed after dispose.
+    _listeners.remove(listener);
+    if (_listeners.isEmpty && _listening) {
+      _listening = false;
+      controller.removeListener(_onControllerChanged);
+      _cancelFloodTimer();
+    }
+  }
+
+  @override
+  void painted({required bool flooded}) {
+    _flooded = flooded;
+    _cancelFloodTimer();
+    _sincePaint
+      ..reset()
+      ..start();
+  }
+
+  void _onControllerChanged() {
+    if (_flooded) {
+      if (_floodTimer != null) return;
+      final wait = floodInterval - _sincePaint.elapsed;
+      if (wait > Duration.zero) {
+        _floodTimer = Timer(wait, _onFloodTimer);
+        return;
+      }
+    }
+    _notifyListeners();
+  }
+
+  void _onFloodTimer() {
+    _floodTimer = null;
+    _notifyListeners();
+  }
+
+  void _cancelFloodTimer() {
+    _floodTimer?.cancel();
+    _floodTimer = null;
+  }
+
+  /// Whether a delayed notification is pending (tests).
+  @visibleForTesting
+  bool get debugNotificationPending => _floodTimer != null;
+
+  // As ChangeNotifier does: a listener removed by an earlier one is not
+  // called, and an error in one is reported without skipping the others.
+  void _notifyListeners() {
+    for (final listener in List.of(_listeners)) {
+      if (!_listeners.contains(listener)) continue;
+      try {
+        listener();
+      } catch (exception, stack) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: exception,
+            stack: stack,
+            library: 'ghostty_dart_flutter',
+            context: ErrorDescription(
+              'while notifying the listeners of a VtTerminalView',
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   // Layout (the view)
 
@@ -63,6 +159,7 @@ final class ControllerSeams
   /// (deactivate) and when it is disposed; its next paint, if any, takes
   /// ownership again.
   void release() {
+    _cancelFloodTimer();
     if (!isDisposed && identical(_internals.frameOwner, this)) {
       _internals.frameOwner = null;
     }

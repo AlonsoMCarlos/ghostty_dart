@@ -1,6 +1,7 @@
 // Contract tests of the internal seams (ADR 0011): what the renderer, the
 // input layers and the scrollbar can rely on.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
@@ -76,6 +77,64 @@ void main() {
       seams.removeListener(listener);
       seams.controller.write('y');
       expect(notified, 1);
+    });
+
+    testWidgets('while flooded, notifies every listener once per '
+        'floodInterval', (tester) async {
+      {
+        final seams = _seams();
+        final calls = <String>[];
+        seams
+          ..addListener(() => calls.add('render'))
+          ..addListener(() => calls.add('scrollbar'))
+          ..painted(flooded: true);
+        seams.controller
+          ..write('a')
+          ..write('b');
+        expect(calls, isEmpty);
+        expect(seams.debugNotificationPending, isTrue);
+        await tester.pump(ControllerSeams.floodInterval);
+        expect(calls, ['render', 'scrollbar']);
+
+        // A paint cancels the pending notification (it showed the change);
+        // not flooded, changes are delivered at once.
+        seams.controller.write('c');
+        seams.painted(flooded: false);
+        expect(seams.debugNotificationPending, isFalse);
+        seams.controller.write('d');
+        expect(calls, ['render', 'scrollbar', 'render', 'scrollbar']);
+      }
+    });
+
+    test('an error in one listener does not skip the others', () {
+      final seams = _seams();
+      var notified = 0;
+      seams
+        ..addListener(() => throw StateError('listener'))
+        ..addListener(() => notified++);
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+      seams.controller.write('x');
+      expect(notified, 1);
+      expect(errors.single.exception, isStateError);
+    });
+
+    testWidgets('removing the last listener cancels a pending '
+        'notification', (tester) async {
+      {
+        final seams = _seams();
+        void listener() {}
+        seams
+          ..addListener(listener)
+          ..painted(flooded: true);
+        seams.controller.write('x');
+        expect(seams.debugNotificationPending, isTrue);
+        seams.removeListener(listener);
+        expect(seams.debugNotificationPending, isFalse);
+        // The test framework fails a test that leaves a timer pending.
+      }
     });
   });
 

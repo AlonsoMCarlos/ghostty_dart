@@ -663,3 +663,72 @@ the pub.dev API's `archive_sha256` and to `pubspec.lock`):
 
 Its runtime defects and what the demo does about them are listed under
 "Known limitations" in `apps/demo/README.md`.
+
+## Firehose benchmark (CPU per MB under a flood)
+
+What does it cost to show a program that floods the terminal, such as
+`tree -C` over a huge directory or `cat` of a large log? The program sets
+the pace there, so the figure of merit is not throughput but **process CPU
+time per MB of output** (all threads: UI, raster, GPU driver, IO, GC), next
+to the frames drawn and memory. `benchmarks/widget/lib/firehose_main.dart`
+is a plain profile-mode app (no test binding, which schedules frames of its
+own) that feeds a `VtTerminalController` the way a pty does and prints one
+`FIREHOSE {json}` line per run.
+
+### Run it
+
+Linux only (it reads `/proc`), on a display:
+
+```sh
+mise run bench:firehose                       # 40 MB at 7 MB/s, 3 runs
+mise run bench:firehose -- --rate 0 --runs 1  # as fast as it is taken
+xvfb-run -a -s "-screen 0 2560x1600x24" mise run bench:firehose   # headless
+```
+
+### Methodology
+
+- **Stream** (`lib/src/firehose.dart`): `tree -C`-like lines after the pty's
+  `onlcr`: box-drawing indentation, bold blue directories, green
+  executables, CRLF; ~45 bytes per line, from `Random(42)`.
+  `--dart-define=FIREHOSE_ASCII=true` draws the indentation in ASCII, to
+  isolate the cost of box-drawing glyphs.
+- **Feed:** a producer isolate posts 4 KiB chunks (a Linux pty read) to the
+  UI isolate with a 256 KiB acknowledgement window (flutter_pty2 3.0.0's
+  `outputWindowBytes`) at 7 MB/s by default, about what `tree -C` produced
+  over 570,000 files on the maintainer's machine (2026-11-12). Each chunk
+  is one `writeBytes`.
+- **Configurations:** `no view` (the controller alone, the floor) and
+  `view` (`VtTerminalView`, 200 × 60, JetBrains Mono 12 px, atlas path).
+- **Reported:** wall time, process CPU (`/proc/self/stat`) and CPU per
+  thread name (`/proc/self/task/*/stat`), frames and build/raster time per
+  frame (`FrameTiming`), frame interval percentiles, RSS at start, peak
+  (sampled every 50 ms) and end. RSS includes the harness's copies of the
+  stream (three of 40 MB in the first run).
+
+### Results (2026-11-12)
+
+Ryzen 5 3600 (6 cores), Debian 13, Xvfb with Mesa llvmpipe (no GPU: the
+`llvmpipe-#` threads are the software GPU and would not exist, as CPU, on
+real hardware), Impeller (OpenGL ES), DPR 1, Flutter 3.47.9 profile build.
+40 MB at 7 MB/s, three runs each.
+
+| | before | after |
+|---|---:|---:|
+| process CPU, ms per MB (view) | 457–473 | 154–217 |
+| the same without llvmpipe | ~103 | 32–41 |
+| frames in 5.8 s | 177–181 | 56–88 |
+| UI thread CPU, s | 1.86–1.88 | 0.76–0.97 |
+| raster thread CPU, s | 1.73–1.79 | 0.22–0.34 |
+| build per frame, ms | 3.0 | 1.5 |
+| no view (floor), ms per MB | 16 | 16 |
+| throughput with the view at `--rate 0`, MB/s | 25 | 49 |
+
+"Before" is ghostty_dart_flutter 0.1.0; "after" adds box drawing in the
+glyph atlas (ADR 0012, amendment 2026-11-12: raster-thread CPU per frame
+9.8 → 4.3 ms, the ASCII stream's cost) and the flood frame rate (ADR 0011,
+amendment 2026-11-12: about 30 fps while every row is replaced each frame).
+For reference, raw `VtTerminal.write` of the same stream in AOT parses
+212 MB/s in 4 KiB chunks, 5 ms of CPU per MB. On this machine the flood
+paints every 50–80 ms instead of ~33 ms, because GTK presents each llvmpipe
+frame on the UI thread; a run on a real GPU, and at 120/144 Hz, is still to
+be recorded.

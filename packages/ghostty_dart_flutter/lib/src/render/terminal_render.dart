@@ -245,6 +245,12 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   /// The default [cacheBudget]: 16 MiB per view.
   static const defaultCacheBudget = 16 << 20;
 
+  /// Consecutive frames that must each replace every visible row before
+  /// the view counts as flooded (`TerminalFrameSource.painted`): two, so
+  /// a lone `clear` (which scrolls the screen into the scrollback) never
+  /// delays the prompt after it (ADR 0011, amendment of 2026-11-12).
+  static const floodFrames = 2;
+
   TerminalFrameSource _source;
   TerminalGeometry _geometry;
   TextStyle _textStyle;
@@ -573,6 +579,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     _releaseTimer = null;
     PaintingBinding.instance.systemFonts.removeListener(_onSystemFonts);
     _stopBlink();
+    _floodStreak = 0;
     // A detached box paints nothing; reattaching records the screen once.
     _dropAll();
     super.detach();
@@ -619,6 +626,14 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     _stopBlink();
     markNeedsPaint();
   }
+
+  // Frames in a row whose visible rows were all new (see [floodFrames]).
+  int _floodStreak = 0;
+
+  /// Whether output floods the view (see [floodFrames]) as of the last
+  /// paint (tests).
+  @visibleForTesting
+  bool get debugFlooded => _floodStreak >= floodFrames;
 
   @override
   void paint(PaintingContext context, Offset offset) {
@@ -672,6 +687,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     if (_highlights.isNotEmpty) _paintHighlights(canvas, grid);
     canvas.restore();
     _syncBlink(drawn);
+    _source.painted(flooded: _floodStreak >= floodFrames);
   }
 
   Color _withOpacity(Color color) => _backgroundOpacity >= 1
@@ -818,6 +834,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       // By id, not by the entry's frame: rows with equal content share an
       // entry, so a row that left keeps the stamp of a visible twin.
       final visible = {for (final id in ids) ?id};
+      _countFlood(ids, visible);
       _rows.removeWhere((id, _) => !visible.contains(id));
       _evictPictures(frame);
       _visibleRowIds = ids;
@@ -827,6 +844,22 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     } finally {
       _source.endFrame();
     }
+  }
+
+  // A frame floods when every row it shows is one the previous frame did
+  // not show (see [floodFrames]); one-row grids never do.
+  void _countFlood(List<RenderRowId?> ids, Set<RenderRowId> visible) {
+    final previous = _visibleRowIds;
+    var flooded = ids.length > 1 && previous.length == ids.length;
+    if (flooded) {
+      for (final id in previous) {
+        if (id == null || visible.contains(id)) {
+          flooded = false;
+          break;
+        }
+      }
+    }
+    _floodStreak = flooded ? _floodStreak + 1 : 0;
   }
 
   /// Shows [content] in row [id]: its cached picture, or a new recording.
