@@ -7,10 +7,11 @@
 /// provided (ADR 0004). `COMPATIBILITY.md` lists every xterm member and
 /// whether it is the same, differs, is planned or will not be supported.
 ///
-/// Work in progress: this version has `Terminal`, its `Buffer`s, lines,
-/// ranges and anchors, xterm's value types (`CellOffset`, `CursorStyle`,
-/// `TerminalState`, …) and its key and mouse handlers (`TerminalKey`,
-/// `defaultInputHandler`, `defaultMouseHandler`, …) (ADR 0013).
+/// It provides `Terminal`, its `Buffer`s, lines, ranges and anchors,
+/// xterm's value types (`CellOffset`, `CursorStyle`, `TerminalState`, …)
+/// and its key and mouse handlers (`TerminalKey`, `defaultInputHandler`,
+/// `defaultMouseHandler`, …). `Terminal` holds native memory: call its
+/// additive `dispose()` when you are done with it.
 library;
 
 export 'src/core/buffer/buffer.dart';

@@ -14,7 +14,8 @@
 /// provided yet. `COMPATIBILITY.md` lists every xterm member and its
 /// status.
 ///
-/// Work in progress (ADR 0013): see `core.dart` for what exists today.
+/// `MIGRATING_FROM_XTERM.md` explains every difference and the additive
+/// `Terminal.dispose()`, `writeBytes` and `onOutputBytes`.
 library;
 
 export 'core.dart';

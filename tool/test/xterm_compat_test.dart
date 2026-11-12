@@ -313,6 +313,43 @@ Future<void> main() async {
     },
   );
 
+  await test('overrides of SDK or Flutter members are no additions', () async {
+    // TerminalController.dispose (ChangeNotifier) and
+    // TerminalViewState.didChangeDependencies (State) are declared in the
+    // adapter but inherited in xterm: present either way, never "additions".
+    final (ours, _) = await _package(
+      _ours({
+        'int baz() => 0;':
+            'int baz() => 0;\n'
+            '  @override\n'
+            '  String toString() => "Foo";\n'
+            '  @override\n'
+            '  dynamic noSuchMethod(Invocation i) => null;\n'
+            '  void extra() {}',
+        'class Impl extends Base { @override void run() {} }':
+            'class Impl extends Base implements Comparable<Impl> {\n'
+            '  @override void run() {}\n'
+            '  @override int compareTo(Impl other) => 0;\n'
+            '}',
+      }),
+    );
+    final foo = ours.symbols['Foo']!;
+    expect(foo.members['toString']!.foreign, 'Object override is foreign');
+    expect(foo.members['noSuchMethod']!.foreign, 'idem noSuchMethod');
+    expect(
+      ours.symbols['Impl']!.members['compareTo']!.foreign,
+      'SDK interface member is foreign',
+    );
+    expect(!foo.members['extra']!.foreign, 'own member is not foreign');
+    expect(!foo.members['baz']!.foreign, 'own member matching xterm');
+    final c = compare(ref, ours, {});
+    expect(
+      c.additions.keys.join(',') == 'Foo.extra',
+      'only the own member is an addition: ${c.additions.keys}',
+    );
+    expect(c.rows.every((r) => r.status == Status.same), 'all same');
+  });
+
   await test('signature mismatches are ⚠️ automatically', () async {
     final (ours, _) = await _package(
       _ours({

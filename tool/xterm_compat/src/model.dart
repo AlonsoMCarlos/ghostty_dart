@@ -112,9 +112,11 @@ final class ApiMember {
   /// `deprecated`.
   final List<String> flags;
 
-  /// Inherited from a supertype outside the package (Flutter, the SDK).
-  /// Only the adapter side keeps such members (they are present for a
-  /// caller); they are never written to the snapshot and never additions.
+  /// Inherited from a supertype outside the package (Flutter, the SDK), or
+  /// declared in the package as an override of such a member. Only the
+  /// adapter side keeps inherited ones (they are present for a caller); the
+  /// flag is never written to the snapshot, and a foreign member is never an
+  /// addition.
   final bool foreign;
 
   Map<String, Object?> toJson() => {

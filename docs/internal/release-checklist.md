@@ -236,3 +236,13 @@ gh release create ghostty_dart-v0.1.0 --verify-tag --title "ghostty_dart 0.1.0" 
 5. If the dispatch did not happen, run `mise run release:dispatch publish ghostty_dart-v<version>` (it refuses a tag that is not on `main`), or `gh workflow run publish.yml --ref ghostty_dart-v<version>`.
 
 Never put a prerelease version (`-dev.N`) in `pubspec.yaml` while release-please owns it. Its Dart updater mangles them (release-please issue #2400), and `publish.yml` refuses them.
+
+## First publish of `ghostty_dart_xterm` (later)
+
+The adapter (ADR 0013) is a workspace member at `0.0.1-dev` and stays unpublished until the maintainer approves it. It cannot pass pana before `ghostty_dart_flutter` is on pub.dev: pana resolves the archive's dependencies from pub.dev, and `ghostty_dart_flutter: ^0.0.1-dev` does not exist there yet. So it is deliberately **not** in the CI `pana and publish dry run` job, `mise run pana`'s default list or `publish:dry-run`. When `ghostty_dart_flutter` is published:
+
+1. Set the dependency to the published `ghostty_dart_flutter` version and choose the first version (`0.1.0`), with a matching `CHANGELOG.md` entry.
+2. Add `packages/ghostty_dart_xterm` to the `pana` task's default list, the `publish:dry-run` task and the CI `pana` job, and to release-please's config (`release-please-config.json`, manifest) with its own component.
+3. `mise run pana packages/ghostty_dart_xterm` must give 160/160. Consider pubspec `screenshots` (AGENTS.md asks for them on widget packages; pana needs `webp` for them).
+4. Extend the `pub.dev` environment's deployment tag policy and the tag ruleset (steps 1 and 2) to `ghostty_dart_xterm-v*`, then publish the first version by hand as in steps 7 to 10, with `ghostty_dart_xterm` in place of `ghostty_dart`.
+5. Check `COMPATIBILITY.md` is current (`mise run compat:check`) and that `MIGRATING_FROM_XTERM.md` and the README no longer say "not published".

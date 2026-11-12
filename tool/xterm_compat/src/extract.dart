@@ -27,7 +27,9 @@ final class ExtractError implements Exception {
 /// whose URI starts with [ownUriPrefix] or in the symbol's own library, so
 /// members a class inherits from Flutter or the SDK are left out; with
 /// [keepForeign] they are kept too and marked [ApiMember.foreign] (the
-/// adapter side: an inherited member is still present for a caller).
+/// adapter side: an inherited member is still present for a caller). A
+/// member that overrides one declared outside the package is kept when
+/// declared in the package, and marked foreign as well.
 ///
 /// With [requireAll], a library that does not exist or does not resolve is an
 /// [ExtractError]; otherwise it exports nothing.
@@ -275,8 +277,28 @@ Map<String, ApiMember> _members(
     );
   }
 
+  // Names declared by a supertype outside the package (Flutter, the SDK).
+  // A member the class declares itself under such a name is an override
+  // (`ChangeNotifier.dispose`, `State.didChangeDependencies`): it is present
+  // for a caller either way, so it counts as foreign, never as an addition.
+  final foreignNames = <String>{};
+  if (element is InterfaceElement) {
+    for (final type in element.allSupertypes) {
+      final s = type.element;
+      if (isOwn(s)) continue;
+      for (final e in <ExecutableElement>[
+        ...s.getters,
+        ...s.setters,
+        ...s.methods,
+      ]) {
+        final name = e.name;
+        if (e.isPublic && !e.isStatic && name != null) foreignNames.add(name);
+      }
+    }
+  }
+
   bool keep(Element e) => keepForeign || isOwn(e);
-  bool foreign(Element e) => !isOwn(e);
+  bool foreign(Element e) => !isOwn(e) || foreignNames.contains(e.name);
 
   for (final name in {...getters.keys, ...setters.keys}) {
     if (members.containsKey(name)) continue;

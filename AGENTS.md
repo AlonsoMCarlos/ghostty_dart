@@ -15,7 +15,8 @@ packages/
   ghostty_dart/           Pure Dart. ffigen bindings + idiomatic API. FFI backend (native) and
                         wasm backend (web) behind one interface. hook/build.dart ships the library.
   ghostty_dart_flutter/   Flutter widget: renderer, keyboard/mouse/IME input, selection, scrolling.
-  ghostty_dart_xterm/        API-compatible adapter for package:xterm 4.0.0 on top of the two above.
+  ghostty_dart_xterm/     API-compatible adapter for package:xterm 4.0.0 on top of the two above (not on
+                        pub.dev yet). COMPATIBILITY.md is generated; MIGRATING_FROM_XTERM is the guide.
 apps/demo/              Flutter app: flutter_pty2 on desktop, a fake shell on the web. The live web demo
                         (GitHub Pages, --wasm) waits for ghostty_dart's wasm backend.
 benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm. benchmarks/widget/ is the
@@ -23,7 +24,8 @@ benchmarks/             Reproducible benchmarks vs xterm 4.0.0, xterm2, flterm. 
 native/                 upstream.json (pinned libghostty-vt version + hashes), CI build scripts.
 tool/                   Repo scripts: lib.sh (shared bash helpers), check_cooldown, check_translations, check_dco +
                         dco_range, release/ (publish helpers),
-                        native/ (binary pipeline), pana/ (pinned pana + dartdoc), test/ (tests of the scripts).
+                        native/ (binary pipeline), pana/ (pinned pana + dartdoc), test/ (tests of the scripts),
+                        xterm_compat/ (COMPATIBILITY.md generator: xterm 4.0.0 API snapshot, status.json).
 docs/                   User docs (en + es). docs/internal/ = ADRs and research (English only).
 ```
 
@@ -69,7 +71,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 - Bindings: ffigen 23 (Dart API config in `packages/ghostty_dart/tool/ffigen.dart`, `@Native`).
   - The generated `lib/src/ffi/bindings.g.dart` is committed and never edited by hand.
 - Local development: the root `pubspec.yaml` sets `hooks: user_defines: ghostty_dart: source: path` with `path: .native-cache/host/`. A directory `path` makes the hook pick the target OS's bundled library name inside it, so the same pubspec works on every host.
-- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. On ubuntu the `check` job also installs the GTK desktop toolchain with apt (from the runner image's Ubuntu archive) and runs `demo:build-linux`. It installs `libstdc++-12-dev` because Flutter's Linux setup page lists exactly that package (checked 2026-11-10); clang uses the C++ headers of the newest GCC installation it finds, so on Debian 13 (GCC 14 default) `libstdc++-14-dev` is the one that matters and is already installed with `g++`. The two `apt-get` steps (this one and `webp` in the `pana` job) are the one exception to "every workflow step has a mise task": they install system packages with `sudo`, which mise does not manage and which must not run unattended on a developer machine (sudo asks for a password on purpose). A Linux `pana` job runs `deps`, `pana` and `publish:dry-run` for both published packages (`ghostty_dart`, `ghostty_dart_flutter`). The frame benchmark (`bench:widget`) and the device pixel check (`test:grid-pixels`) are **not** in CI: shared runners have no GPU, so their numbers would be noise; run them on a real machine and record the environment. `bench-widget.yml` runs both once on a GitHub macOS runner (manual dispatch, or a PR that changes that file); its virtualised GPU makes the numbers indicative only. `dco.yml` checks every PR commit's `Signed-off-by` (`tool/check_dco.sh`).
+- CI: `.github/workflows/ci.yml` runs `deps`, `native:host`, `native:check --host` and `check` on ubuntu-latest, macos-latest (arm64) and windows-latest. On ubuntu the `check` job also installs the GTK desktop toolchain with apt (from the runner image's Ubuntu archive) and runs `demo:build-linux`. It installs `libstdc++-12-dev` because Flutter's Linux setup page lists exactly that package (checked 2026-11-10); clang uses the C++ headers of the newest GCC installation it finds, so on Debian 13 (GCC 14 default) `libstdc++-14-dev` is the one that matters and is already installed with `g++`. The two `apt-get` steps (this one and `webp` in the `pana` job) are the one exception to "every workflow step has a mise task": they install system packages with `sudo`, which mise does not manage and which must not run unattended on a developer machine (sudo asks for a password on purpose). A Linux `pana` job runs `deps`, `pana` and `publish:dry-run` for both published packages (`ghostty_dart`, `ghostty_dart_flutter`). `ghostty_dart_xterm` joins that job only once `ghostty_dart_flutter` is on pub.dev (pana cannot resolve it before; `docs/internal/release-checklist.md`). The frame benchmark (`bench:widget`) and the device pixel check (`test:grid-pixels`) are **not** in CI: shared runners have no GPU, so their numbers would be noise; run them on a real machine and record the environment. `bench-widget.yml` runs both once on a GitHub macOS runner (manual dispatch, or a PR that changes that file); its virtualised GPU makes the numbers indicative only. `dco.yml` checks every PR commit's `Signed-off-by` (`tool/check_dco.sh`).
 - Package releases (ADR 0010): `release-please.yml` (manifest mode, `GITHUB_TOKEN`) opens release PRs and, because its tags do not trigger workflows, dispatches `ci.yml` on the release PR and `publish.yml` on the new tag. `publish.yml` validates the tag against pubspec and CHANGELOG, builds the archive offline (`--to-archive`), and uploads exactly that archive via OIDC from the protected `pub.dev` environment. Steps of `release-please.yml` and `dco.yml` that install no tools call their scripts directly; each script still has a mirror mise task for local use.
 - Native releases: `.github/workflows/native-release.yml` (tag `native-v<version>-r<n>`, manual dry run, or any PR touching the native pipeline) calls the reusable `native-build.yml` (read-only build jobs, no caches, a/b reproducibility check, format checks, attestation job), smoke-tests on six real runners, and publishes only after approval in the `native-release` environment. PRs never attest or publish. A `secrets` job runs gitleaks (pinned release binary, sha256 verified) over the full history and the working tree.
 
@@ -87,11 +89,15 @@ mise run format
 mise run analyze        # format check + dart analyze --fatal-infos
 mise run test           # runs inside packages/ghostty_dart, so the build hook runs
 mise run test:flutter   # flutter test in packages/ghostty_dart_flutter (spike tag excluded)
+mise run test:xterm     # flutter test in packages/ghostty_dart_xterm (own tests, ported xterm tests, migration examples)
+mise run compat         # regenerate packages/ghostty_dart_xterm/COMPATIBILITY.md (snapshot + adapter API + tool/xterm_compat/status.json)
+mise run compat:check   # fail if COMPATIBILITY.md is stale or status.json names nothing / is stale (part of check)
+mise run compat:snapshot  # re-take xterm 4.0.0's API from the locked copy (fail-closed: lock sha256 + lib/ tree hash); review the JSON diff
 mise run test:spike     # letterSpacing/metrics spikes on host fonts (manual, not in CI)
 mise run test:goldens:update  # regenerate the widget goldens + doc/screenshot.png (Linux; review the diff)
 mise run deps:no-flutter  # resolve without the Flutter members, exactly as locked (arm64 smoke runners)
 mise run cooldown       # no locked dependency younger than 3 days
-mise run check          # everything CI runs (analyze, test, test:flutter, demo:test, bench:widget:test, test:tool, test:release, cooldown, lint:ci, docs:translations)
+mise run check          # everything CI runs (analyze, test, test:flutter, test:xterm, demo:test, bench:widget:test, test:tool, test:release, compat:check, cooldown, docs:translations, lint:ci)
 mise run pana [pkg...]  # pub.dev score of each publish archive (default: ghostty_dart, ghostty_dart_flutter), pinned pana + dartdoc; must be 160/160 (network)
 mise run publish:dry-run  # validate both publish archives (run on committed changes)
 mise run docs:translations  # Spanish translations in sync with their English source
@@ -114,7 +120,7 @@ mise run demo:build-web     # stops with a message until ghostty_dart has a wasm
 
 When you add a workflow step, add a mise task for it (exception: the `sudo apt-get` steps that install system packages, see CI above). A task listed here must work.
 
-Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`, `benchmarks/widget`, and `benchmarks/` (it depends on `xterm` 4.0.0, whose pubspec requires Flutter). Resolving the workspace therefore needs Flutter's Dart (the one mise installs); `mise run deps:no-flutter` drops those four members where only plain Dart exists. Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
+Five members need the Flutter SDK: `packages/ghostty_dart_flutter`, `packages/ghostty_dart_xterm`, `apps/demo`, `benchmarks/widget`, and `benchmarks/` (it depends on `xterm` 4.0.0, whose pubspec requires Flutter). Resolving the workspace therefore needs Flutter's Dart (the one mise installs); `mise run deps:no-flutter` drops those five members where only plain Dart exists. Use `mise run deps` (`flutter pub get`): plain `dart pub get` only finds the Flutter SDK when `FLUTTER_ROOT` is set, which is not guaranteed (it fails on the Linux CI runner).
 
 ## Code rules
 
@@ -152,8 +158,10 @@ Four members need the Flutter SDK: `packages/ghostty_dart_flutter`, `apps/demo`,
 
 ### `ghostty_dart_xterm` (compat adapter)
 - Mirror the public API of `xterm` 4.0.0 exactly: names, parameters, defaults and callback signatures. When in doubt, read xterm.dart's source (MIT) and match it.
-- `COMPATIBILITY.md` is generated by `tool/` from the xterm 4.0.0 API. Every member is ✅ same, ⚠️ differs, ❌ missing (planned) or 🚫 won't support (with the reason).
-- Port xterm.dart's tests into `packages/ghostty_dart_xterm/test/compat/`. A failing compat test is a bug, not a flaky test.
+- `COMPATIBILITY.md` is generated by `tool/xterm_compat` (`mise run compat`) from a committed analyzer snapshot of xterm 4.0.0 (`tool/xterm_compat/xterm-4.0.0.api.json`) and the hand-kept `tool/xterm_compat/status.json` (`differs|missing|wont` + reason). Every member is ✅ same, ⚠️ differs, ❌ missing (planned) or 🚫 won't support (with the reason). Signature differences show as ⚠️ automatically, a member with no entry is ❌ planned, and overrides of Flutter/SDK members are never "additions". Any change to the adapter's public API needs `mise run compat`; `compat:check` (in `check`) fails on a stale file. The snapshot is taken only from the locked xterm 4.0.0 (lock sha256 and a hash of its `lib/` tree, fail-closed).
+- Port xterm.dart's tests into `packages/ghostty_dart_xterm/test/compat/`. A failing compat test is a bug, not a flaky test. A documented divergence is skipped with `skip: "differs from xterm: <reason>, see COMPATIBILITY.md"`, never by weakening an assertion.
+- `test/migration/` keeps xterm 4.0.0's own examples (flutter_pty, dartssh2) compiling and running with only the import changed, against fakes with the same API. The package `example/` is xterm's mock example, ported.
+- `MIGRATING_FROM_XTERM.md` (en + es) explains the differences for humans; keep it in step with `status.json`.
 - Additions beyond xterm are additive only (e.g. `writeBytes`). They must never change the behaviour of an existing xterm member.
 
 ## Testing
@@ -177,6 +185,7 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
   - Hold back a too-new transitive version with a root `dependency_overrides` entry, with a dated comment. Remove it once the version has aged.
   - Prefer fixing an SDK pin conflict without an override. Flutter's `flutter_test` pins exact versions (Flutter 3.47.9: `test_api 0.7.12`), and every workspace member resolves together, so `ghostty_dart`'s dev dependencies stay on `test ^1.31.1` and `analyzer ^13.3.0` (`test` 1.32 and later and `analyzer` 14 need a newer `test_api`). Raise them together with the pinned Flutter.
 - Prefer zero dependencies in `ghostty_dart`. Every new dependency needs a justification in the PR.
+- The root pubspec declares `analyzer` and `crypto` as dev dependencies for `tool/xterm_compat` (both already locked through `ghostty_dart`). The xterm snapshot is pinned to the locked xterm 4.0.0 archive sha256 and its `lib/` tree hash (`tool/xterm_compat/src/pin.dart`); `compat:snapshot` refuses anything else.
 - Before using a library's API, read its source in `~/.pub-cache`. Do not create throwaway projects that compile unpinned code.
 - Pin GitHub Actions by commit SHA.
 - Native binaries are built only in CI, with provenance attestations (ADR 0008, `native-release.yml`). Non-Apple assets are built twice and must be bit-identical.

@@ -1,4 +1,4 @@
-<!-- source: README.md@70b5849e9da00dd34319df0de466c60f9d55abe1 -->
+<!-- source: README.md@49bbe29ac0b4905ca124e5a61344c5f9b95c0e3b -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -107,9 +107,12 @@ indiques.
 
 ## Migrar desde xterm
 
-Está previsto un adaptador con exactamente la API pública de
-[`xterm`](https://pub.dev/packages/xterm) 4.0.0 (`ghostty_dart_xterm`), pero
-todavía no existe. Migrar a mano es breve, porque las formas se parecen:
+[`ghostty_dart_xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm) (todavía no está en pub.dev) replica la API
+pública de [`xterm`](https://pub.dev/packages/xterm) 4.0.0 sobre este widget,
+así que la mayoría de las aplicaciones migran cambiando el import; su
+[`COMPATIBILITY.md`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/COMPATIBILITY.md) enumera cada miembro que difiere y su
+[guía de migración](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.es.md) explica cada diferencia.
+Para usar este widget directamente, las formas se parecen:
 
 | `xterm` 4.0.0 | `ghostty_dart_flutter` |
 |---|---|
@@ -187,14 +190,15 @@ distinto y, en particular, `xterm` es hoy la opción madura y más usada.
 
 | Paquete | Motor | Web | Estrategia de repintado | API de `xterm` 4.0.0 |
 |---|---|---|---|---|
-| `ghostty_dart_flutter` (sin publicar) | libghostty-vt 1.0.0 (ABI en C estable), FFI | No (previsto) | Solo filas modificadas, atlas de glifos con `drawRawAtlas` (párrafos por fila como opción), imágenes de fila en caché por contenido | No (adaptador previsto) |
+| `ghostty_dart_flutter` (sin publicar) | libghostty-vt 1.0.0 (ABI en C estable), FFI | No (previsto) | Solo filas modificadas, atlas de glifos con `drawRawAtlas` (párrafos por fila como opción), imágenes de fila en caché por contenido | Con [`ghostty_dart_xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm) (sin publicar) |
 | [`xterm`](https://pub.dev/packages/xterm) 4.0.0 | Dart puro | Sí | Toda la pantalla en cada cambio, un párrafo por celda | Es la API |
 | [`xterm2`](https://pub.dev/packages/xterm2) 5.4.0 | Dart puro (`xterm2_core`) | Sí | Pinta celda a celda | La misma API (es un *fork*) |
 | [`flterm`](https://pub.dev/packages/flterm) 0.0.6 (+ [`libghostty`](https://pub.dev/packages/libghostty) 0.0.13) | Un *commit* de libghostty-vt anterior a 1.0, FFI y wasm | Sí | Atlas de glifos con `drawRawAtlas` | No |
 
 Lo que `ghostty_dart_flutter` **todavía no** hace: no funciona en la web,
-no se ha probado en dispositivos Android e iOS, y no puede sustituir a
-`package:xterm` en una aplicación existente sin cambiar código. Si hoy
+no se ha probado en dispositivos Android e iOS, y su propia API no es la
+de xterm (para eso está el adaptador `ghostty_dart_xterm`, todavía sin
+publicar). Si hoy
 necesitas algo de eso, los paquetes anteriores ya lo ofrecen. `flterm` no
 está en nuestro *benchmark* de fotogramas porque se basa en otra
 libghostty-vt.

@@ -6,3 +6,7 @@ pubspec_overrides.yaml
 
 # Test-only output: golden failure images.
 test/**/failures/
+
+# Byte-stream fixtures of the ported xterm tests (test/compat/), ~22 KB:
+# test-only, not needed by users of the package.
+test/compat/_fixture/

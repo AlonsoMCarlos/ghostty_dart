@@ -9,6 +9,10 @@ import 'model.dart';
 /// has the same status and no note (TerminalKey has 273).
 const _collapseValuesAbove = 12;
 
+const _migratingUrl =
+    'https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/'
+    'ghostty_dart_xterm/MIGRATING_FROM_XTERM.md';
+
 String _cell(String text) =>
     text.replaceAll('|', r'\|').replaceAll('\n', ' ').trim();
 
@@ -38,6 +42,18 @@ String renderReport(Comparison comparison) {
     )
     ..writeln()
     ..writeln('# Compatibility with xterm 4.0.0')
+    ..writeln()
+    ..writeln(
+      '`ghostty_dart_xterm` offers the public API of '
+      '[`xterm`](https://pub.dev/packages/xterm) 4.0.0 on top of '
+      'libghostty-vt, so that most apps move by changing their import. It is '
+      'not a drop-in replacement: this file lists, member by member, what is '
+      'the same and what is not, and it is regenerated and checked in CI on '
+      'every change. For what the differences mean in practice, with code, '
+      'read the [migration guide]($_migratingUrl).',
+    )
+    ..writeln()
+    ..writeln('## How this list is made')
     ..writeln()
     ..writeln(
       'Every public symbol and member of `package:xterm` 4.0.0 (the '
@@ -76,6 +92,15 @@ String renderReport(Comparison comparison) {
       'library that exports it; `xterm.dart` re-exports `core.dart`, `ui.dart` '
       'and `zmodem.dart`. Additions that xterm does not have are listed at the '
       'end.',
+    )
+    ..writeln()
+    ..writeln(
+      'Most ⚠️ notes describe behaviour, not signatures: the member exists and '
+      'is called the same way, but the engine underneath is libghostty-vt, '
+      'not xterm\'s Dart emulator. The notes cite the ADR that decided each '
+      'difference where there is one '
+      '([ADR 0013](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/'
+      'docs/internal/adr/0013-xterm-adapter-design.md)).',
     )
     ..writeln();
 

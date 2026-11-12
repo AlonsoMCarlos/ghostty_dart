@@ -2,6 +2,10 @@
 
 # Compatibility with xterm 4.0.0
 
+`ghostty_dart_xterm` offers the public API of [`xterm`](https://pub.dev/packages/xterm) 4.0.0 on top of libghostty-vt, so that most apps move by changing their import. It is not a drop-in replacement: this file lists, member by member, what is the same and what is not, and it is regenerated and checked in CI on every change. For what the differences mean in practice, with code, read the [migration guide](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/MIGRATING_FROM_XTERM.md).
+
+## How this list is made
+
 Every public symbol and member of `package:xterm` 4.0.0 (the libraries `xterm.dart`, `core.dart`, `ui.dart`, `zmodem.dart`, `suggestion.dart` and `utils.dart`), and its status in `ghostty_dart_xterm`. The list of xterm members comes from the analyzer, run on the published xterm 4.0.0 sources; presence and signatures on our side come from the analyzer too, so a renamed parameter, a changed default or a missing member shows up here automatically. Behaviour differences the analyzer cannot see are recorded by hand with a reason.
 
 | Status | Meaning |
@@ -12,6 +16,8 @@ Every public symbol and member of `package:xterm` 4.0.0 (the libraries `xterm.da
 | 🚫 | Won't support: not provided, on purpose; the note says why. |
 
 Members inherited from Flutter or SDK types (for example `ChangeNotifier`) are not listed. A symbol is listed under the first library that exports it; `xterm.dart` re-exports `core.dart`, `ui.dart` and `zmodem.dart`. Additions that xterm does not have are listed at the end.
+
+Most ⚠️ notes describe behaviour, not signatures: the member exists and is called the same way, but the engine underneath is libghostty-vt, not xterm's Dart emulator. The notes cite the ADR that decided each difference where there is one ([ADR 0013](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/docs/internal/adr/0013-xterm-adapter-design.md)).
 
 ## Summary
 
@@ -26,7 +32,7 @@ Symbols and members per library (a symbol counts once, plus one per member).
 | `utils.dart` | 0 | 0 | 0 | 25 | 25 |
 | **All** | **893** | **64** | **35** | **135** | **1127** |
 
-Additions beyond xterm: 5.
+Additions beyond xterm: 3.
 
 ## `core.dart`
 
@@ -1290,5 +1296,3 @@ class, `src/utils/debugger_view.dart`. 🚫 won't support: the debugger is built
 | `Terminal.dispose` | method |
 | `Terminal.onOutputBytes` | property |
 | `Terminal.writeBytes` | method |
-| `TerminalController.dispose` | method |
-| `TerminalViewState.didChangeDependencies` | method |
