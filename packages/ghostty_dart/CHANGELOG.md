@@ -1,3 +1,18 @@
+# Changelog
+
+## [0.1.1](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart-v0.1.0...ghostty_dart-v0.1.1) (2026-11-12)
+
+
+### Features
+
+* **flutter:** scaffold ghostty_dart_flutter with frozen contracts ([510b7f7](https://github.com/AlonsoMCarlos/ghostty_dart/commit/510b7f7a0bc16315a664e1d252e12df723eca411))
+
+
+### Bug Fixes
+
+* **ghostty_dart:** say how to fix a missing source: path library ([8047076](https://github.com/AlonsoMCarlos/ghostty_dart/commit/80470767d454efd830ee7844f1913a25739e941b))
+* **ghostty_dart:** ship the licences of the code in libghostty-vt in NOTICES ([ab559f8](https://github.com/AlonsoMCarlos/ghostty_dart/commit/ab559f84db35d6693fbb3b3942ee5690f849f39f))
+
 ## 0.1.0
 
 - Initial release: idiomatic Dart bindings for the libghostty-vt 1.0.0 C
