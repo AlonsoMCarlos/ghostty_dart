@@ -1,4 +1,4 @@
-<!-- source: README.md@41ace282ee50ed8996ec51c391ad3152888764d3 -->
+<!-- source: README.md@f14aa16f2e821f19e4a9bd8e9b9104085418493c -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/README.md) | **Español**
 
 # ghostty_dart_xterm
@@ -184,6 +184,12 @@ MIT (consulta
 [LICENSE](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/LICENSE)).
 Algunas partes están portadas de `xterm` 4.0.0, también MIT; consulta
 [`LICENSE.xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/LICENSE.xterm).
-libghostty-vt también tiene licencia MIT (Copyright (c) 2024 Mitchell
-Hashimoto, Ghostty contributors); las aplicaciones que la distribuyen deben
-incluir su aviso.
+La biblioteca libghostty-vt subyacente contiene además código con otras
+licencias (la propia libghostty-vt es MIT, Copyright (c) 2024 Mitchell
+Hashimoto, Ghostty contributors). El archivo
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/NOTICES)
+de este paquete y el
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/NOTICES)
+de `ghostty_dart` contienen todos los avisos, y Flutter los añade a la
+página de licencias de tu aplicación (`LicenseRegistry`, `showLicensePage`)
+sin ningún paso adicional.

@@ -172,5 +172,11 @@ MIT (see
 [LICENSE](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/LICENSE)).
 Parts are ported from `xterm` 4.0.0, also MIT; see
 [`LICENSE.xterm`](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/LICENSE.xterm).
-libghostty-vt is MIT licensed too (Copyright (c) 2024 Mitchell Hashimoto,
-Ghostty contributors); apps that ship it must include its notice.
+The libghostty-vt library underneath contains code under other licences too
+(libghostty-vt itself is MIT, Copyright (c) 2024 Mitchell Hashimoto, Ghostty
+contributors). This package's
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_xterm/NOTICES)
+and `ghostty_dart`'s
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/NOTICES)
+hold every notice, and Flutter adds them to your app's licence page
+(`LicenseRegistry`, `showLicensePage`) without any extra step.
