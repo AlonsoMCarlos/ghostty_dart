@@ -208,13 +208,15 @@ Future<void> main() async {
       _write(dir, {
         'lib/b.dart': 'b\n',
         'lib/a/z.dart': 'z\n',
-        'lib/B.dart': 'B\n',
+        // Upper case sorts before lower case under LC_ALL=C. No two names
+        // differ only by case: macOS and Windows file systems would merge them.
+        'lib/C.dart': 'C\n',
       });
       // Computed with: cd <dir> && find lib -type f | LC_ALL=C sort | while
       // read f; do printf '%s  %s\n' "$(sha256sum < "$f" | cut -d' ' -f1)"
       // "$f"; done | sha256sum
       const expected =
-          'e5a5929b7d0a8e4bd1eb44cc58a561f698e28be0acf7da2eb26b8eae59a97be3';
+          'bfc95f3f4d3cf53e99dbc886893cb30467ea939eeb4ae151c407f1f0ff8dd68e';
       final actual = libTreeSha256(Directory('${dir.path}/lib'));
       expect(actual == expected, 'hash $actual');
     },
