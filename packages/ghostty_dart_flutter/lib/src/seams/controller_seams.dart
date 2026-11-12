@@ -40,11 +40,12 @@ final class ControllerSeams
   // listeners (the renderer, the scrollbar, the pointer and text input
   // layers), so a flood can delay all of them together (see [painted]).
 
-  /// The shortest time from a paint to the next notification while output
-  /// floods the view: 25 ms (ADR 0011, amendment of 2026-11-12). The frame
-  /// that notification schedules starts at the next vsync, so a flood is
-  /// painted about 30 times a second on 60 and 120 Hz displays (every
-  /// second or fourth vsync) and 36 on 144 Hz.
+  /// The shortest time from a paint, or from the last notification, to
+  /// the next notification while output floods the view, during the
+  /// first [sustainedFloodAfter] of a flood: 25 ms (ADR 0011, amendments
+  /// of 2026-11-12). The frame that notification schedules starts at the
+  /// next vsync, so a flood is painted about 30 times a second on 60 and
+  /// 120 Hz displays (every second or fourth vsync) and 36 on 144 Hz.
   ///
   /// In a flood every frame draws a whole new screen, and every listener
   /// that schedules a frame (the scrollbar follows the growing
@@ -55,10 +56,40 @@ final class ControllerSeams
   /// as before.
   static const floodInterval = Duration(milliseconds: 25);
 
+  /// How long a flood lasts before [sustainedFloodInterval] replaces
+  /// [floodInterval]: 1 second. Bursts shorter than that (a long `ls`, a
+  /// build log) keep the smoother rate.
+  static const sustainedFloodAfter = Duration(seconds: 1);
+
+  /// [floodInterval] once a flood has lasted [sustainedFloodAfter]: 60 ms,
+  /// about 15 frames a second at 60, 120 and 144 Hz (every fourth, eighth
+  /// or ninth vsync).
+  ///
+  /// Each frame costs a fixed amount on the UI thread besides the view's
+  /// own work: on Linux the embedder presents it through GTK on that same
+  /// thread, and that took several times the view's ~1–2 ms per frame in
+  /// the firehose benchmark (ADR 0011, amendment of 2026-11-12, frame
+  /// cost). Text that scrolls a screen per frame for seconds is unreadable
+  /// at any rate, so a sustained flood shows its progress at a lower one.
+  static const sustainedFloodInterval = Duration(milliseconds: 60);
+
   final _listeners = <VoidCallback>[];
   bool _listening = false;
   bool _flooded = false;
-  final _sincePaint = Stopwatch();
+
+  /// Time since the current flood started (the first paint that reported
+  /// one); stopped and reset while not flooded.
+  final _floodAge = Stopwatch();
+
+  /// Time since the last paint or the last notification, whichever came
+  /// later: while flooded, notifications are at least [floodInterval]
+  /// (or [sustainedFloodInterval]) apart from both. Counting from the notification too matters when
+  /// frames are slower than the interval (a large window, a slow GPU, a
+  /// software renderer): without it every write between the
+  /// notification and the paint it scheduled would notify again (one
+  /// round of listeners per pty read, thousands a second) for frames
+  /// that were already coming.
+  final _sinceEvent = Stopwatch();
   Timer? _floodTimer;
 
   @override
@@ -85,16 +116,25 @@ final class ControllerSeams
   @override
   void painted({required bool flooded}) {
     _flooded = flooded;
+    if (!flooded) {
+      _floodAge
+        ..stop()
+        ..reset();
+    } else if (!_floodAge.isRunning) {
+      _floodAge.start();
+    }
     _cancelFloodTimer();
-    _sincePaint
-      ..reset()
-      ..start();
+    _restartEventClock();
   }
+
+  void _restartEventClock() => _sinceEvent
+    ..reset()
+    ..start();
 
   void _onControllerChanged() {
     if (_flooded) {
       if (_floodTimer != null) return;
-      final wait = floodInterval - _sincePaint.elapsed;
+      final wait = _interval - _sinceEvent.elapsed;
       if (wait > Duration.zero) {
         _floodTimer = Timer(wait, _onFloodTimer);
         return;
@@ -102,6 +142,10 @@ final class ControllerSeams
     }
     _notifyListeners();
   }
+
+  Duration get _interval => _floodAge.elapsed >= sustainedFloodAfter
+      ? sustainedFloodInterval
+      : floodInterval;
 
   void _onFloodTimer() {
     _floodTimer = null;
@@ -120,6 +164,7 @@ final class ControllerSeams
   // As ChangeNotifier does: a listener removed by an earlier one is not
   // called, and an error in one is reported without skipping the others.
   void _notifyListeners() {
+    _restartEventClock();
     for (final listener in List.of(_listeners)) {
       if (!_listeners.contains(listener)) continue;
       try {

@@ -697,13 +697,32 @@ xvfb-run -a -s "-screen 0 2560x1600x24" mise run bench:firehose   # headless
   `outputWindowBytes`) at 7 MB/s by default, about what `tree -C` produced
   over 570,000 files on the maintainer's machine (2026-11-12). Each chunk
   is one `writeBytes`.
-- **Configurations:** `no view` (the controller alone, the floor) and
-  `view` (`VtTerminalView`, 200 × 60, JetBrains Mono 12 px, atlas path).
+- **Configurations** (`--configs`, all three by default): `no view` (the
+  controller alone, the floor), `blank` (the controller, plus a widget of
+  the view's size that only fills a rectangle, repainted at the view's
+  flood cadence: what a Flutter frame costs on this machine with no
+  terminal in it) and `view` (`VtTerminalView`, 200 × 60, JetBrains Mono
+  12 px, atlas path). On Linux the UI isolate runs on the platform thread,
+  which also presents every frame through GTK, so `blank` is the per-frame
+  floor no terminal widget can go under; `view` minus `blank` is the
+  view's own cost.
 - **Reported:** wall time, process CPU (`/proc/self/stat`) and CPU per
   thread name (`/proc/self/task/*/stat`), frames and build/raster time per
   frame (`FrameTiming`), frame interval percentiles, RSS at start, peak
   (sampled every 50 ms) and end. RSS includes the harness's copies of the
-  stream (three of 40 MB in the first run).
+  stream (three of 40 MB in the first run). `ui thread ms` is the main
+  thread's CPU (UI isolate plus GTK), and `ui ms/frame over no view` is
+  that minus the same run's `no view`, per frame. The `FIREHOSE_ENV` line
+  adds `window px` (what the embedder presents each frame) and `display`
+  (`x11` or `wayland`: on X11, Flutter's Linux embedder copies every frame
+  through the CPU, `fl_view_renderer.cc` at the pinned engine).
+- **Harness cost:** the producer isolate (a `DartWorker` thread), its
+  1 ms pacing timer (the `dart:io EventHandler` thread) and the message
+  hop to the UI isolate are the harness's, in every configuration. A Dart
+  CPU profile of `no view` (2026-11-12) puts 66 % of the UI isolate's time
+  in `ghostty_terminal_vt_write` and the rest in the harness's port and
+  stream handling; `VtTerminalController.writeBytes` adds under 0.1 ms
+  per MB to the parser.
 
 ### Results (2026-11-12)
 
@@ -732,3 +751,27 @@ For reference, raw `VtTerminal.write` of the same stream in AOT parses
 paints every 50–80 ms instead of ~33 ms, because GTK presents each llvmpipe
 frame on the UI thread; a run on a real GPU, and at 120/144 Hz, is still to
 be recorded.
+
+### Results, second round (2026-11-12)
+
+Same machine and stream, DPR 2 (`GDK_SCALE=2`, window 3600 × 2200 px), Xvfb
+(`display: x11`). Llvmpipe limits this machine to 8–20 frames a second
+whatever the view does, so the frame-rate change below cannot show here;
+what can is the cost per frame and per write:
+
+| | `blank` | `view` |
+|---|---:|---:|
+| UI thread per frame over `no view`, ms | 15.7–17.1 | 17.0–18.3 |
+| Dart (UI isolate) per frame, from a CPU profile, ms | — | 0.7–1.9 |
+
+Nearly all the UI thread's cost per frame is the embedder presenting the
+frame, which a blank frame pays too; the view adds 1–2 ms. In the demo app
+(real shell, flutter_pty2, focused view, 64 MB at 10.2 MB/s, line by line),
+the Dart profile of the UI isolate showed the controller notifying the
+view's listeners on every write while a slow frame was pending (126 ms per
+64 MB, plus 38 ms reading the grid size on every write); after this round
+9–14 ms and 1–2 ms. Of what remains per write, `ghostty_terminal_vt_write` is
+~4 ms per MB and flutter_pty2's per-read acknowledgement another ~4 ms per
+MB (`pty_session_ack_output` wakes its reactor with a pipe write on every
+call). ADR 0011's amendment "frame cost and sustained floods" has the
+details.

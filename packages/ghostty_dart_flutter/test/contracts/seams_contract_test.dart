@@ -106,6 +106,66 @@ void main() {
       }
     });
 
+    testWidgets('while flooded and waiting for a slow frame, writes do not '
+        'notify again before floodInterval', (tester) async {
+      {
+        final seams = _seams();
+        var notified = 0;
+        seams
+          ..addListener(() => notified++)
+          ..painted(flooded: true);
+        // The interval is measured with a real clock.
+        await tester.runAsync(
+          () => Future<void>.delayed(ControllerSeams.floodInterval * 1.5),
+        );
+        seams.controller.write('a');
+        expect(notified, 1);
+        // No paint follows (the frame is slow): the writes after that
+        // notification wait for an interval after it, not after the paint.
+        seams.controller
+          ..write('b')
+          ..write('c');
+        expect(notified, 1);
+        expect(seams.debugNotificationPending, isTrue);
+        await tester.pump(ControllerSeams.floodInterval);
+        expect(notified, 2);
+      }
+    });
+
+    testWidgets('a flood that lasts sustainedFloodAfter notifies once per '
+        'sustainedFloodInterval until it ends', (tester) async {
+      {
+        final seams = _seams();
+        var notified = 0;
+        seams
+          ..addListener(() => notified++)
+          ..painted(flooded: true);
+        // The flood's age is measured with a real clock.
+        await tester.runAsync(
+          () => Future<void>.delayed(ControllerSeams.sustainedFloodAfter),
+        );
+        seams
+          ..painted(flooded: true)
+          ..controller.write('a');
+        expect(seams.debugNotificationPending, isTrue);
+        await tester.pump(ControllerSeams.floodInterval);
+        expect(notified, 0);
+        await tester.pump(
+          ControllerSeams.sustainedFloodInterval -
+              ControllerSeams.floodInterval,
+        );
+        expect(notified, 1);
+
+        // The flood ends: the next one starts with floodInterval again.
+        seams
+          ..painted(flooded: false)
+          ..painted(flooded: true)
+          ..controller.write('b');
+        await tester.pump(ControllerSeams.floodInterval);
+        expect(notified, 2);
+      }
+    });
+
     test('an error in one listener does not skip the others', () {
       final seams = _seams();
       var notified = 0;

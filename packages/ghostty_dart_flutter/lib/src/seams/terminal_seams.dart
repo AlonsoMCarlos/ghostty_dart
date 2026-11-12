@@ -83,9 +83,11 @@ abstract interface class TerminalFrameSource implements Listenable {
   /// the view: every visible row was replaced in each of the last frames
   /// (output scrolling a screen or more per frame, faster than anyone can
   /// read). While it floods, the source may deliver its notifications
-  /// later, at most one per interval after this paint (the controller's
-  /// seams: [ControllerSeams.floodInterval]), so the renderer and every
-  /// other listener of the view update together in fewer frames.
+  /// later, at most one per interval after this paint or its previous
+  /// notification (the controller's seams: [ControllerSeams.floodInterval],
+  /// then [ControllerSeams.sustainedFloodInterval] once the flood lasts),
+  /// so the renderer and every other listener of the view update together
+  /// in fewer frames.
   void painted({required bool flooded});
 }
 

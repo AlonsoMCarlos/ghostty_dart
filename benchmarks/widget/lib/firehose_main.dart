@@ -13,6 +13,15 @@
 /// threads (UI, raster, GPU driver, IO, GC), next to wall time, frames
 /// drawn and memory. Each run prints one `FIREHOSE {json}` line; the
 /// process exits when done.
+///
+/// Three configurations run in turn: `no view` (the controller alone),
+/// `blank` (the controller, plus a widget of the view's size that only
+/// fills a rectangle, repainted at the view's flood cadence: what any
+/// Flutter frame costs on this machine, the embedder's present included)
+/// and `view`. On Linux the UI isolate runs on the platform thread, which
+/// also presents each frame through GTK, so `ui ms/frame` of `blank` is
+/// the floor no terminal widget can go under, and `view` minus `blank` is
+/// the terminal's own cost per frame.
 library;
 
 import 'dart:async';
@@ -22,6 +31,7 @@ import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -54,6 +64,22 @@ const _style = TextStyle(fontFamily: _fontFamily, fontSize: 12);
 
 /// flutter_pty2 3.0.0's `PtySpawnOptions.outputWindowBytes`.
 const _windowBytes = 256 * 1024;
+
+/// The configurations to run, comma-separated, in order: `no view`,
+/// `blank`, `view`.
+const _configs = String.fromEnvironment(
+  'FIREHOSE_CONFIGS',
+  defaultValue: 'no view,blank,view',
+);
+
+/// How often the `blank` configuration repaints while output arrives: the
+/// view's flood cadence (`ControllerSeams.floodInterval`, then
+/// `sustainedFloodInterval` once the flood has lasted
+/// `sustainedFloodAfter`; internal to ghostty_dart_flutter), counted the
+/// same way, from the last paint or repaint request.
+const _blankInterval = Duration(milliseconds: 25);
+const _blankSustainedInterval = Duration(milliseconds: 60);
+const _blankSustainedAfter = Duration(seconds: 1);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,14 +115,32 @@ Future<void> main() async {
     'window': _windowBytes,
     'grid': '$benchCols x $benchRows',
     'dpr': PlatformDispatcher.instance.views.first.devicePixelRatio,
+    'window px': _windowSize(),
+    'display': _display(),
     'Dart': Platform.version.split(' ').first,
     'OS': Platform.operatingSystemVersion,
   };
   stdout.writeln('FIREHOSE_ENV ${jsonEncode(environment)}');
+  final configs = [
+    for (final name in _configs.split(','))
+      if (name.trim().isNotEmpty) name.trim(),
+  ];
+  for (final config in configs) {
+    if (!const {'no view', 'blank', 'view'}.contains(config)) {
+      stderr.writeln('unknown FIREHOSE_CONFIGS entry: $config');
+      exit(2);
+    }
+  }
   for (var run = 1; run <= _runs; run++) {
-    for (final withView in [false, true]) {
-      final result = await _run(host, data, withView: withView);
-      stdout.writeln('FIREHOSE ${jsonEncode({'run': run, ...result})}');
+    int? noViewUiMs;
+    for (final config in configs) {
+      final result = await _run(host, data, config: config);
+      final uiMs = result['ui thread ms']! as int;
+      final frames = result['frames']! as int;
+      if (config == 'no view') noViewUiMs = uiMs;
+      stdout.writeln(
+        'FIREHOSE ${jsonEncode({'run': run, ...result, if (config != 'no view' && noViewUiMs != null && frames > 0) 'ui ms/frame over no view': _round((uiMs - noViewUiMs) / frames)})}',
+      );
     }
   }
   exit(0);
@@ -105,13 +149,21 @@ Future<void> main() async {
 Future<Map<String, Object>> _run(
   ValueNotifier<Widget> host,
   Uint8List data, {
-  required bool withView,
+  required String config,
 }) async {
   final subject = GhosttySubject();
   final dpr = PlatformDispatcher.instance.views.first.devicePixelRatio;
-  host.value = withView
-      ? subject.build(_style, dpr)
-      : const SizedBox.shrink(key: ValueKey('none'));
+  final blank = _BlankClock();
+  host.value = switch (config) {
+    'view' => subject.build(_style, dpr),
+    'blank' => _BlankFrames(blank, ghosttyGridSize(_style, dpr)),
+    _ => const SizedBox.shrink(key: ValueKey('none')),
+  };
+  void write(Uint8List bytes) {
+    subject.write(bytes);
+    if (config == 'blank') blank.changed();
+  }
+
   subject.write(setupBytes());
   await Future<void>.delayed(const Duration(milliseconds: 300));
 
@@ -127,7 +179,7 @@ Future<Map<String, Object>> _run(
     if (rss > peakRss) peakRss = rss;
   });
   final clock = Stopwatch()..start();
-  final chunks = await _feed(data, subject.write);
+  final chunks = await _feed(data, write);
   // Let the last frame land.
   await Future<void>.delayed(const Duration(milliseconds: 100));
   clock.stop();
@@ -142,6 +194,8 @@ Future<Map<String, Object>> _run(
   host.value = const SizedBox.shrink(key: ValueKey('none'));
   await SchedulerBinding.instance.endOfFrame;
   subject.dispose();
+  blank.dispose();
+  final uiThread = _mainThreadName();
 
   var build = 0;
   var raster = 0;
@@ -159,7 +213,7 @@ Future<Map<String, Object>> _run(
   final megabytes = data.length / 1e6;
   final seconds = clock.elapsedMicroseconds / 1e6;
   return {
-    'config': withView ? 'view' : 'no view',
+    'config': config,
     'chunks': chunks,
     'wall s': _round(seconds),
     'cpu s': _round(cpu / 1e6),
@@ -180,6 +234,8 @@ Future<Map<String, Object>> _run(
     'rss start MiB': rss0 >> 20,
     'rss peak MiB': peakRss >> 20,
     'rss end MiB': rssEnd >> 20,
+    'ui thread ms':
+        ((threads[uiThread] ?? 0) - (threads0[uiThread] ?? 0)) ~/ 1000,
     'thread cpu ms': {
       for (final MapEntry(:key, :value) in threads.entries)
         if (value - (threads0[key] ?? 0) >= 10000)
@@ -189,6 +245,131 @@ Future<Map<String, Object>> _run(
 }
 
 double _round(num value) => (value * 100).round() / 100;
+
+/// The window's size in physical pixels: what the embedder presents each
+/// frame.
+String _windowSize() {
+  final size = PlatformDispatcher.instance.views.first.physicalSize;
+  return '${size.width.round()} x ${size.height.round()}';
+}
+
+/// The windowing system GTK uses: `wayland` or `x11` (`GDK_BACKEND` when
+/// set, else the session's). On X11 Flutter's Linux embedder copies every
+/// frame through the CPU (`fl_view_renderer.cc`: frames are shareable
+/// only on Wayland).
+String _display() {
+  final env = Platform.environment;
+  final backend = env['GDK_BACKEND'];
+  if (backend != null && backend.isNotEmpty) return backend;
+  if ((env['WAYLAND_DISPLAY'] ?? '').isNotEmpty) return 'wayland';
+  if ((env['DISPLAY'] ?? '').isNotEmpty) return 'x11';
+  return env['XDG_SESSION_TYPE'] ?? 'unknown';
+}
+
+/// The name `_threadCpu` gives the main thread (the process's own, which
+/// runs the UI isolate and GTK), or `''` off Linux.
+String _mainThreadName() {
+  final file = File('/proc/self/comm');
+  if (!file.existsSync()) return '';
+  return file.readAsStringSync().trim().replaceAll(RegExp('[0-9]+'), '#');
+}
+
+/// Drives the `blank` configuration: [changed] after each write asks for
+/// a repaint, at most once per [_blankInterval] (later
+/// [_blankSustainedInterval]) after the last paint or repaint request, as
+/// the view's seams do in a flood.
+final class _BlankClock {
+  final repaints = ValueNotifier(0);
+  final _sinceEvent = Stopwatch()..start();
+  final _age = Stopwatch();
+  Timer? _timer;
+
+  void changed() {
+    if (_timer != null) return;
+    if (!_age.isRunning) _age.start();
+    final interval = _age.elapsed >= _blankSustainedAfter
+        ? _blankSustainedInterval
+        : _blankInterval;
+    final wait = interval - _sinceEvent.elapsed;
+    if (wait <= Duration.zero) {
+      _repaint();
+    } else {
+      _timer = Timer(wait, () {
+        _timer = null;
+        _repaint();
+      });
+    }
+  }
+
+  void _repaint() {
+    _restart();
+    repaints.value++;
+  }
+
+  void _restart() => _sinceEvent
+    ..reset()
+    ..start();
+
+  void painted() {
+    _restart();
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    repaints.dispose();
+  }
+}
+
+/// A widget of the view's size that fills a rectangle in a new colour
+/// each time [clock] asks for a repaint: a frame with no terminal in it.
+final class _BlankFrames extends LeafRenderObjectWidget {
+  const _BlankFrames(this.clock, this.size);
+
+  final _BlankClock clock;
+  final Size size;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderBlank(clock, size);
+}
+
+final class _RenderBlank extends RenderBox {
+  _RenderBlank(this._clock, this._size);
+
+  final _BlankClock _clock;
+  final Size _size;
+  int _frame = 0;
+
+  @override
+  bool get isRepaintBoundary => true;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _clock.repaints.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    _clock.repaints.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  @override
+  void performLayout() => size = constraints.constrain(_size);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    _clock.painted();
+    final shade = 0x20 + (_frame++ & 0x1F);
+    context.canvas.drawRect(
+      offset & size,
+      Paint()..color = Color.fromARGB(0xFF, shade, shade, shade),
+    );
+  }
+}
 
 /// CPU time (user + system) of every live thread of this process, by
 /// thread name with digits replaced by `#`, in microseconds. Empty off

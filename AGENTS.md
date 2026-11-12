@@ -111,7 +111,7 @@ mise run native:pin <tag>              # pin a published release into prebuilt.d
 mise run bench:parser   # parser throughput vs xterm 4.0.0 / xterm2_core (benchmarks/README.md)
 mise run bench:widget [device] [--frames=n] [--passes=n] [--font-size=px] [--renderer=impeller|skia]  # frame times vs xterm/xterm2; needs a display
 mise run bench:widget:test  # the frame benchmark harness, headless
-mise run bench:firehose [--mb=n] [--rate=kBps] [--runs=n]  # CPU per MB of tree-like output fed like a pty, with and without the view (profile build, Linux, needs a display)
+mise run bench:firehose [--mb=n] [--rate=kBps] [--runs=n] [--configs=list]  # CPU per MB of tree-like output fed like a pty: no view, blank frames, the view (profile build, Linux, needs a display)
 mise run test:grid-pixels [device] [--renderer=impeller|skia]  # glyphs on the device-pixel grid on the real renderer; needs a display (xvfb-run on headless Linux)
 mise run demo:test      # demo app tests (fake shell, wiring; fakes instead of a pty)
 mise run demo:integration [device]  # real shell in a real pty (flutter_pty2), needs a display (xvfb-run on headless Linux)

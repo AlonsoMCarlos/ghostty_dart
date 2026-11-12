@@ -459,8 +459,8 @@ class VtTerminalViewState extends State<VtTerminalView> {
   @override
   void initState() {
     super.initState();
-    _seams = ControllerSeams(widget.controller);
-    widget.controller.addListener(_onControllerChanged);
+    _seams = ControllerSeams(widget.controller)
+      ..addListener(_onControllerChanged);
     if (widget.focusNode == null) _ownFocusNode = _createFocusNode();
     _focusNode.addListener(_onFocusChanged);
     _focused = _focusNode.hasFocus;
@@ -472,12 +472,12 @@ class VtTerminalViewState extends State<VtTerminalView> {
   void didUpdateWidget(VtTerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_onControllerChanged);
-      final oldSeams = _seams;
-      oldSeams.release();
-      _seams = ControllerSeams(widget.controller);
+      final oldSeams = _seams
+        ..removeListener(_onControllerChanged)
+        ..release();
+      _seams = ControllerSeams(widget.controller)
+        ..addListener(_onControllerChanged);
       _readOnlySeams = null;
-      widget.controller.addListener(_onControllerChanged);
       // The focus moves from one program to the other (DEC 1004); the
       // seams ignore a disposed controller.
       if (_focusNode.hasFocus && !widget.readOnly) {
@@ -522,8 +522,9 @@ class VtTerminalViewState extends State<VtTerminalView> {
 
   @override
   void dispose() {
-    widget.controller.removeListener(_onControllerChanged);
-    _seams.release();
+    _seams
+      ..removeListener(_onControllerChanged)
+      ..release();
     _focusNode.removeListener(_onFocusChanged);
     // Children unmount first, so the Focus widget has let go of it.
     _ownFocusNode?.dispose();
@@ -542,6 +543,10 @@ class VtTerminalViewState extends State<VtTerminalView> {
   /// Lays the view out again when the grid size changed elsewhere (a
   /// [VtTerminalController.resize] call): the geometry must follow it, or
   /// with [VtTerminalView.autoResize] the view fits the terminal again.
+  ///
+  /// It listens through the seams, not to the controller: reading the
+  /// size costs two native calls, and while output floods the view the
+  /// seams coalesce notifications instead of delivering one per write.
   void _onControllerChanged() {
     final controller = widget.controller;
     if (controller.isDisposed) return;
