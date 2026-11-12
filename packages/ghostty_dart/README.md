@@ -205,6 +205,12 @@ topic.
 
 This package is MIT licensed (see
 [LICENSE](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/LICENSE)).
-libghostty-vt, which the build hook provides as a native library, is also
-MIT licensed (Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors);
-apps that ship it must include its notice.
+The libghostty-vt library that the build hook provides contains code under
+other licences too: libghostty-vt itself (MIT, Copyright (c) 2024 Mitchell
+Hashimoto, Ghostty contributors), simdutf, Highway, Wuffs, uucode with
+Unicode data, Zig's standard library, and, in the Windows and Android
+binaries, C runtime start-up code (mingw-w64, bionic).
+[NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/NOTICES)
+holds every licence text. Flutter apps show it on their licence page
+(`LicenseRegistry`, `showLicensePage`) without any extra step. A Dart
+program that ships the library must ship `NOTICES` with it.

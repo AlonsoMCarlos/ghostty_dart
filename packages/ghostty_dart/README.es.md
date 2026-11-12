@@ -1,4 +1,4 @@
-<!-- source: README.md@b280338cebc1e46a2f5b30b3f313314a8fdb8f7d -->
+<!-- source: README.md@1211e7bc4ad36bc35060144fe2226f2e9560ba98 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/README.md) | **Español**
 
 # ghostty_dart
@@ -221,6 +221,13 @@ en inglés.
 
 Este paquete se distribuye bajo la licencia MIT (consulta
 [LICENSE](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/LICENSE)).
-libghostty-vt, que el *build hook* proporciona como biblioteca nativa,
-también tiene licencia MIT (Copyright (c) 2024 Mitchell Hashimoto, Ghostty
-contributors); las aplicaciones que la distribuyan deben incluir su aviso.
+La biblioteca libghostty-vt que proporciona el *build hook* contiene además
+código con otras licencias: la propia libghostty-vt (MIT, Copyright (c) 2024
+Mitchell Hashimoto, Ghostty contributors), simdutf, Highway, Wuffs, uucode
+con datos de Unicode, la biblioteca estándar de Zig y, en los binarios de
+Windows y Android, código de arranque del *runtime* de C (mingw-w64,
+bionic). [NOTICES](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart/NOTICES)
+contiene el texto de todas ellas. Las aplicaciones Flutter lo muestran en su
+página de licencias (`LicenseRegistry`, `showLicensePage`) sin ningún paso
+adicional. Un programa Dart que distribuya la biblioteca debe distribuir
+`NOTICES` con ella.
