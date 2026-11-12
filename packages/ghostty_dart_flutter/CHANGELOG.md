@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart_flutter-v0.1.1...ghostty_dart_flutter-v0.1.2) (2026-11-12)
+
+
+### Performance Improvements
+
+* **ghostty_dart_flutter:** default to smooth flood pacing ([c737032](https://github.com/AlonsoMCarlos/ghostty_dart/commit/c73703241b9b394901730a3efc9f42188956af0f))
+* **ghostty_dart_flutter:** pace floods on vsync with a public VtFloodPacing policy ([d46140f](https://github.com/AlonsoMCarlos/ghostty_dart/commit/d46140fd113227735814b74a56bf03fc4122b06c))
+
 ## [0.1.1](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart_flutter-v0.1.0...ghostty_dart_flutter-v0.1.1) (2026-11-12)
 
 
