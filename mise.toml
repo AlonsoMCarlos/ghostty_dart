@@ -381,6 +381,159 @@ flutter build "$device" --profile -t lib/firehose_main.dart \
 build/linux/*/profile/bundle/ghostty_dart_widget_benchmarks | grep '^FIREHOSE'
 '''
 
+# Attribution benchmark: the same tree-like stream through a real pty child
+# (flutter_pty2), then the controller, then a blank Flutter frame, then the
+# view; prints a table of CPU per MB per layer and thread for each variant
+# (renderer:scale:window). `--pty fork` (or both) also measures the
+# maintainer's flutter_pty2 fork at a pinned commit through a temporary,
+# never committed root pubspec_overrides.yaml; pubspec.lock is restored on
+# exit. Linux only (reads /proc); needs a display (xvfb-run on headless
+# Linux, where llvmpipe makes the GPU side unrealistic).
+[tasks."bench:attribution"]
+description = "Attribution benchmark (profile build): CPU per MB of a tree-like flood through a real pty, layer by layer (pty, parser, blank frame, view)"
+depends = ["native:require-host"]
+usage = '''
+flag "--mb <n>" default="65" help="MB of fixture (tree ~ on the maintainer's machine: 65.5 MB)"
+flag "--rate <kBps>" default="7000" help="the child's output rate in kB/s (0: plain cat, as fast as the terminal takes it)"
+flag "--runs <n>" default="3" help="runs per configuration"
+flag "--layers <list>" default="pty,parser,blank,view" help="layers, comma-separated"
+flag "--pacing <list>" default="smooth,balanced" help="VtFloodPacing policies of the blank and view layers"
+flag "--variants <list>" default="impeller:2:1800x1100,skia:2:1800x1100,impeller:1:1800x1100,impeller:2:900x550,impeller:2:1800x1100:x11,impeller:2:1800x1100:uithread" help="renderer:GDK_SCALE:window logical size[:options], comma-separated; options joined by +: x11 or wayland (GDK_BACKEND), uithread (UI isolate on its own thread)"
+flag "--pty <which>" default="both" help="flutter_pty2 build: upstream (3.0.0), fork (pinned commit, first variant only) or both" {
+  choices "upstream" "fork" "both"
+}
+'''
+dir = "{{config_root}}/benchmarks/widget"
+shell = "bash -c"
+run = '''
+set -euo pipefail
+[[ "$(uname -s)" == Linux ]] || { echo "bench:attribution reads /proc: Linux only" >&2; exit 1; }
+# The maintainer's fork: batched pty reads (SoFluffyOS/flutter_pty2#3).
+fork_url=https://github.com/AlonsoMCarlos/flutter_pty2.git
+fork_ref=f25158183a7d22307e37581e3d534a62a80dc916
+root="{{config_root}}"
+fixture="$PWD/build/attribution/tree-${usage_mb}MB.txt"
+[[ -f "$fixture" ]] || dart tool/attribution_fixture.dart "$fixture" "$usage_mb"
+build() {
+  flutter build linux --profile -t lib/attribution_main.dart \
+    --dart-define=BENCH_FONT_DIR="$root/packages/ghostty_dart_flutter/test/fonts" >&2
+}
+run_variants() { # <pty label> <variant>...
+  local pty="$1"; shift
+  local spec renderer scale size options option
+  for spec in "$@"; do
+    IFS=: read -r renderer scale size options <<<"$spec"
+    local switches=()
+    [[ "$renderer" == skia ]] && switches=(FLUTTER_ENGINE_SWITCHES=1 FLUTTER_ENGINE_SWITCH_1=enable-impeller=false)
+    for option in ${options//+/ }; do
+      case "$option" in
+        x11|wayland) switches+=(GDK_BACKEND="$option") ;;
+        uithread) switches+=(BENCH_UI_THREAD=separate) ;;
+        *) echo "unknown variant option: $option" >&2; exit 2 ;;
+      esac
+    done
+    echo "== $spec, $pty" >&2
+    env "${switches[@]}" GDK_SCALE="$scale" BENCH_WINDOW_SIZE="$size" \
+      ATTRIBUTION_FIXTURE="$fixture" ATTRIBUTION_DART="$(command -v dart)" \
+      ATTRIBUTION_PACER="$PWD/tool/paced_cat.dart" ATTRIBUTION_RATE="$usage_rate" \
+      ATTRIBUTION_RUNS="$usage_runs" ATTRIBUTION_LAYERS="$usage_layers" \
+      ATTRIBUTION_PACING="$usage_pacing" \
+      ATTRIBUTION_VARIANT="$renderer, GDK_SCALE=$scale, $size${options:+, $options}, $pty" \
+      build/linux/*/profile/bundle/ghostty_dart_widget_benchmarks \
+      | grep '^ATTRIBUTION' | sed 's/^ATTRIBUTION_TABLE //' \
+      || echo "warning: variant $spec failed" >&2
+  done
+}
+IFS=, read -r -a variants <<<"$usage_variants"
+if [[ "$usage_pty" != fork ]]; then
+  build
+  run_variants "flutter_pty2 3.0.0" "${variants[@]}"
+fi
+if [[ "$usage_pty" != upstream ]]; then
+  if [[ -e "$root/pubspec_overrides.yaml" ]]; then
+    echo "error: $root/pubspec_overrides.yaml exists; move it away to measure the fork" >&2
+    exit 1
+  fi
+  saved="$(mktemp -d)"
+  cp "$root/pubspec.lock" "$saved/pubspec.lock"
+  restored=
+  restore() {
+    [[ -z "$restored" ]] || return 0
+    restored=1
+    rm -f "$root/pubspec_overrides.yaml"
+    cp "$saved/pubspec.lock" "$root/pubspec.lock"
+    (cd "$root" && flutter pub get --enforce-lockfile >/dev/null)
+    rm -rf "$saved"
+  }
+  trap restore EXIT
+  trap 'exit 130' INT TERM
+  printf 'dependency_overrides:\n  flutter_pty2:\n    git:\n      url: %s\n      ref: %s\n' \
+    "$fork_url" "$fork_ref" >"$root/pubspec_overrides.yaml"
+  (cd "$root" && flutter pub get >/dev/null)
+  # Only flutter_pty2's entry may change: drop it from both locks and compare.
+  strip() { awk '/^  flutter_pty2:$/{skip=1; next} skip && /^  [^ ]/{skip=0} !skip' "$1"; }
+  if ! diff <(strip "$saved/pubspec.lock") <(strip "$root/pubspec.lock") >&2; then
+    echo "error: the fork changed other locked packages" >&2
+    exit 1
+  fi
+  build
+  run_variants "flutter_pty2 fork ${fork_ref:0:7}" "${variants[0]}"
+fi
+'''
+
+# Where the time of one attribution layer goes: runs it once with the VM
+# service on and samples the UI isolate's Dart CPU profile mid-flood
+# (tool/cpu_profile.dart); with --perf, also `perf record -g` of the main
+# thread (UI isolate + GTK present), when perf is installed.
+[tasks."bench:attribution:profile"]
+description = "Dart CPU profile (and optionally perf) of one attribution layer mid-flood"
+depends = ["native:require-host"]
+usage = '''
+flag "--layer <layer>" default="view" help="pty, parser, blank or view"
+flag "--pacing <pacing>" default="smooth" help="VtFloodPacing of blank and view"
+flag "--variant <spec>" default="impeller:2:1800x1100" help="renderer:GDK_SCALE:window logical size"
+flag "--mb <n>" default="65" help="MB of fixture"
+flag "--rate <kBps>" default="7000" help="the child's output rate in kB/s"
+flag "--seconds <n>" default="5" help="seconds sampled, from 3 s after start"
+flag "--perf" help="also perf record -g the main thread (needs perf and perf_event_paranoid <= 1)"
+'''
+dir = "{{config_root}}/benchmarks/widget"
+shell = "bash -c"
+run = '''
+set -euo pipefail
+root="{{config_root}}"
+fixture="$PWD/build/attribution/tree-${usage_mb}MB.txt"
+[[ -f "$fixture" ]] || dart tool/attribution_fixture.dart "$fixture" "$usage_mb"
+flutter build linux --profile -t lib/attribution_main.dart \
+  --dart-define=BENCH_FONT_DIR="$root/packages/ghostty_dart_flutter/test/fonts" >&2
+IFS=: read -r renderer scale size <<<"$usage_variant"
+rm -f build/attribution/perf.data
+port=8181
+switches=(FLUTTER_ENGINE_SWITCH_1=vm-service-port=$port FLUTTER_ENGINE_SWITCH_2=disable-service-auth-codes)
+if [[ "$renderer" == skia ]]; then
+  switches+=(FLUTTER_ENGINE_SWITCHES=3 FLUTTER_ENGINE_SWITCH_3=enable-impeller=false)
+else
+  switches+=(FLUTTER_ENGINE_SWITCHES=2)
+fi
+env "${switches[@]}" GDK_SCALE="$scale" BENCH_WINDOW_SIZE="$size" \
+  ATTRIBUTION_FIXTURE="$fixture" ATTRIBUTION_DART="$(command -v dart)" \
+  ATTRIBUTION_PACER="$PWD/tool/paced_cat.dart" ATTRIBUTION_RATE="$usage_rate" \
+  ATTRIBUTION_RUNS=1 ATTRIBUTION_LAYERS="$usage_layer" ATTRIBUTION_PACING="$usage_pacing" \
+  ATTRIBUTION_VARIANT="$usage_variant, profile of $usage_layer $usage_pacing" \
+  build/linux/*/profile/bundle/ghostty_dart_widget_benchmarks >build/attribution/profile-app.log 2>&1 &
+app=$!
+if [[ "${usage_perf:-false}" == true ]] && command -v perf >/dev/null; then
+  (sleep 3 && perf record -F 999 -g -t "$app" -o build/attribution/perf.data -- sleep "$usage_seconds" >&2) &
+fi
+dart tool/cpu_profile.dart "ws://127.0.0.1:$port/ws" "$usage_seconds" 3
+wait
+grep -h '^ATTRIBUTION {' build/attribution/profile-app.log
+if [[ -f build/attribution/perf.data ]]; then
+  perf report -i build/attribution/perf.data --no-children --sort dso,symbol \
+    --percent-limit 0.7 --stdio 2>/dev/null | grep -v '^$' | grep -v '^#' | grep '%' | head -60
+fi
+'''
+
 # The grid pixel check (ADR 0011) on the device's own renderer, which
 # flutter_tester's software raster cannot show: glyphs of a 200-column row
 # must land on the device-pixel grid under Impeller (or Skia) too. Needs a

@@ -825,3 +825,91 @@ pacing"). To reproduce:
 ```sh
 mise run bench:firehose -- --configs "no view,blank,view" --pacing smooth,balanced --runs 3
 ```
+
+## Attribution benchmark (where the CPU of a flood goes)
+
+The firehose benchmark feeds the controller from an isolate of its own
+process. The attribution benchmark runs the stream the way an app such as
+vtterm gets it: a **real pty child** writes it through flutter_pty2, and
+the same 65 MB go through four cumulative layers, so each layer's cost is
+the difference to the one below. `benchmarks/widget/lib/attribution_main.dart`
+prints one `ATTRIBUTION {json}` line per run and a markdown table per
+variant.
+
+### Run it
+
+Linux only (it reads `/proc`), on a display; about 25 minutes with the
+defaults (6 variants and the fork, 3 runs each):
+
+```sh
+mise run bench:attribution                                  # everything
+mise run bench:attribution -- --pty upstream --variants impeller:2:1800x1100 --runs 1
+mise run bench:attribution:profile -- --layer view          # Dart CPU profile mid-flood
+mise run bench:attribution:profile -- --layer blank --perf  # plus perf of the main thread
+xvfb-run -a -s "-screen 0 3840x2400x24" mise run bench:attribution   # headless
+```
+
+### Methodology
+
+- **Child:** `tool/paced_cat.dart` writes the fixture (`tool/attribution_fixture.dart`:
+  the firehose stream with LF line ends, the pty's `onlcr` adds the CRs) at
+  7 MB/s in 4 KiB writes; `--rate 0` uses plain `cat`. The line discipline
+  hands a reader each line as soon as it is written, so a fast reader gets
+  one message per few lines (~245 bytes per message with flutter_pty2
+  3.0.0, ~500 with the fork), as with the real `tree`, which writes one
+  line at a time (stdio is line-buffered on a tty).
+- **Layers:** `pty` (flutter_pty2 reads and acknowledges, bytes dropped),
+  `parser` (plus `VtTerminalController.writeBytes`, no view), `blank` (plus
+  a full-window widget that only fills a rectangle, repainted at the view's
+  flood cadence, per `VtFloodPacing`) and `view` (a full-window
+  `VtTerminalView`, JetBrains Mono 14 px like vtterm). The grid is the one
+  a full-window view gets.
+- **Variants** (`--variants renderer:GDK_SCALE:window[:options]`): Impeller
+  or Skia (`FLUTTER_ENGINE_SWITCH_1=enable-impeller=false`, read by the
+  Linux embedder in profile builds, `fl_engine.cc` and
+  `shell/platform/common/engine_switches.cc` at the pinned engine), the
+  device pixel ratio, the window size (`BENCH_WINDOW_SIZE`, read by the
+  benchmark's runner), `x11`/`wayland` (`GDK_BACKEND`) and `uithread`
+  (`BENCH_UI_THREAD=separate`: the UI isolate on its own thread,
+  `FL_UI_THREAD_POLICY_RUN_ON_SEPARATE_THREAD`, instead of GTK's).
+- **pty package:** `--pty both` (default) also builds against the
+  maintainer's flutter_pty2 fork at commit `f2515818` (batched reads,
+  SoFluffyOS/flutter_pty2#3) through a temporary root
+  `pubspec_overrides.yaml`; the task checks that only flutter_pty2's lock
+  entry changes and restores `pubspec.lock` on exit. The fork runs the
+  first variant only.
+- **Reported:** process CPU per MB and per thread group: `main` (GTK and,
+  by default, the UI isolate), `raster`, `gpu driver` (Mesa/llvmpipe
+  worker threads), `dart workers`, and `other`, which is mostly
+  flutter_pty2's reader thread (it exits with the session, so it is
+  counted as the process total minus the live threads). The increment
+  table gives each layer's difference per MB and, for the painting layers,
+  per frame (comparable across machines that draw different frame rates).
+  The layers are not strictly additive: when the UI thread is busy, the
+  reader batches more per message and the pty layer gets cheaper.
+
+### Results on the benchmark VM (2026-11-12, Xvfb + llvmpipe)
+
+Ryzen 5 3600 VM (6 vCPUs, Debian 13 cloud kernel), Flutter 3.47.9,
+Xvfb (X11) with llvmpipe, so the painting layers are dominated by the
+software GPU and are not representative of a desktop; the pty and parser
+layers are, except that cross-CPU wake-ups cost more in a VM. 65 MB at
+7 MB/s, 3 runs, window 3600 × 2200 px (DPR 2), grid 211 × 59:
+
+| layer, ms/MB | flutter_pty2 3.0.0 | fork `f2515818` |
+|---|---:|---:|
+| pty (L0) | 190 (main 82, reader 108) | 91 (main 26, reader 65) |
+| parser + controller (L1 - L0) | 4.6 | 4.6 |
+| Flutter frame (L2 - L1), smooth | 129 (llvmpipe) | 209 (llvmpipe) |
+| widget (L3 - L2), smooth | 48 (llvmpipe) | 66 (llvmpipe) |
+
+A flutter_pty2 experiment (not in the fork): sleeping 0.5 ms in the reader
+after each read that returned data, so a fast writer fills the line
+discipline before the next read (Kitty's `input_delay`, 3 ms by default),
+took the fork's pty layer from 88 to 14 ms/MB and the parser layer from 98
+to 20 ms/MB (1 ms: 11.5 and 17.4; 2 ms: 7.5 and 14.0; 2 runs each).
+
+Under llvmpipe a blank Flutter frame costs 81–98 ms of CPU at 3600 × 2200 px
+and 27 ms at 1800 × 1100 px (DPR 1, or DPR 2 in a quarter window): the
+present scales with the window's pixels. The numbers for a real GPU come
+from running `mise run bench:attribution` on a desktop.

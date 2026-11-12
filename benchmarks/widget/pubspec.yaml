@@ -11,10 +11,14 @@ resolution: workspace
 
 # Exact pins: the benchmark compares specific releases. xterm 4.0.0 and
 # xterm2 5.4.0 ship no build hooks and no native code (audit in
-# benchmarks/README.md).
+# benchmarks/README.md). flutter_pty2 3.0.0 is the demo's pty package,
+# already locked and reviewed there (apps/demo/pubspec.yaml: its build hook
+# only compiles its own C sources); the attribution benchmark spawns a
+# real pty child with it.
 dependencies:
   flutter:
     sdk: flutter
+  flutter_pty2: 3.0.0
   ghostty_dart: any
   ghostty_dart_flutter: any
   xterm: 4.0.0
@@ -28,3 +32,6 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   lints: ^6.1.0
+  # tool/cpu_profile.dart (bench:attribution:profile). Already locked as a
+  # dependency of flutter_driver, so this adds no package.
+  vm_service: ^15.4.0

@@ -26,20 +26,19 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' show Timeline;
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
 
+import 'src/blank_frames.dart';
 import 'src/firehose.dart';
 import 'src/frame_streams.dart';
+import 'src/proc_stats.dart';
 import 'src/report.dart' show frameGapRegularity;
 import 'src/subjects.dart';
 
@@ -117,9 +116,9 @@ Future<void> main() async {
     'window': _windowBytes,
     'grid': '$benchCols x $benchRows',
     'dpr': PlatformDispatcher.instance.views.first.devicePixelRatio,
-    'window px': _windowSize(),
+    'window px': windowSize(),
     'refresh Hz': PlatformDispatcher.instance.views.first.display.refreshRate,
-    'display': _display(),
+    'display': displayBackend(),
     'Dart': Platform.version.split(' ').first,
     'OS': Platform.operatingSystemVersion,
   };
@@ -171,13 +170,13 @@ Future<Map<String, Object>> _run(
   final subject = GhosttySubject(floodPacing: pacing ?? VtFloodPacing.smooth);
   final view = PlatformDispatcher.instance.views.first;
   final dpr = view.devicePixelRatio;
-  final blank = _BlankClock(
+  final blank = BlankClock(
     pacing ?? VtFloodPacing.smooth,
     view.display.refreshRate,
   );
   host.value = switch (config) {
     'view' => subject.build(_style, dpr),
-    'blank' => _BlankFrames(blank, ghosttyGridSize(_style, dpr)),
+    'blank' => BlankFrames(blank, ghosttyGridSize(_style, dpr)),
     _ => const SizedBox.shrink(key: ValueKey('none')),
   };
   void write(Uint8List bytes) {
@@ -191,8 +190,8 @@ Future<Map<String, Object>> _run(
   final timings = <FrameTiming>[];
   void onTimings(List<FrameTiming> list) => timings.addAll(list);
   SchedulerBinding.instance.addTimingsCallback(onTimings);
-  final threads0 = _threadCpu();
-  final cpu0 = _processCpu();
+  final threads0 = threadCpu();
+  final cpu0 = processCpu();
   final rss0 = ProcessInfo.currentRss;
   var peakRss = rss0;
   final rssTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
@@ -205,8 +204,8 @@ Future<Map<String, Object>> _run(
   await Future<void>.delayed(const Duration(milliseconds: 100));
   clock.stop();
   rssTimer.cancel();
-  final cpu = _processCpu() - cpu0;
-  final threads = _threadCpu();
+  final cpu = processCpu() - cpu0;
+  final threads = threadCpu();
   final rssEnd = ProcessInfo.currentRss;
   // Timings arrive in batches; give the last one time to come in.
   await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -216,7 +215,7 @@ Future<Map<String, Object>> _run(
   await SchedulerBinding.instance.endOfFrame;
   subject.dispose();
   blank.dispose();
-  final uiThread = _mainThreadName();
+  final uiThread = mainThreadName();
 
   var build = 0;
   var raster = 0;
@@ -236,7 +235,7 @@ Future<Map<String, Object>> _run(
   double gapMs(double q) => quantileMs(gaps, q);
   final regularity = frameGapRegularity(
     gaps,
-    vsyncPeriod: _vsyncPeriod(view.display.refreshRate),
+    vsyncPeriod: vsyncPeriod(view.display.refreshRate),
   );
   final megabytes = data.length / 1e6;
   final seconds = clock.elapsedMicroseconds / 1e6;
@@ -272,214 +271,11 @@ Future<Map<String, Object>> _run(
     'rss end MiB': rssEnd >> 20,
     'ui thread ms':
         ((threads[uiThread] ?? 0) - (threads0[uiThread] ?? 0)) ~/ 1000,
-    'thread cpu ms': {
-      for (final MapEntry(:key, :value) in threads.entries)
-        if (value - (threads0[key] ?? 0) >= 10000)
-          key: (value - (threads0[key] ?? 0)) ~/ 1000,
-    },
+    'thread cpu ms': threadCpuDelta(threads0, threads),
   };
 }
 
 double _round(num value) => (value * 100).round() / 100;
-
-/// The window's size in physical pixels: what the embedder presents each
-/// frame.
-String _windowSize() {
-  final size = PlatformDispatcher.instance.views.first.physicalSize;
-  return '${size.width.round()} x ${size.height.round()}';
-}
-
-/// The windowing system GTK uses: `wayland` or `x11` (`GDK_BACKEND` when
-/// set, else the session's). On X11 Flutter's Linux embedder copies every
-/// frame through the CPU (`fl_view_renderer.cc`: frames are shareable
-/// only on Wayland).
-String _display() {
-  final env = Platform.environment;
-  final backend = env['GDK_BACKEND'];
-  if (backend != null && backend.isNotEmpty) return backend;
-  if ((env['WAYLAND_DISPLAY'] ?? '').isNotEmpty) return 'wayland';
-  if ((env['DISPLAY'] ?? '').isNotEmpty) return 'x11';
-  return env['XDG_SESSION_TYPE'] ?? 'unknown';
-}
-
-/// The name `_threadCpu` gives the main thread (the process's own, which
-/// runs the UI isolate and GTK), or `''` off Linux.
-String _mainThreadName() {
-  final file = File('/proc/self/comm');
-  if (!file.existsSync()) return '';
-  return file.readAsStringSync().trim().replaceAll(RegExp('[0-9]+'), '#');
-}
-
-/// The time between two vsyncs at [refreshRate] Hz, 60 Hz when unknown:
-/// as the view's seams count it (`ControllerSeams.vsyncPeriod`, internal
-/// to ghostty_dart_flutter).
-Duration _vsyncPeriod(double refreshRate) {
-  final hz = refreshRate.isFinite && refreshRate >= 24
-      ? math.min(refreshRate, 1000.0)
-      : 60.0;
-  return Duration(microseconds: (1e6 / hz).round());
-}
-
-/// Drives the `blank` configuration: [changed] after each write asks for
-/// a repaint at the start of the frame a whole number of vsyncs after the
-/// last paint, the view's flood pacing (`ControllerSeams`, ADR 0011,
-/// amendment of 2026-11-12: a timer wakes up in the vsync period before
-/// the due vsync and schedules a frame callback).
-final class _BlankClock {
-  _BlankClock(VtFloodPacing pacing, double refreshRate)
-    : _period = _vsyncPeriod(refreshRate),
-      _vsyncs = math.max(
-        1,
-        (1e6 /
-                _vsyncPeriod(refreshRate).inMicroseconds /
-                pacing.maxFramesPerSecond)
-            .round(),
-      );
-
-  final repaints = ValueNotifier(0);
-  final Duration _period;
-  final int _vsyncs;
-  Duration? _lastFrame;
-  Timer? _timer;
-  int? _frame;
-
-  static Duration _now() => Duration(microseconds: Timeline.now);
-
-  void changed() {
-    if (_timer != null || _frame != null) return;
-    final last = _lastFrame;
-    final margin = _period ~/ 8 > const Duration(milliseconds: 1)
-        ? _period ~/ 8
-        : const Duration(milliseconds: 1);
-    final wait = last == null
-        ? Duration.zero
-        : last + _period * (_vsyncs - 1) + margin - _now();
-    if (wait <= Duration.zero) {
-      _request();
-    } else {
-      _timer = Timer(
-        Duration(milliseconds: (wait.inMicroseconds + 999) ~/ 1000),
-        () {
-          _timer = null;
-          _request();
-        },
-      );
-    }
-  }
-
-  void _request() {
-    _frame = SchedulerBinding.instance.scheduleFrameCallback((_) {
-      _frame = null;
-      _lastFrame = _frameTime();
-      repaints.value++;
-    });
-  }
-
-  Duration _frameTime() {
-    final now = _now();
-    final age = now - SchedulerBinding.instance.currentSystemFrameTimeStamp;
-    return age.isNegative || age > const Duration(seconds: 1) ? now : now - age;
-  }
-
-  void painted() {
-    _timer?.cancel();
-    _timer = null;
-    final frame = _frame;
-    if (frame != null) {
-      SchedulerBinding.instance.cancelFrameCallbackWithId(frame);
-      _frame = null;
-    }
-    _lastFrame = _frameTime();
-  }
-
-  void dispose() {
-    painted();
-    repaints.dispose();
-  }
-}
-
-/// A widget of the view's size that fills a rectangle in a new colour
-/// each time [clock] asks for a repaint: a frame with no terminal in it.
-final class _BlankFrames extends LeafRenderObjectWidget {
-  const _BlankFrames(this.clock, this.size);
-
-  final _BlankClock clock;
-  final Size size;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderBlank(clock, size);
-}
-
-final class _RenderBlank extends RenderBox {
-  _RenderBlank(this._clock, this._size);
-
-  final _BlankClock _clock;
-  final Size _size;
-  int _frame = 0;
-
-  @override
-  bool get isRepaintBoundary => true;
-
-  @override
-  void attach(PipelineOwner owner) {
-    super.attach(owner);
-    _clock.repaints.addListener(markNeedsPaint);
-  }
-
-  @override
-  void detach() {
-    _clock.repaints.removeListener(markNeedsPaint);
-    super.detach();
-  }
-
-  @override
-  void performLayout() => size = constraints.constrain(_size);
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    _clock.painted();
-    final shade = 0x20 + (_frame++ & 0x1F);
-    context.canvas.drawRect(
-      offset & size,
-      Paint()..color = Color.fromARGB(0xFF, shade, shade, shade),
-    );
-  }
-}
-
-/// CPU time (user + system) of every live thread of this process, by
-/// thread name with digits replaced by `#`, in microseconds. Empty off
-/// Linux.
-Map<String, int> _threadCpu() {
-  final result = <String, int>{};
-  final tasks = Directory('/proc/self/task');
-  if (!tasks.existsSync()) return result;
-  for (final task in tasks.listSync()) {
-    try {
-      final stat = File('${task.path}/stat').readAsStringSync();
-      final close = stat.lastIndexOf(')');
-      final name = stat
-          .substring(stat.indexOf('(') + 1, close)
-          .replaceAll(RegExp('[0-9]+'), '#');
-      final fields = stat.substring(close + 2).split(' ');
-      // utime and stime (fields 14 and 15 of proc_pid_stat(5)), in clock
-      // ticks of 1/100 s.
-      final ticks = int.parse(fields[11]) + int.parse(fields[12]);
-      result[name] = (result[name] ?? 0) + ticks * 10000;
-    } on FileSystemException {
-      // The thread exited while listing.
-    }
-  }
-  return result;
-}
-
-/// The process's CPU time (user + system, all threads, exited ones
-/// included) in microseconds. Linux only.
-int _processCpu() {
-  final stat = File('/proc/self/stat').readAsStringSync();
-  final fields = stat.substring(stat.lastIndexOf(')') + 2).split(' ');
-  return (int.parse(fields[11]) + int.parse(fields[12])) * 10000;
-}
 
 /// Feeds [data] to [write] from a producer isolate, the pty's side;
 /// completes with the number of chunks once the last one was written.

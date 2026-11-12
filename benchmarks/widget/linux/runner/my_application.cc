@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <stdio.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -53,9 +54,29 @@ static void my_application_activate(GApplication* application) {
   }
 
   // Room for a 200x60 grid at 12 px (frame benchmarks, benchmarks/README.md).
-  gtk_window_set_default_size(window, 1800, 1100);
+  // BENCH_WINDOW_SIZE=<width>x<height> (logical px) overrides it: the
+  // attribution benchmark measures how the present cost scales with pixels.
+  gint width = 1800;
+  gint height = 1100;
+  const gchar* size = g_getenv("BENCH_WINDOW_SIZE");
+  if (size != nullptr) {
+    gint w = 0;
+    gint h = 0;
+    if (sscanf(size, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
+      width = w;
+      height = h;
+    }
+  }
+  gtk_window_set_default_size(window, width, height);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  // BENCH_UI_THREAD=separate runs the UI isolate on its own thread instead
+  // of GTK's (the embedder's default): the attribution benchmark measures
+  // what that changes while GTK presents frames.
+  if (g_strcmp0(g_getenv("BENCH_UI_THREAD"), "separate") == 0) {
+    fl_dart_project_set_ui_thread_policy(
+        project, FL_UI_THREAD_POLICY_RUN_ON_SEPARATE_THREAD);
+  }
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 
