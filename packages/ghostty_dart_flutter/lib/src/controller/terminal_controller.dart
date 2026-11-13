@@ -56,7 +56,9 @@ typedef VtTerminalResizeCallback =
 /// call that may have changed what the view shows: [write], [writeBytes],
 /// [resize], [paste], [scrollViewport], [selection] changes, a [theme]
 /// change, input that scrolled the viewport back to the bottom, a title
-/// change, and the end of a render hold. Listeners must be cheap; the view
+/// change, the end of a render hold, and a Kitty graphics animation moving
+/// to its next frame (the controller plays animations on a single timer
+/// that runs only while one is playing). Listeners must be cheap; the view
 /// only schedules a repaint. When the view resizes the terminal during
 /// layout, [onResize] and the notification come after that frame instead.
 ///
@@ -81,6 +83,16 @@ class VtTerminalController extends ChangeNotifier {
   /// default, means no line limit); the first limit reached applies.
   /// [theme] gives the terminal its default colours and palette.
   ///
+  /// [imageStorageLimit] caps the memory of Kitty graphics images, in
+  /// bytes per screen (primary and alternate have one storage each):
+  /// `null`, the default, keeps libghostty-vt's limit (10 MB), and 0
+  /// disables the Kitty graphics protocol entirely (the terminal no longer
+  /// answers its support query, so programs fall back to text). It is
+  /// ignored when the loaded library lacks Kitty graphics
+  /// ([VtFeature.kittyGraphics]). The view draws the stored images; their
+  /// textures are bounded by this limit, not by
+  /// `VtTerminalView.cacheBudget`.
+  ///
   /// Throws [RangeError] for an invalid size or a negative limit,
   /// [ArgumentError] for [OptionAsAlt.unknown], and the errors of
   /// [VtTerminal.new] if the native library cannot be loaded.
@@ -89,6 +101,7 @@ class VtTerminalController extends ChangeNotifier {
     int rows = 24,
     int? scrollbackMaxBytes = defaultScrollbackMaxBytes,
     int? scrollbackMaxLines,
+    int? imageStorageLimit,
     VtTerminalTheme theme = VtTerminalTheme.defaultTheme,
     this.onOutput,
     this.onResize,
@@ -106,6 +119,10 @@ class VtTerminalController extends ChangeNotifier {
       terminal
         ..scrollbackMaxBytes = scrollbackMaxBytes
         ..scrollbackMaxLines = scrollbackMaxLines;
+      if (imageStorageLimit != null) {
+        RangeError.checkNotNegative(imageStorageLimit, 'imageStorageLimit');
+        if (_kittyGraphics) terminal.kittyImageStorageLimit = imageStorageLimit;
+      }
       _renderState = renderState = RenderState();
       _keyEncoder = keyEncoder = KeyEncoder();
       _mouseEncoder = mouseEncoder = MouseEncoder();
@@ -119,6 +136,7 @@ class VtTerminalController extends ChangeNotifier {
       rethrow;
     }
     bindControllerInternals(this, _internalsRef = _Internals(this));
+    _animationEpoch = debugAnimationNow();
   }
 
   /// The scrollback memory limit a controller starts with: 10 MiB.
@@ -274,7 +292,64 @@ class VtTerminalController extends ChangeNotifier {
     _checkNotDisposed();
     if (data.isEmpty) return;
     _guard(() => terminal.write(data));
+    _tickAnimations();
     _notify();
+  }
+
+  // ---------------------------------------------------------------------
+  // Kitty graphics animations (ADR 0014)
+  // ---------------------------------------------------------------------
+
+  /// Whether the loaded library implements Kitty graphics.
+  static final bool _kittyGraphics = libghosttyVtBuildInfo.supports(
+    VtFeature.kittyGraphics,
+  );
+
+  /// [debugAnimationNow] when the controller was created: animation time
+  /// is measured from it, so it starts at 0 and only moves forward.
+  late final Duration _animationEpoch;
+
+  /// The single timer for the next due animation frame, if any.
+  Timer? _animationTimer;
+
+  /// The animation time ([_animationEpoch]-relative milliseconds) the
+  /// pending [_animationTimer] fires at.
+  int? _animationDue;
+
+  /// Advances the playing Kitty animations to now and schedules the next
+  /// frame. Cheap while the storage was never used (one native read of
+  /// its generation); does nothing without Kitty graphics. Returns whether
+  /// it ticked. Never called from inside a terminal callback: only after
+  /// [writeBytes] returned from the terminal and from the timer.
+  bool _tickAnimations() {
+    if (!_kittyGraphics || _disposed) return false;
+    if (terminal.kittyGraphicsGeneration == 0 && _animationDue == null) {
+      return false;
+    }
+    final now = (debugAnimationNow() - _animationEpoch).inMilliseconds;
+    final due = _guard(() => terminal.tickKittyAnimations(now < 0 ? 0 : now));
+    if (due != _animationDue) {
+      _animationTimer?.cancel();
+      _animationTimer = null;
+      _animationDue = due;
+      if (due != null) {
+        // A due time in the past (a late tick) fires on the next turn.
+        final wait = due - now;
+        _animationTimer = Timer(
+          Duration(milliseconds: wait < 0 ? 0 : wait),
+          _onAnimationTimer,
+        );
+      }
+    }
+    return true;
+  }
+
+  void _onAnimationTimer() {
+    _animationTimer = null;
+    _animationDue = null;
+    // A frame was due: the tick moved at least one image to its next
+    // frame (a new image generation), so the view must repaint.
+    if (_tickAnimations()) _notify();
   }
 
   // ---------------------------------------------------------------------
@@ -613,6 +688,8 @@ class VtTerminalController extends ChangeNotifier {
       highlight.dispose();
     }
     _renderHoldTimer?.cancel();
+    _animationTimer?.cancel();
+    _animationTimer = null;
     _formatter?.dispose();
     _mouseEncoder.dispose();
     _keyEncoder.dispose();
@@ -784,6 +861,9 @@ final class _Internals implements ControllerInternals {
   @override
   List<({Color color, GridPoint start, GridPoint end})> screenHighlights() =>
       _controller._screenHighlights();
+
+  @override
+  bool get isAnimating => _controller._animationTimer != null;
 }
 
 /// A coloured range painted over a terminal's text; see

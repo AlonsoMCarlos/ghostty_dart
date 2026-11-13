@@ -33,6 +33,17 @@ typedef ViewportHighlight = ({
   int endY,
 });
 
+/// The pixels of one Kitty graphics image, as stored: [width] × [height]
+/// pixels of [format], row by row from the top-left corner. [generation]
+/// is the image's `KittyImage.generation` when they were read.
+typedef ImagePixels = ({
+  int width,
+  int height,
+  KittyImageFormat format,
+  int generation,
+  Uint8List pixels,
+});
+
 /// What the renderer reads, once per frame.
 ///
 /// The [Listenable] notifies after anything visible may have changed
@@ -78,6 +89,16 @@ abstract interface class TerminalFrameSource implements Listenable {
   /// as of now. Read it once per paint, next to [updateFrame], and not
   /// while [isRenderHeld]. Empty when there are none or after disposal.
   List<ViewportHighlight> viewportHighlights();
+
+  /// A copy of the current pixels of the Kitty graphics image [imageId] on
+  /// the active screen, or `null` when there is no such image, its pixels
+  /// have not arrived yet, or after disposal (ADR 0014).
+  ///
+  /// Call it from `paint` only, after [updateFrame], for images the
+  /// frame's [RenderState.imagePlacements] name, and only when a
+  /// placement's `imageGeneration` has no texture yet: it copies every
+  /// pixel.
+  ImagePixels? imagePixels(int imageId);
 
   /// Tells the source that a frame was painted, and whether output floods
   /// the view: every visible row was replaced in each of the last frames

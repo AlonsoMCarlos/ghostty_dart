@@ -330,6 +330,23 @@ final class ControllerSeams
     ];
   }
 
+  @override
+  ImagePixels? imagePixels(int imageId) {
+    if (isDisposed) return null;
+    final vt = controller.terminal;
+    final image = vt.kittyImage(imageId);
+    if (image == null || !image.hasPixels) return null;
+    final pixels = vt.kittyImagePixels(imageId);
+    if (pixels == null) return null;
+    return (
+      width: image.width,
+      height: image.height,
+      format: image.format,
+      generation: image.generation,
+      pixels: pixels,
+    );
+  }
+
   // TerminalKeySink
 
   @override

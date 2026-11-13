@@ -9,6 +9,8 @@
 @Tags(['golden'])
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
@@ -192,6 +194,62 @@ void main() {
     await expectLater(
       find.byKey(terminalKey),
       matchesGoldenFile('padding_opacity.png'),
+    );
+  }, skip: _skip);
+
+  // ADR 0014: Kitty graphics images in all three layers, over text and a
+  // coloured cell background, at a fractional source rect and an offset.
+  testWidgets('Kitty graphics images', (tester) async {
+    final h = await pumpRenderer(
+      tester,
+      cols: 16,
+      rows: 5,
+      devicePixelRatio: 2,
+    );
+    final metrics = h.geometry.metrics;
+    h.controller.resize(
+      16,
+      5,
+      cellWidthPx: metrics.widthPx,
+      cellHeightPx: metrics.heightPx,
+    );
+    String send(String format, int w, int h, List<int> px, String keys) =>
+        '\x1b_Ga=T,f=$format,s=$w,v=$h,C=1,q=2,$keys;'
+        '${base64.encode(px)}\x1b\\';
+    // A 16 x 16 RGB gradient.
+    final gradient = [
+      for (var y = 0; y < 16; y++)
+        for (var x = 0; x < 16; x++) ...[x * 16, y * 16, 255 - x * 8],
+    ];
+    // A 2 x 2 checker with straight (unpremultiplied) half alpha.
+    final checker = [
+      255, 255, 0, 128, 0, 255, 255, 128, //
+      0, 255, 255, 128, 255, 255, 0, 128,
+    ];
+    h.controller.write(
+      'images over text\r\n'
+      '\x1b[44mblue cells\x1b[0m below\r\n'
+      'third line of text\r\n'
+      'fourth line\x1b[?25l'
+      // Above the text, stretched over 4 x 3 cells at (11, 1).
+      '\x1b[2;12H${send('24', 16, 16, gradient, 'i=1,c=4,r=3')}'
+      // Below the text: a quarter of the gradient over 6 x 2 cells.
+      '\x1b[1;1H${send('24', 16, 16, gradient, 'i=2,x=8,y=8,w=8,h=8,c=6,r=2,z=-5')}'
+      // Below the backgrounds: offset inside its cell.
+      '\x1b[3;8H${send('32', 2, 2, checker, 'i=3,c=3,r=2,X=4,Y=6,z=-1073741825')}',
+    );
+    await tester.pump();
+    for (var i = 0; i < 200; i++) {
+      if (h.render.debugImages.debugPendingUploads == 0) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 2)),
+      );
+    }
+    await tester.pump();
+    expect(h.render.debugImages.debugTexture(3), isNotNull);
+    await expectLater(
+      find.byKey(terminalKey),
+      matchesGoldenFile('kitty_images.png'),
     );
   }, skip: _skip);
 }

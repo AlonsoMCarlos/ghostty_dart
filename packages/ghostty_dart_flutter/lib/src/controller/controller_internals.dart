@@ -53,7 +53,24 @@ abstract interface class ControllerInternals {
   /// as screen points with `start` before `end`, in creation order. Empty
   /// (and cheap) when there are none.
   List<({Color color, GridPoint start, GridPoint end})> screenHighlights();
+
+  /// Whether a timer for the next Kitty graphics animation frame is
+  /// pending (ADR 0014); `false` while nothing animates.
+  bool get isAnimating;
 }
+
+/// The monotonic clock Kitty graphics animations run on
+/// (`VtTerminal.tickKittyAnimations`, ADR 0014): a [Stopwatch] started
+/// with the first controller. Each controller measures from the value it
+/// read when it was created, so its animation time starts at 0.
+///
+/// Tests replace it with the test's fake clock (`flutter_test_config.dart`)
+/// so the animation advances with `tester.pump`, like the fake timers.
+Duration Function() debugAnimationNow = _stopwatchNow;
+
+final _animationClock = Stopwatch()..start();
+
+Duration _stopwatchNow() => _animationClock.elapsed;
 
 final _internals = Expando<ControllerInternals>('VtTerminalController');
 

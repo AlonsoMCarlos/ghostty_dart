@@ -11,6 +11,7 @@ import '../seams/terminal_geometry.dart';
 import '../seams/terminal_seams.dart';
 import '../theme/terminal_theme.dart';
 import 'glyph_atlas.dart';
+import 'image_layer.dart';
 import 'paragraph_cache.dart';
 import 'row_recorder.dart';
 import 'text_rendering.dart';
@@ -188,6 +189,16 @@ final class _CachedRow {
 /// part of a row's content key, so they record no row (ADR 0011,
 /// amendment of 2026-11-11).
 ///
+/// **Images** (ADR 0014): the Kitty graphics placements of the frame,
+/// re-read only when their generation changes, with one texture per placed
+/// image ([KittyImageLayer]). Images below the text are drawn after the
+/// default background and before the row pictures; images above it after
+/// the rows and before the cursor and highlights. Images are content: they
+/// keep the alpha they were sent with, whatever [backgroundOpacity] is.
+/// Their textures are released with the other caches (not on memory
+/// pressure or a system font change: a placed image must be shown) and
+/// are not counted in [cacheBudget].
+///
 /// **Render hold.** While [TerminalFrameSource.isRenderHeld] is true the
 /// frame is not read and nothing is dropped: the cached pictures are
 /// replayed, and a font or theme change waits for the end of the hold.
@@ -281,8 +292,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     if (attached) _source.removeListener(_onSourceChanged);
     _source = value;
     if (attached) _source.addListener(_onSourceChanged);
-    // Row ids belong to the old source's render state.
+    // Row ids and images belong to the old source's render state.
     _dropRows();
+    _images.clear();
     _colors = null;
     _cursor = null;
     markNeedsPaint();
@@ -474,6 +486,13 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   VtCursorStyle? _paintedCursor;
   Timer? _blinkTimer;
 
+  // Kitty graphics images (ADR 0014).
+  late final _images = KittyImageLayer(onTextureReady: markNeedsPaint);
+
+  /// The Kitty graphics image layer (tests check placements and textures).
+  @visibleForTesting
+  KittyImageLayer get debugImages => _images;
+
   // Highlight overlay, positioned as of the last frame read.
   List<ViewportHighlight> _highlights = const [];
 
@@ -607,7 +626,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   // A font was installed or removed: glyphs drawn with a fallback may now
   // have their own font (as RenderParagraph does on this notification).
   void _onSystemFonts() {
-    _dropAll();
+    _dropAll(images: false);
     markNeedsPaint();
   }
 
@@ -673,6 +692,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       ..clipRect(bounds);
     final grid = offset + _geometry.gridRect.topLeft;
     final height = _geometry.metrics.height;
+    _images.paintBelow(canvas, grid, _geometry);
     for (var y = 0; y < _visibleRowIds.length; y++) {
       final id = _visibleRowIds[y];
       final row = id == null ? null : _rows[id];
@@ -683,6 +703,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
         ..drawPicture(row.picture)
         ..restore();
     }
+    _images.paintAbove(canvas, grid, _geometry);
     final drawn = _paintCursor(canvas, grid, recorder);
     if (_highlights.isNotEmpty) _paintHighlights(canvas, grid);
     canvas.restore();
@@ -747,6 +768,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   void _pullFrame(RowRecorder recorder) {
     final state = _source.updateFrame();
     try {
+      _images.update(state, _source);
       final colors = state.colors;
       if (!identical(colors, _colors)) {
         // The cursor colour is not part of any row.
@@ -1084,8 +1106,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     _cursorCell = null;
   }
 
-  void _dropAll() {
+  void _dropAll({bool images = true}) {
     _dropRows();
+    if (images) _images.clear();
     _paragraphs.clear();
     _recorder?.dispose();
     _recorder = null;
