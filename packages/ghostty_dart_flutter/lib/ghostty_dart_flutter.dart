@@ -9,6 +9,8 @@
 /// - [VtTerminalTheme] sets its colours; [VtCellMetrics] is the measured,
 ///   device-pixel-aligned cell size; [VtTextRendering] picks how grid text
 ///   is drawn (a glyph atlas by default).
+/// - [decodeVtPng] decodes PNG Kitty graphics images; install it once with
+///   `setVtPngDecoder(decodeVtPng)` (the hook is process-wide).
 ///
 /// ```dart
 /// final controller = VtTerminalController(onOutput: pty.write);
@@ -28,6 +30,7 @@ export 'src/controller/terminal_controller.dart'
         VtTerminalHighlight,
         VtTerminalOutputCallback,
         VtTerminalResizeCallback;
+export 'src/images/png_decoder.dart' show decodeVtPng;
 export 'src/input/input_hooks.dart'
     show
         VtTerminalKeyHook,
