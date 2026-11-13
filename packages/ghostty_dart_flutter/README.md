@@ -99,6 +99,25 @@ Widget build(BuildContext context) => VtTerminalView(
 Bundle a monospace font with your app: Flutter has no portable monospace
 family, and the cells are measured from the font you pass.
 
+Images sent with the [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
+(`kitten icat`, `timg`, file manager previews) are drawn in the grid,
+animations included. Most tools send PNG, which libghostty-vt decodes
+through a process-wide hook; install the bundled decoder once at start-up:
+
+```dart
+import 'package:ghostty_dart/ghostty_dart.dart' show setVtPngDecoder;
+
+void main() {
+  setVtPngDecoder(decodeVtPng); // pure Dart, fail-closed on malformed input
+  runApp(const MyApp());
+}
+```
+
+Pass the window size in pixels to your pty's resize (`pixelWidth`,
+`pixelHeight` in `onResize`): image tools read it to size their output.
+Images take up to 10 MB per screen by default;
+`VtTerminalController(imageStorageLimit: 0)` turns them off.
+
 ## Migrating from xterm
 
 [`ghostty_dart_xterm`](https://pub.dev/packages/ghostty_dart_xterm) mirrors the public API

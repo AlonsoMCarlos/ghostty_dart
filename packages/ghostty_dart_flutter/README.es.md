@@ -1,4 +1,4 @@
-<!-- source: README.md@b4e0be474165baee67716be51e46e5474b8b0ba4 -->
+<!-- source: README.md@f0e082b4db22cdcbb7d7a14cd732804e449ef650 -->
 [English](https://github.com/AlonsoMCarlos/ghostty_dart/blob/main/packages/ghostty_dart_flutter/README.md) | **Español**
 
 # ghostty_dart_flutter
@@ -104,6 +104,28 @@ Widget build(BuildContext context) => VtTerminalView(
 Incluye una fuente monoespaciada en tu aplicación: Flutter no tiene una
 familia monoespaciada portable, y las celdas se miden con la fuente que
 indiques.
+
+Las imágenes enviadas con el [protocolo de gráficos de Kitty](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
+(`kitten icat`, `timg`, las vistas previas de los gestores de archivos) se
+dibujan en la cuadrícula, animaciones incluidas. La mayoría de las
+herramientas envía PNG, que libghostty-vt decodifica a través de un punto
+de enganche global del proceso; instala el decodificador incluido una vez
+al arrancar:
+
+```dart
+import 'package:ghostty_dart/ghostty_dart.dart' show setVtPngDecoder;
+
+void main() {
+  setVtPngDecoder(decodeVtPng); // Dart puro; rechaza la entrada malformada
+  runApp(const MyApp());
+}
+```
+
+Pasa el tamaño de la ventana en píxeles al redimensionar tu pty
+(`pixelWidth` y `pixelHeight` en `onResize`): las herramientas de imágenes
+lo leen para ajustar su salida. Las imágenes ocupan hasta 10 MB por
+pantalla de forma predeterminada; `VtTerminalController(imageStorageLimit: 0)`
+las desactiva.
 
 ## Migrar desde xterm
 
