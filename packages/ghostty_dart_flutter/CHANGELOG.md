@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart_flutter-v0.1.2...ghostty_dart_flutter-v0.1.3) (2026-11-13)
+
+
+### Features
+
+* **ghostty_dart_flutter:** draw Kitty graphics images ([c0cba9a](https://github.com/AlonsoMCarlos/ghostty_dart/commit/c0cba9af63b2caf978986843ade1fecdbca12ddb))
+* **ghostty_dart_flutter:** synchronous PNG decoder for Kitty images ([2ddddfb](https://github.com/AlonsoMCarlos/ghostty_dart/commit/2ddddfb8526f4ca373901a2e987b3cb6a5fe1fdb))
+
+
+### Performance Improvements
+
+* **ghostty_dart_flutter:** cheaper row scan in floods ([b57b518](https://github.com/AlonsoMCarlos/ghostty_dart/commit/b57b5187467023d844152d08eaef571efd17a4d9))
+
 ## [0.1.2](https://github.com/AlonsoMCarlos/ghostty_dart/compare/ghostty_dart_flutter-v0.1.1...ghostty_dart_flutter-v0.1.2) (2026-11-12)
 
 
