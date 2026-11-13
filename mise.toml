@@ -399,6 +399,7 @@ flag "--runs <n>" default="3" help="runs per configuration"
 flag "--layers <list>" default="pty,parser,blank,view" help="layers, comma-separated"
 flag "--pacing <list>" default="smooth,balanced" help="VtFloodPacing policies of the blank and view layers"
 flag "--variants <list>" default="impeller:2:1800x1100,skia:2:1800x1100,impeller:1:1800x1100,impeller:2:900x550,impeller:2:1800x1100:x11,impeller:2:1800x1100:uithread" help="renderer:GDK_SCALE:window logical size[:options], comma-separated; options joined by +: x11 or wayland (GDK_BACKEND), uithread (UI isolate on its own thread)"
+flag "--fork-ref <sha>" default="e533eba00ac578ba37979059e5eb5a802f92b65e" help="full commit sha of the flutter_pty2 fork to measure (default: perf/coalesce-output, batched + coalesced reads)"
 flag "--pty <which>" default="both" help="flutter_pty2 build: upstream (3.0.0), fork (pinned commit, first variant only) or both" {
   choices "upstream" "fork" "both"
 }
@@ -408,9 +409,13 @@ shell = "bash -c"
 run = '''
 set -euo pipefail
 [[ "$(uname -s)" == Linux ]] || { echo "bench:attribution reads /proc: Linux only" >&2; exit 1; }
-# The maintainer's fork: batched pty reads (SoFluffyOS/flutter_pty2#3).
+# The maintainer's fork: f25158183a7d… batches pty reads
+# (SoFluffyOS/flutter_pty2#3); e533eba00ac5… also coalesces output for up to
+# 2 ms after a recent post, like kitty's input_delay (branch
+# perf/coalesce-output).
 fork_url=https://github.com/AlonsoMCarlos/flutter_pty2.git
-fork_ref=f25158183a7d22307e37581e3d534a62a80dc916
+fork_ref="$usage_fork_ref"
+[[ "$fork_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "--fork-ref must be a full 40-hex commit sha" >&2; exit 2; }
 root="{{config_root}}"
 fixture="$PWD/build/attribution/tree-${usage_mb}MB.txt"
 [[ -f "$fixture" ]] || dart tool/attribution_fixture.dart "$fixture" "$usage_mb"
