@@ -15,13 +15,13 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/report.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Directory with the JetBrains Mono TTFs (`--dart-define=BENCH_FONT_DIR`).
 const _fontDir = String.fromEnvironment('BENCH_FONT_DIR');

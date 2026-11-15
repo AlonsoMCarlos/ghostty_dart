@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 import 'package:ghostty_dart_demo/src/demo_app.dart';
 import 'package:ghostty_dart_demo/src/fake_shell/fake_shell.dart';
 import 'package:ghostty_dart_demo/src/shell/demo_shell.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The screen's text, as a user would copy it.
 String _screen(VtTerminalController controller) {

@@ -30,10 +30,10 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'src/blank_frames.dart';
 import 'src/firehose.dart';

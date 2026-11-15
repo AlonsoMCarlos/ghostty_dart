@@ -37,11 +37,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'src/attribution.dart';
 import 'src/blank_frames.dart';

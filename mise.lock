@@ -56,29 +56,29 @@ url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/3849249
 provenance = "github-attestations"
 
 [[tools.flutter]]
-version = "3.47.9"
+version = "3.50.0"
 backend = "http:flutter"
-specifiers = ["3.47.9"]
+specifiers = ["3.50.0"]
 
 [tools.flutter."platforms.linux-x64"]
-checksum = "sha256:25ed8c3c29d51a7353f2a944310b478af8214920639524b19c50a19e6c044c5a"
-url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.9-stable.tar.xz"
+checksum = "sha256:6ea2d806fd57269ae783e6788e2a81fc26eaad782f1e0d0ff38623bb765ff9f5"
+url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.50.0-stable.tar.xz"
 
 [tools.flutter."platforms.linux-x64-musl"]
-checksum = "sha256:25ed8c3c29d51a7353f2a944310b478af8214920639524b19c50a19e6c044c5a"
-url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.9-stable.tar.xz"
+checksum = "sha256:6ea2d806fd57269ae783e6788e2a81fc26eaad782f1e0d0ff38623bb765ff9f5"
+url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.50.0-stable.tar.xz"
 
 [tools.flutter."platforms.macos-arm64"]
-checksum = "sha256:6545b85938745dc5070e9faf2adf70233c1811009d87fe6d27bfcda5a04b7698"
-url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_3.47.9-stable.zip"
+checksum = "sha256:ed2d08a3e3c023e84cbe9316d21bd88fda6ee9552f90c1eb4da41a07c170fb35"
+url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_3.50.0-stable.zip"
 
 [tools.flutter."platforms.macos-x64"]
-checksum = "sha256:0dc38b4038a0b002a6258696a5b327a58473c175c9e334b9f329ef7d79a4fdcd"
-url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.47.9-stable.zip"
+checksum = "sha256:d4e1bf2e2fc0c2e92267f45660c16a7d805e84ad42cb40b64b466446bffe48e0"
+url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_3.50.0-stable.zip"
 
 [tools.flutter."platforms.windows-x64"]
-checksum = "sha256:d8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e"
-url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.47.9-stable.zip"
+checksum = "sha256:35fb843409c80a1c69b64bbae1756bba437222f909622d83540e266e1759aab8"
+url = "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.50.0-stable.zip"
 
 [[tools.jq]]
 version = "1.8.2"

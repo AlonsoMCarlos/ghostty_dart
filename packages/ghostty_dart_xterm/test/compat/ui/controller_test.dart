@@ -3,9 +3,9 @@
 // Changes: imports package:ghostty_dart_xterm/xterm.dart instead of
 // package:xterm/xterm.dart. Nothing else.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart_xterm/xterm.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   group('TerminalController', () {

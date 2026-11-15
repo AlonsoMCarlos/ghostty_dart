@@ -16,6 +16,9 @@ resolution: workspace
 # only compiles its own C sources); the attribution benchmark spawns a
 # real pty child with it.
 dependencies:
+  # Flutter 3.50 deprecates package:flutter/material.dart in favour of the
+  # decoupled package (flutter.dev).
+  material_ui: ^1.11.0
   flutter:
     sdk: flutter
   flutter_pty2: 3.0.0

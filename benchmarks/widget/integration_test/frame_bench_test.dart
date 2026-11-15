@@ -11,7 +11,6 @@
 // 90-timeline run was killed for low memory on 2026-11-10.)
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_driver/flutter_driver.dart' as driver;
@@ -20,6 +19,7 @@ import 'package:ghostty_dart_widget_benchmarks/src/frame_streams.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/report.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/subjects.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Frames measured per run (`--dart-define=BENCH_FRAMES=n`).
 const _frames = int.fromEnvironment('BENCH_FRAMES', defaultValue: 300);

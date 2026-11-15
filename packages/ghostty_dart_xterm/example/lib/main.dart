@@ -10,8 +10,8 @@
 // so it runs without a pty. With a real shell, write the pty's output into
 // the terminal and send `terminal.onOutput` to the pty: see the migration
 // guide (MIGRATING_FROM_XTERM.md) for flutter_pty and dartssh2.
-import 'package:flutter/material.dart';
 import 'package:ghostty_dart_xterm/xterm.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() => runApp(const MyApp());
 

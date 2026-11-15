@@ -5,7 +5,6 @@
 // Not part of `demo:test`, which needs neither a display nor a pty.
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
@@ -14,6 +13,7 @@ import 'package:ghostty_dart_demo/src/shell/pty_shell.dart';
 import 'package:ghostty_dart_demo/src/shell/start_shell.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:material_ui/material_ui.dart';
 
 String _screen(VtTerminalController controller) {
   final formatter = TerminalFormatter(controller.terminal);
