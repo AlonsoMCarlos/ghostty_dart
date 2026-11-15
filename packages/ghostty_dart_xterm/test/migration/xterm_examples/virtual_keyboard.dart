@@ -6,8 +6,8 @@
 // pattern; this file compiling shows it still works. Reformatted by dart
 // format.
 
-import 'package:flutter/material.dart';
 import 'package:ghostty_dart_xterm/xterm.dart';
+import 'package:material_ui/material_ui.dart';
 
 class VirtualKeyboardView extends StatelessWidget {
   const VirtualKeyboardView(this.keyboard, {super.key});

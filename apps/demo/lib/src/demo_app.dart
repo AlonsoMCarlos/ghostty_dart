@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'shell/demo_shell.dart';
 

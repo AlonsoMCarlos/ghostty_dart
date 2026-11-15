@@ -8,8 +8,8 @@
 /// ```
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'src/frame_streams.dart';
 import 'src/subjects.dart';

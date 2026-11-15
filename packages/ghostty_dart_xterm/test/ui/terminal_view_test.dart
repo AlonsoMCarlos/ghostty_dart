@@ -5,7 +5,6 @@
 // controller's selection and highlights.
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart/ghostty_dart.dart'
@@ -13,6 +12,7 @@ import 'package:ghostty_dart/ghostty_dart.dart'
 import 'package:ghostty_dart_flutter/ghostty_dart_flutter.dart';
 import 'package:ghostty_dart_xterm/src/internal/terminal_internals.dart';
 import 'package:ghostty_dart_xterm/xterm.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 10 x 10 px cells in the test font.
 const _style = TerminalStyle(

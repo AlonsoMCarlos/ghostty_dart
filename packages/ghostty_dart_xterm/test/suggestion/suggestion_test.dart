@@ -1,8 +1,8 @@
 // Own tests of the ported SuggestionPortal.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart_xterm/suggestion.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   testWidgets('SuggestionPortal shows the popup below the cursor, or above '

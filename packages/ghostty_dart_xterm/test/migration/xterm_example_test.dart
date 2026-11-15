@@ -6,9 +6,9 @@
 // (xterm_examples/fakes.dart), so no process or network is involved.
 //
 // Also covers this package's example/ (pana shows it on pub.dev).
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart_xterm/xterm.dart';
+import 'package:material_ui/material_ui.dart';
 
 // The package example has no pubspec of its own (it uses this package's
 // dependencies), so it can only be reached by path.

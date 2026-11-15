@@ -6,8 +6,8 @@
 # native_path before handing it to anything else, e.g. $GITHUB_PATH).
 #
 # For jobs without Flutter: the release `verify` job (linux-x64), and the
-# arm64 smoke tests, because Flutter 3.47.9 (the mise pin) has no linux-arm64
-# or windows-arm64 SDK. The pinned version is the Dart SDK that Flutter 3.47.9
+# arm64 smoke tests, because Flutter 3.50.0 (the mise pin) has no linux-arm64
+# or windows-arm64 SDK. The pinned version is the Dart SDK that Flutter 3.50.0
 # bundles. The archive is re-hashed on every call; the extraction is fresh.
 #
 # Usage: tool/native/fetch_dart_sdk.sh <linux-x64 | linux-arm64 | windows-arm64> <dest>

@@ -17,6 +17,9 @@ resolution: workspace
 # Windows. Exact pin: a newer release must be reviewed again before it is
 # adopted.
 dependencies:
+  # Flutter 3.50 deprecates package:flutter/material.dart in favour of the
+  # decoupled package (flutter.dev).
+  material_ui: ^1.11.0
   flutter:
     sdk: flutter
   flutter_pty2: 3.0.0

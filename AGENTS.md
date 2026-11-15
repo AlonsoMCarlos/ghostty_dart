@@ -54,7 +54,7 @@ If a change contradicts an ADR, write a new ADR that supersedes it. Do not silen
 
 ## Toolchain: mise is the standard
 
-- **[mise](https://mise.jdx.dev) manages every tool.** `mise install` at the repo root installs the exact versions in `mise.toml`: Flutter 3.47.9 (which bundles Dart 3.13.7), Zig 0.17.1, minisign, jq, plus actionlint and shellcheck (`lint:ci`).
+- **[mise](https://mise.jdx.dev) manages every tool.** `mise install` at the repo root installs the exact versions in `mise.toml`: Flutter 3.50.0 (which bundles Dart 3.14.0), Zig 0.17.1, minisign, jq, plus actionlint and shellcheck (`lint:ci`).
   - Checksums are recorded in `mise.lock`. Commit both files.
   - `minimum_release_age = "3d"` enforces the cooldown for tools.
   - Never install project tools globally or via ad-hoc downloads. Add them to `mise.toml`.
@@ -189,7 +189,8 @@ This machine had a real compromise via build-time code (2026-08-20). Our build h
 - Do not adopt any dependency version published less than 3 days ago (cooldown).
   - `mise run cooldown` checks every committed lockfile, and fails closed if it parses no or too few entries.
   - Hold back a too-new transitive version with a root `dependency_overrides` entry, with a dated comment. Remove it once the version has aged.
-  - Prefer fixing an SDK pin conflict without an override. Flutter's `flutter_test` pins exact versions (Flutter 3.47.9: `test_api 0.7.12`), and every workspace member resolves together, so `ghostty_dart`'s dev dependencies stay on `test ^1.31.1` and `analyzer ^13.3.0` (`test` 1.32 and later and `analyzer` 14 need a newer `test_api`). Raise them together with the pinned Flutter.
+  - Prefer fixing an SDK pin conflict without an override. Flutter's `flutter_test` pins exact versions (Flutter 3.50.0: `test_api 0.7.14`), and every workspace member resolves together, so `ghostty_dart`'s dev dependencies stay on `test ^1.32.0` and `analyzer ^14.7.0` (`test` 1.33 and later need a newer `test_api`). Raise them together with the pinned Flutter.
+- Flutter 3.50 deprecates `package:flutter/material.dart` and `cupertino.dart`: apps, benchmarks, examples and tests import `package:material_ui` / `package:cupertino_ui` (flutter.dev) instead, as dependencies of the apps and dev dependencies of the published packages. The published packages' `lib/` imports neither.
 - Prefer zero dependencies in `ghostty_dart`. Every new dependency needs a justification in the PR.
 - The root pubspec declares `analyzer` and `crypto` as dev dependencies for `tool/xterm_compat` (both already locked through `ghostty_dart`). The xterm snapshot is pinned to the locked xterm 4.0.0 archive sha256 and its `lib/` tree hash (`tool/xterm_compat/src/pin.dart`); `compat:snapshot` refuses anything else.
 - Before using a library's API, read its source in `~/.pub-cache`. Do not create throwaway projects that compile unpinned code.

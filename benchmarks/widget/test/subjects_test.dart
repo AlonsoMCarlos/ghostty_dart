@@ -1,9 +1,9 @@
 // Headless check of the harness wiring (no timing): every widget builds,
 // takes the same streams, and ends with the same screen text.
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/frame_streams.dart';
 import 'package:ghostty_dart_widget_benchmarks/src/subjects.dart';
+import 'package:material_ui/material_ui.dart';
 
 const _style = TextStyle(fontFamily: 'monospace', fontSize: 12);
 

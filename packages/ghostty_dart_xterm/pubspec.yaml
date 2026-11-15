@@ -36,6 +36,10 @@ dependencies:
   ghostty_dart_flutter: ^0.1.0
 
 dev_dependencies:
+  # Flutter 3.50 deprecates package:flutter/material.dart in favour of the
+  # decoupled package (flutter.dev).
+  cupertino_ui: ^1.1.6  # test/migration (xterm's SSH example)
+  material_ui: ^1.11.0  # example/ and tests
   flutter_test:
     sdk: flutter
   # analysis_options.yaml includes package:lints; pana keeps hosted
