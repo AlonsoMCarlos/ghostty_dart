@@ -99,6 +99,9 @@ class VtTerminalView extends StatefulWidget {
     this.autoResize = true,
     this.cursorStyle,
     this.alwaysShowCursor = false,
+    this.cursorGlide = true,
+    this.cursorGlideDuration = defaultCursorGlideDuration,
+    this.barCursorThicknessFraction = defaultBarCursorThicknessFraction,
     this.backgroundOpacity = 1.0,
     this.mouseCursor,
     this.keyboardType,
@@ -212,6 +215,24 @@ class VtTerminalView extends StatefulWidget {
 
   /// Draws the cursor even while the program hides it.
   final bool alwaysShowCursor;
+
+  /// Whether the cursor glides between cells when it moves instead of
+  /// jumping: eased with a smoothstep over [cursorGlideDuration], on by
+  /// default. The glide starts from the cursor's currently drawn position,
+  /// follows the cell while the cursor is hidden (scrolled out, or in the
+  /// "off" half of its blink), and is suppressed while output floods the
+  /// view so flood pacing is unchanged.
+  final bool cursorGlide;
+
+  /// How long a cursor glide takes: [defaultCursorGlideDuration] (160 ms)
+  /// unless given. Zero (or a negative duration) snaps the cursor to its
+  /// cell instead of animating.
+  final Duration cursorGlideDuration;
+
+  /// The width of a bar cursor, as a fraction of a cell width:
+  /// [defaultBarCursorThicknessFraction] (1/8, as in xterm) unless given.
+  /// At least one device pixel wide.
+  final double barCursorThicknessFraction;
 
   /// The opacity of the default background, from 0 (transparent, the app
   /// behind shows through) to 1. Cells with their own background colour
@@ -797,6 +818,9 @@ class VtTerminalViewState extends State<VtTerminalView> {
               cursorHidden: _composing,
               cursorStyle: widget.cursorStyle,
               alwaysShowCursor: widget.alwaysShowCursor,
+              cursorGlide: widget.cursorGlide,
+              cursorGlideDuration: widget.cursorGlideDuration,
+              barCursorThicknessFraction: widget.barCursorThicknessFraction,
               backgroundOpacity: widget.backgroundOpacity,
               textRendering: widget.textRendering,
               cacheBudget: widget.cacheBudget,

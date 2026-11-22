@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:ghostty_dart/ghostty_dart.dart';
 
@@ -15,6 +16,17 @@ import 'image_layer.dart';
 import 'paragraph_cache.dart';
 import 'row_recorder.dart';
 import 'text_rendering.dart';
+
+/// How long the cursor takes to glide to a new cell unless told otherwise:
+/// 160 ms.
+const Duration defaultCursorGlideDuration = Duration(milliseconds: 160);
+
+/// The width of a bar cursor unless told otherwise, as a fraction of a cell
+/// width: 1/8, as in xterm.
+const double defaultBarCursorThicknessFraction = 1 / 8;
+
+/// The height of an underline cursor, as a fraction of a cell width.
+const double _underlineCursorThicknessFraction = 1 / 8;
 
 /// The terminal grid renderer (ADR 0011 "Rendering (v1)", ADR 0012): one
 /// repaint-isolated render box that draws the rows of [source] with a
@@ -39,6 +51,9 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     this.textScaler = TextScaler.noScaling,
     this.cursorStyle,
     this.alwaysShowCursor = false,
+    this.cursorGlide = true,
+    this.cursorGlideDuration = defaultCursorGlideDuration,
+    this.barCursorThicknessFraction = defaultBarCursorThicknessFraction,
     this.backgroundOpacity = 1.0,
     this.cursorHidden,
     this.cacheBudget = RenderTerminal.defaultCacheBudget,
@@ -46,6 +61,10 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
   }) : assert(
          backgroundOpacity >= 0 && backgroundOpacity <= 1,
          'backgroundOpacity must be between 0 and 1',
+       ),
+       assert(
+         barCursorThicknessFraction > 0,
+         'barCursorThicknessFraction must be positive',
        );
 
   /// Where the frames come from.
@@ -78,6 +97,25 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
   /// xterm's `alwaysShowCursor`.
   final bool alwaysShowCursor;
 
+  /// Whether the cursor glides between cells when it moves instead of
+  /// jumping: eased with a smoothstep over [cursorGlideDuration], on by
+  /// default. The glide starts from the cursor's currently drawn position,
+  /// so a move in the middle of a glide carries on from there. It follows
+  /// the cursor's cell even while the cursor is hidden (scrolled out, or in
+  /// the "off" half of its blink), and is suppressed while output floods
+  /// the view so flood pacing is unchanged.
+  final bool cursorGlide;
+
+  /// How long a cursor glide takes: [defaultCursorGlideDuration] (160 ms)
+  /// unless given. Zero (or a negative duration) snaps the cursor to its
+  /// cell instead of animating.
+  final Duration cursorGlideDuration;
+
+  /// The width of a bar cursor, as a fraction of a cell width:
+  /// [defaultBarCursorThicknessFraction] (1/8) unless given. At least one
+  /// device pixel wide.
+  final double barCursorThicknessFraction;
+
   /// The opacity of the default background (0 to 1), so the app behind
   /// shows through. Cell backgrounds stay opaque. For xterm's
   /// `backgroundOpacity`.
@@ -106,6 +144,9 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
     textScaler: textScaler,
     cursorStyle: cursorStyle,
     alwaysShowCursor: alwaysShowCursor,
+    cursorGlide: cursorGlide,
+    cursorGlideDuration: cursorGlideDuration,
+    barCursorThicknessFraction: barCursorThicknessFraction,
     backgroundOpacity: backgroundOpacity,
     cursorHidden: cursorHidden,
     blinkEnabled: TickerMode.valuesOf(context).enabled,
@@ -124,6 +165,9 @@ class TerminalRenderWidget extends LeafRenderObjectWidget {
       ..textScaler = textScaler
       ..cursorStyle = cursorStyle
       ..alwaysShowCursor = alwaysShowCursor
+      ..cursorGlide = cursorGlide
+      ..cursorGlideDuration = cursorGlideDuration
+      ..barCursorThicknessFraction = barCursorThicknessFraction
       ..backgroundOpacity = backgroundOpacity
       ..cursorHidden = cursorHidden
       ..blinkEnabled = TickerMode.valuesOf(context).enabled
@@ -220,6 +264,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     TextScaler textScaler = TextScaler.noScaling,
     VtCursorStyle? cursorStyle,
     bool alwaysShowCursor = false,
+    bool cursorGlide = true,
+    Duration cursorGlideDuration = defaultCursorGlideDuration,
+    double barCursorThicknessFraction = defaultBarCursorThicknessFraction,
     double backgroundOpacity = 1.0,
     ValueListenable<bool>? cursorHidden,
     bool blinkEnabled = true,
@@ -234,6 +281,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
        _textScaler = textScaler,
        _cursorStyle = cursorStyle,
        _alwaysShowCursor = alwaysShowCursor,
+       _cursorGlide = cursorGlide,
+       _cursorGlideDuration = cursorGlideDuration,
+       _barCursorThicknessFraction = barCursorThicknessFraction,
        _backgroundOpacity = backgroundOpacity,
        _blinkEnabled = blinkEnabled,
        _cacheBudget = cacheBudget,
@@ -244,10 +294,6 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   /// `CURSOR_BLINK_INTERVAL` (600 ms, `src/renderer/Thread.zig:20` at
   /// libghostty-vt 1.0.0, read 2026-11-10).
   static const blinkInterval = Duration(milliseconds: 600);
-
-  /// The width of a bar cursor and the height of an underline cursor, as
-  /// a fraction of the cell width (at least one device pixel). A heuristic.
-  static const cursorThicknessFraction = 1 / 8;
 
   /// How long after its tickers are muted a view that is no longer
   /// composited releases its caches.
@@ -271,6 +317,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   TextScaler _textScaler;
   VtCursorStyle? _cursorStyle;
   bool _alwaysShowCursor;
+  bool _cursorGlide;
+  Duration _cursorGlideDuration;
+  double _barCursorThicknessFraction;
   double _backgroundOpacity;
   bool _blinkEnabled;
   int _cacheBudget;
@@ -370,6 +419,30 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     markNeedsPaint();
   }
 
+  /// See [TerminalRenderWidget.cursorGlide].
+  bool get cursorGlide => _cursorGlide;
+  set cursorGlide(bool value) {
+    if (value == _cursorGlide) return;
+    _cursorGlide = value;
+    if (!value) _finishGlide();
+  }
+
+  /// See [TerminalRenderWidget.cursorGlideDuration].
+  Duration get cursorGlideDuration => _cursorGlideDuration;
+  set cursorGlideDuration(Duration value) {
+    if (value == _cursorGlideDuration) return;
+    _cursorGlideDuration = value;
+    if (value <= Duration.zero) _finishGlide();
+  }
+
+  /// See [TerminalRenderWidget.barCursorThicknessFraction].
+  double get barCursorThicknessFraction => _barCursorThicknessFraction;
+  set barCursorThicknessFraction(double value) {
+    if (value == _barCursorThicknessFraction) return;
+    _barCursorThicknessFraction = value;
+    markNeedsPaint();
+  }
+
   /// See [TerminalRenderWidget.backgroundOpacity].
   double get backgroundOpacity => _backgroundOpacity;
   set backgroundOpacity(double value) {
@@ -391,6 +464,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     _releaseTimer = null;
     if (!value) {
       _stopBlink();
+      // Tickers are muted: land the cursor where it was heading so it does
+      // not start gliding again from a stale cell when the view resumes.
+      _finishGlide(repaint: false);
       // Muted tickers may mean a hidden view (an offstage tab, a covered
       // route) or only paused animations around a view still on screen.
       // Check later whether the view is still composited.
@@ -486,6 +562,19 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   VtCursorStyle? _paintedCursor;
   Timer? _blinkTimer;
 
+  // Cursor glide, in cell coordinates. `_glideFrom` is where the last
+  // frame drew the cursor, `_glideTo` the cell it is heading to; the ticker
+  // eases between them.
+  Ticker? _glideTicker;
+  bool _hasGlidePosition = false;
+  double _glideX = 0;
+  double _glideY = 0;
+  double _glideFromX = 0;
+  double _glideFromY = 0;
+  double _glideToX = 0;
+  double _glideToY = 0;
+  double _glideProgress = 1;
+
   // Kitty graphics images (ADR 0014).
   late final _images = KittyImageLayer(onTextureReady: markNeedsPaint);
 
@@ -558,6 +647,16 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   @visibleForTesting
   VtCursorStyle? get debugPaintedCursor => _paintedCursor;
 
+  /// The cell the cursor is currently drawn at, glide included (`x` and `y`
+  /// in cells), or `null` before the first cursor position was seen.
+  @visibleForTesting
+  Offset? get debugCursorCell =>
+      _hasGlidePosition ? Offset(_glideX, _glideY) : null;
+
+  /// Whether a cursor glide is animating.
+  @visibleForTesting
+  bool get debugGliding => _glideTicker?.isActive ?? false;
+
   /// Whether the blink timer runs.
   @visibleForTesting
   bool get debugBlinking => _blinkTimer?.isActive ?? false;
@@ -598,6 +697,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     _releaseTimer = null;
     PaintingBinding.instance.systemFonts.removeListener(_onSystemFonts);
     _stopBlink();
+    _disposeGlideTicker();
     _floodStreak = 0;
     // A detached box paints nothing; reattaching records the screen once.
     _dropAll();
@@ -634,6 +734,7 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
   void dispose() {
     _releaseTimer?.cancel();
     _stopBlink();
+    _disposeGlideTicker();
     _dropAll();
     super.dispose();
   }
@@ -784,6 +885,16 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       }
       final rows = math.min(state.rows, _geometry.rows);
       final cursor = state.cursor;
+      final position = cursor?.position;
+      // Follow the cursor's cell even while it is hidden, scrolled out or
+      // in the "off" half of its blink, so a move made then has already
+      // eased by the time it shows again.
+      if (cursor != null && position != null) {
+        _moveGlideTo(
+          (position.x - (cursor.isOnWideTail ? 1 : 0)).toDouble(),
+          position.y.toDouble(),
+        );
+      }
       final needsPass =
           _rescanAll ||
           state.dirty != RenderDirtyState.clean ||
@@ -794,7 +905,6 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       if (!needsPass) return;
 
       final frame = ++_frame;
-      final position = cursor.position;
       final cursorY = position?.y ?? -1;
       final cursorX = position == null
           ? 0
@@ -857,6 +967,9 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
       // entry, so a row that left keeps the stamp of a visible twin.
       final visible = {for (final id in ids) ?id};
       _countFlood(ids, visible);
+      // While output floods the view, keep its flood pacing: the cursor
+      // jumps to its cell instead of animating through each frame.
+      if (_floodStreak >= floodFrames) _finishGlide(repaint: false);
       _rows.removeWhere((id, _) => !visible.contains(id));
       _evictPictures(frame);
       _visibleRowIds = ids;
@@ -974,23 +1087,24 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     if (blinks && !_blinkOn) return true;
 
     final metrics = _geometry.metrics;
-    final x = position.x - (cursor.isOnWideTail ? 1 : 0);
+    final x = _hasGlidePosition
+        ? _glideX
+        : (position.x - (cursor.isOnWideTail ? 1 : 0)).toDouble();
+    final y = _hasGlidePosition ? _glideY : position.y.toDouble();
     final colors = _colors!;
     final cell = _cursorCell ?? CursorCell.empty(colorOfRgb(colors.background));
     final span = cursor.isOnWideTail ? 2 : cell.span;
     final rect = Rect.fromLTWH(
       grid.dx + x * metrics.width,
-      grid.dy + position.y * metrics.height,
+      grid.dy + y * metrics.height,
       span * metrics.width,
       metrics.height,
     );
     final color = _cursorColor(colors);
     final px = 1 / metrics.devicePixelRatio;
-    final thickness = math.max(
+    double thickness(double fraction) => math.max(
       px,
-      (metrics.width * cursorThicknessFraction * metrics.devicePixelRatio)
-              .round() *
-          px,
+      (metrics.width * fraction * metrics.devicePixelRatio).round() * px,
     );
     final paint = Paint()..color = color;
     var style = _cursorStyle ?? cursor.style;
@@ -1009,16 +1123,21 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
         );
       case VtCursorStyle.bar:
         canvas.drawRect(
-          Rect.fromLTWH(rect.left, rect.top, thickness, rect.height),
+          Rect.fromLTWH(
+            rect.left,
+            rect.top,
+            thickness(_barCursorThicknessFraction),
+            rect.height,
+          ),
           paint,
         );
       case VtCursorStyle.underline:
         canvas.drawRect(
           Rect.fromLTWH(
             rect.left,
-            rect.bottom - thickness,
+            rect.bottom - thickness(_underlineCursorThicknessFraction),
             rect.width,
-            thickness,
+            thickness(_underlineCursorThicknessFraction),
           ),
           paint,
         );
@@ -1036,6 +1155,87 @@ class RenderTerminal extends RenderBox with WidgetsBindingObserver {
     }
     return colorOfRgb(program);
   }
+
+  /// Aims the cursor at cell ([x], [y]), easing from where it is drawn.
+  ///
+  /// The start is the current drawn position, not the previous target, so
+  /// a move in the middle of a glide carries on instead of snapping back.
+  void _moveGlideTo(double x, double y) {
+    if (_hasGlidePosition && _glideToX == x && _glideToY == y) return;
+
+    final fromX = _hasGlidePosition ? _glideX : x;
+    final fromY = _hasGlidePosition ? _glideY : y;
+    _glideFromX = fromX;
+    _glideFromY = fromY;
+    _glideToX = x;
+    _glideToY = y;
+    _glideX = fromX;
+    _glideY = fromY;
+    _glideProgress = 0;
+    _hasGlidePosition = true;
+
+    final animate =
+        _cursorGlide &&
+        _cursorGlideDuration > Duration.zero &&
+        _blinkEnabled &&
+        attached &&
+        (fromX != x || fromY != y);
+    if (!animate) {
+      _finishGlide(repaint: false);
+      return;
+    }
+    _startGlideTicker();
+  }
+
+  void _startGlideTicker() {
+    final ticker = _glideTicker ??= Ticker(
+      _onGlideTick,
+      debugLabel: 'terminal cursor glide',
+    );
+    // Restarting resets the elapsed time, so every move gets a full
+    // duration from the position the last frame drew.
+    ticker
+      ..stop()
+      ..start();
+  }
+
+  void _onGlideTick(Duration elapsed) {
+    final total = _cursorGlideDuration.inMicroseconds;
+    final t = total <= 0 ? 1.0 : elapsed.inMicroseconds / total;
+    if (t >= 1) {
+      _finishGlide();
+      return;
+    }
+    _glideProgress = _ease(t);
+    _glideX = _glideFromX + (_glideToX - _glideFromX) * _glideProgress;
+    _glideY = _glideFromY + (_glideToY - _glideFromY) * _glideProgress;
+    markNeedsPaint();
+  }
+
+  /// Lands the cursor on its target and stops the ticker.
+  ///
+  /// [repaint] is false when the caller is painting, or when the current
+  /// frame already draws the landed position.
+  void _finishGlide({bool repaint = true}) {
+    _glideTicker?.stop();
+    _glideProgress = 1;
+    _glideX = _glideToX;
+    _glideY = _glideToY;
+    if (repaint && attached) markNeedsPaint();
+  }
+
+  void _disposeGlideTicker() {
+    final ticker = _glideTicker;
+    _glideTicker = null;
+    if (ticker != null) {
+      ticker
+        ..stop()
+        ..dispose();
+    }
+  }
+
+  /// Smoothstep: `t²(3−2t)`, with zero velocity at both ends.
+  static double _ease(double t) => t * t * (3 - 2 * t);
 
   void _syncBlink(bool blinking) {
     if (!blinking || !attached) {
