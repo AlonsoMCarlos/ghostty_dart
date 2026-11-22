@@ -32,10 +32,10 @@ Map<ShortcutActivator, Intent> defaultTerminalShortcuts(
       SelectionChangedCause.keyboard,
     ),
   },
-  TargetPlatform.android ||
-  TargetPlatform.fuchsia ||
-  TargetPlatform.linux ||
-  TargetPlatform.windows => const {
+  // The Flutter SDK this project uses adds `TargetPlatform.ohos`, which the
+  // exhaustive switch above did not cover; treat every non-Apple platform
+  // like Linux and Windows.
+  _ => const {
     SingleActivator(LogicalKeyboardKey.keyC, control: true, shift: true):
         CopySelectionTextIntent.copy,
     SingleActivator(LogicalKeyboardKey.insert, control: true):
