@@ -1,5 +1,5 @@
 // Behaviour of the renderer (ADR 0011 "Rendering (v1)"): the row picture
-// cache, the render hold, disposal, the cursor overlay and its blink.
+// cache, the render hold, disposal, the cursor overlay, its glide and blink.
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -682,6 +682,58 @@ void main() {
       final h = await pumpRenderer(tester, initial: 'hi');
       await h.rebuild(cursorStyle: VtCursorStyle.underline);
       expect(h.render.debugPaintedCursor, VtCursorStyle.underline);
+    });
+
+    testWidgets('glides between cells with smoothstep and carries on', (
+      tester,
+    ) async {
+      final h = await pumpRenderer(tester, initial: 'ab');
+      expect(h.render.debugCursorCell, const Offset(2, 0));
+
+      await h.write('\x1b[1;5H'); // cell x = 4
+      expect(h.render.debugCursorCell, const Offset(2, 0));
+      expect(h.render.debugGliding, isTrue);
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(h.render.debugCursorCell!.dx, closeTo(3, 0.001));
+
+      // A move mid-glide carries on from the drawn cell (3), not from the
+      // first target (4).
+      h.controller.write('\x1b[1;9H'); // cell x = 8
+      await tester.pump();
+      expect(h.render.debugCursorCell!.dx, closeTo(3, 0.001));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(h.render.debugCursorCell!.dx, closeTo(5.5, 0.001));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(h.render.debugCursorCell, const Offset(8, 0));
+      expect(h.render.debugGliding, isFalse);
+    });
+
+    testWidgets('glides while the cursor is hidden', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'ab');
+      await h.rebuild(hideCursor: true);
+      expect(h.render.debugPaintedCursor, isNull);
+
+      h.controller.write('\x1b[1;9H'); // cell x = 8
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(h.render.debugCursorCell!.dx, closeTo(5, 0.001));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(h.render.debugCursorCell, const Offset(8, 0));
+
+      // Shown again, it is already at the new cell: no jump animation.
+      await h.rebuild(hideCursor: false);
+      expect(h.render.debugPaintedCursor, VtCursorStyle.block);
+      expect(h.render.debugCursorCell, const Offset(8, 0));
+      expect(h.render.debugGliding, isFalse);
+    });
+
+    testWidgets('cursorGlide false snaps to the cell', (tester) async {
+      final h = await pumpRenderer(tester, initial: 'ab');
+      await h.rebuild(cursorGlide: false);
+      h.controller.write('\x1b[1;9H'); // cell x = 8
+      await tester.pump();
+      expect(h.render.debugCursorCell, const Offset(8, 0));
+      expect(h.render.debugGliding, isFalse);
     });
 
     testWidgets('is not drawn while scrolled out of view', (tester) async {
