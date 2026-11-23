@@ -59,8 +59,9 @@ final class SentinelEdit {
 ///   are diffed against the last state outside the composing region, by
 ///   common prefix and suffix.
 ///
-/// Soft-keyboard `\n` (and `\r\n`) becomes `\r`. Once nothing is composing,
-/// the owner resets the platform to [idleValue] ([needsReset]).
+/// Soft-keyboard `\n` (and `\r\n`) becomes `\r`. Once an update produced an
+/// edit and nothing is composing any more, the owner resets the platform to
+/// [idleValue] ([needsReset]).
 final class SentinelEditor {
   /// An editor idling at [sentinel]; empty turns Backspace detection off.
   SentinelEditor({this.sentinel = deleteDetectionSentinel})
@@ -70,6 +71,9 @@ final class SentinelEditor {
   final String sentinel;
 
   TextEditingValue _value;
+
+  /// Whether an update since the last [reset] produced an edit to send.
+  bool _consumed = false;
 
   static TextEditingValue _idle(String sentinel) => TextEditingValue(
     text: sentinel,
@@ -89,9 +93,14 @@ final class SentinelEditor {
   String get composingText =>
       isComposing ? _value.composing.textInside(_value.text) : '';
 
-  /// Whether the state differs from [idleValue] while nothing is
-  /// composing, so the platform must be reset to it.
-  bool get needsReset => !isComposing && _value != idleValue;
+  /// Whether the platform must be reset to [idleValue]: an update produced
+  /// an edit the owner took, and nothing is composing any more.
+  ///
+  /// The edits alone cannot decide it: a composition's first update differs
+  /// from [idleValue] without producing any (its composing region is still
+  /// collapsed), and resetting there breaks the composition in the Windows
+  /// engine (see `TerminalTextInput._settle`).
+  bool get needsReset => _consumed && !isComposing;
 
   static bool _isComposing(TextEditingValue value) =>
       value.composing.isValid &&
@@ -99,7 +108,10 @@ final class SentinelEditor {
       value.composing.end <= value.text.length;
 
   /// Back to the idle state, for a new connection or after [needsReset].
-  void reset() => _value = idleValue;
+  void reset() {
+    _value = idleValue;
+    _consumed = false;
+  }
 
   /// Applies the platform's [deltas] and returns what to send, in order.
   List<SentinelEdit> applyDeltas(List<TextEditingDelta> deltas) {
@@ -178,6 +190,7 @@ final class SentinelEditor {
       }
       _value = next;
     }
+    _consumed = _consumed || edits.any((edit) => !edit.isEmpty);
     return edits;
   }
 
@@ -210,10 +223,12 @@ final class SentinelEditor {
     }
     final removed = before.substring(start, before.length - suffix);
     final added = after.substring(start, after.length - suffix);
-    return SentinelEdit(
+    final edit = SentinelEdit(
       backspaces: removed.characters.length,
       text: _crlf(added),
     );
+    _consumed = _consumed || !edit.isEmpty;
+    return edit;
   }
 
   /// Text outside the composing region.
