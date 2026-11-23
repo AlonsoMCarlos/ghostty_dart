@@ -74,6 +74,43 @@ void main() {
     expect(editor.update(_value('  ')), const SentinelEdit());
   });
 
+  // The Windows engine starts a composition with a collapsed region and
+  // re-sends the whole preedit on every change: resetting the platform there
+  // makes it treat the preedit as committed text.
+  test('a composition start asks for no reset', () {
+    // The user presses the first key of a syllable: the composing region
+    // appears collapsed (nothing to show yet), the text is still the sentinel.
+    expect(
+      editor.update(_value('  ', composing: const TextRange(start: 2, end: 2))),
+      const SentinelEdit(),
+    );
+    expect(editor.needsReset, isFalse);
+  });
+
+  test('the platform keeps composing until the commit ends it', () {
+    // The syllable grows: the preedit is reported inside a composing region,
+    // nothing is sent, and the platform must not be reset in between.
+    editor.update(_value('  に', composing: const TextRange(start: 2, end: 3)));
+    expect(editor.needsReset, isFalse);
+    editor.update(_value('  にほ', composing: const TextRange(start: 2, end: 4)));
+    expect(editor.needsReset, isFalse);
+    // The conversion is picked: the preedit becomes text and is sent.
+    expect(editor.update(_value('  日本')), const SentinelEdit(text: '日本'));
+    expect(editor.needsReset, isTrue);
+  });
+
+  test('a consumed edit keeps asking for a reset until it is taken', () {
+    expect(editor.update(_value('  ab')), const SentinelEdit(text: 'ab'));
+    expect(editor.needsReset, isTrue);
+    // The owner takes the edits, then the IME starts composing over the text
+    // it already sent (a reconversion) before the reset happens.
+    editor.update(_value('  ab', composing: const TextRange(start: 2, end: 4)));
+    expect(editor.needsReset, isFalse);
+    editor.reset();
+    expect(editor.needsReset, isFalse);
+    expect(editor.value, editor.idleValue);
+  });
+
   test('deltas are applied to the current value', () {
     final edit = editor.applyDeltas([
       const TextEditingDeltaInsertion(

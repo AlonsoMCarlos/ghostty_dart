@@ -130,14 +130,22 @@ final class TerminalTextInput with TextInputClient, DeltaTextInputClient {
       _settle([editor.update(value)]);
 
   void _settle(List<SentinelEdit> edits) {
+    final composing = editor.composingText;
+    for (final edit in edits) {
+      if (!edit.isEmpty) onEdit(edit);
+    }
+    _setComposing(composing);
+    // Reset the platform's editing state only once the text it reported was
+    // taken (see [SentinelEditor.needsReset]). Resetting whenever the state
+    // merely differs from the idle one — as a composition's first update,
+    // whose composing region is collapsed, does — tells the IME its
+    // composition ended; the Windows engine then re-sends the whole
+    // composition as committed text on every following keystroke, and the
+    // program receives each preedit again.
     if (editor.needsReset) {
       editor.reset();
       connection?.setEditingState(editor.value);
     }
-    for (final edit in edits) {
-      if (!edit.isEmpty) onEdit(edit);
-    }
-    _setComposing(editor.composingText);
     onUpdate?.call();
   }
 

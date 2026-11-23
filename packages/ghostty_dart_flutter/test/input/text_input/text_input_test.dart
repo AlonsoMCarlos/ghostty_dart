@@ -170,6 +170,66 @@ void main() {
       expect(h.output, ['hi']);
       expect(h.composing, [true, false]);
     });
+
+    // Replays what the Windows engine (TSF) sends while an IME composes a
+    // syllable and then commits the conversion.
+    //
+    // Two Windows behaviours make this the case that caught the bug:
+    // a composition **starts** as a non-text update whose composing region is
+    // collapsed (there is no preedit to show yet), and every change re-sends
+    // the **whole** preedit rather than a delta of it. Writing the editing
+    // state back at that point drops the composing region as far as the
+    // engine knows, and it then reports the preedit as inserted text with no
+    // composing region: the program receives the composition again on every
+    // keystroke.
+    testWidgets('a Windows composition is not reset while it is open', (
+      tester,
+    ) async {
+      final h = await InputHarness.pump(tester);
+      // Every `TextInput.setEditingState` the app sends to the platform, i.e.
+      // every time it writes the hidden editing state back.
+      List<MethodCall> stateWrites() => tester.testTextInput.log
+          .where((call) => call.method == 'TextInput.setEditingState')
+          .toList();
+      final writesAtAttach = stateWrites().length;
+
+      // Step 1 — the user presses the first key of the syllable and the IME
+      // starts composing. The platform reports only the start of a
+      // composition: the composing region is collapsed at the caret and no
+      // text exists yet, so the text still equals the idle sentinel "  ".
+      // Nothing is committed, so the program receives nothing, and the state
+      // must not be written back: that write is what tells the engine the
+      // composition ended.
+      await sendDeltas(tester, [
+        delta('  ', '', -1, -1, caret: 2, composingBase: 2, composingExtent: 2),
+      ]);
+      expect(h.output, isEmpty);
+      expect(stateWrites(), hasLength(writesAtAttach));
+
+      // Step 2 — the user types the rest of the syllable. The IME now has a
+      // preedit ("に", then "にほ") and reports it inside a composing region;
+      // the whole preedit is re-sent on each change. A preedit is not text
+      // for the program: still nothing sent, still no write back.
+      await sendDeltas(tester, [
+        delta('  ', 'に', 2, 2, composingBase: 2, composingExtent: 3),
+      ]);
+      await sendDeltas(tester, [
+        delta('  に', 'ほ', 3, 3, composingBase: 2, composingExtent: 4),
+      ]);
+      expect(h.output, isEmpty);
+      expect(h.composing, [true]);
+      expect(stateWrites(), hasLength(writesAtAttach));
+
+      // Step 3 — the user picks the conversion: the preedit becomes 日本 and
+      // the composing region is gone. Now the text is the program's, so it is
+      // sent once and only now is the state written back — to the sentinel,
+      // which Backspace detection needs.
+      await sendDeltas(tester, [delta('  にほ', '日本', 2, 4)]);
+      expect(h.output, ['日本']);
+      expect(h.composing, [true, false]);
+      expect(stateWrites(), hasLength(writesAtAttach + 1));
+      expect(tester.testTextInput.editingState!['text'], '  ');
+    });
   });
 
   group('IME rectangles', () {
