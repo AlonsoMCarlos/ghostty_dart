@@ -53,7 +53,9 @@ bool _isApple(TargetPlatform platform) =>
 /// Turns Flutter [KeyEvent]s into [VtKeyEvent]s (ADR 0011, Input). Never
 /// exported.
 ///
-/// - The key is the **physical** key ([vtKeyForPhysicalKey]).
+/// - The key is the **physical** key ([vtKeyForEvent]), falling back to the
+///   logical key when the physical key has no USB HID usage (Android virtual
+///   keyboards and `adb shell input`).
 /// - The modifiers come from [HardwareKeyboard], with the right-side bits
 ///   and Caps/Num Lock.
 /// - **AltGr** (never on Apple platforms) removes Ctrl and Alt, so
@@ -205,7 +207,7 @@ final class KeyEventMapper {
         unshifted != 0 &&
         text != String.fromCharCode(unshifted);
     return VtKeyEvent(
-      key: vtKeyForPhysicalKey(event.physicalKey),
+      key: vtKeyForEvent(event),
       action: action,
       modifiers: modifiers,
       consumedModifiers: shiftConsumed ? KeyModifiers.shift : KeyModifiers.none,

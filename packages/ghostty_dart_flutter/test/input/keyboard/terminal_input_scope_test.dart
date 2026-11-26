@@ -88,6 +88,18 @@ void main() {
       expect(h.sent, '\t');
     });
 
+    testWidgets('Android-plane keys fall back to their logical key', (
+      tester,
+    ) async {
+      final h = await InputHarness.pump(tester);
+      // Gboard sends Backspace as KEYCODE_DEL without a USB HID scan code:
+      // Flutter then reports a physical key in its Android plane instead of
+      // PhysicalKeyboardKey.backspace.
+      await sendAndroidKey(tester, type: 'keydown', keyCode: 67, scanCode: 0);
+      await sendAndroidKey(tester, type: 'keyup', keyCode: 67, scanCode: 0);
+      expect(h.sent, '\x7f');
+    });
+
     testWidgets('cursor keys follow DECCKM', (tester) async {
       final h = await InputHarness.pump(tester);
       h.controller.write('\x1b[?1h');
@@ -459,4 +471,36 @@ void main() {
       expect(h.output, isEmpty);
     });
   });
+}
+
+/// Sends an Android key event through `flutter/keyevent`, as the engine does.
+///
+/// [scanCode] stays out of Flutter's Android scan-code map, so the framework
+/// reports an Android-plane physical key — what a virtual keyboard's
+/// `sendKeyEvent` produces.
+Future<void> sendAndroidKey(
+  WidgetTester tester, {
+  required String type,
+  required int keyCode,
+  int scanCode = 0,
+}) async {
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    SystemChannels.keyEvent.name,
+    SystemChannels.keyEvent.codec.encodeMessage(<String, Object?>{
+      'type': type,
+      'keymap': 'android',
+      'keyCode': keyCode,
+      'scanCode': scanCode,
+      'metaState': 0,
+      'source': 0,
+      'deviceId': 0,
+      'repeatCount': 0,
+      'codePoint': 0,
+      'plainCodePoint': 0,
+      'vendorId': 0,
+      'productId': 0,
+    }),
+    (_) {},
+  );
+  await tester.pump();
 }

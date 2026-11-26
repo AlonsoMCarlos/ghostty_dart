@@ -60,6 +60,62 @@ void main() {
     }
   });
 
+  test('logical fallback covers non-text keys only', () {
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.backspace), VtKey.backspace);
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.delete), VtKey.delete);
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.arrowLeft), VtKey.arrowLeft);
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.enter), VtKey.enter);
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.f24), VtKey.f24);
+    // Text keys keep the event's character, so they have no fallback.
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.keyA), isNull);
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.digit1), isNull);
+    expect(vtKeyForLogicalKey(LogicalKeyboardKey.space), isNull);
+  });
+
+  test('the logical fallback holds no text keys', () {
+    // vtKeyForEvent relies on this: a text key must keep its character path.
+    for (final key in logicalKeyToVtKey.values) {
+      expect(isTextKey(key), isFalse, reason: '$key');
+    }
+  });
+
+  test('vtKeyForEvent prefers the physical key, then the logical one', () {
+    // A hardware key: the physical key wins, even on another layout.
+    expect(
+      vtKeyForEvent(
+        KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey.keyA,
+          logicalKey: LogicalKeyboardKey.keyQ,
+          timeStamp: Duration.zero,
+        ),
+      ),
+      VtKey.a,
+    );
+    // A virtual keyboard key in Flutter's Android plane: no USB HID usage,
+    // so the logical key names it.
+    expect(
+      vtKeyForEvent(
+        KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey(LogicalKeyboardKey.androidPlane),
+          logicalKey: LogicalKeyboardKey.backspace,
+          timeStamp: Duration.zero,
+        ),
+      ),
+      VtKey.backspace,
+    );
+    // A text key has no fallback: it keeps its character and text input path.
+    expect(
+      vtKeyForEvent(
+        KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey(LogicalKeyboardKey.androidPlane),
+          logicalKey: LogicalKeyboardKey.keyA,
+          timeStamp: Duration.zero,
+        ),
+      ),
+      VtKey.unidentified,
+    );
+  });
+
   test('text keys are the writing-system keys and Space', () {
     expect(isTextKey(VtKey.a), isTrue);
     expect(isTextKey(VtKey.slash), isTrue);
