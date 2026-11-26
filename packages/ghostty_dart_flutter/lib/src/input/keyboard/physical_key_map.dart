@@ -181,3 +181,71 @@ final Map<PhysicalKeyboardKey, VtKey> physicalKeyToVtKey = Map.unmodifiable({
   PhysicalKeyboardKey.cut: VtKey.cut,
   PhysicalKeyboardKey.paste: VtKey.paste,
 });
+
+/// The libghostty-vt key for [event]: its physical key, or its logical key
+/// when the physical key has no USB HID usage.
+///
+/// Android virtual keyboards (Gboard, AOSP) and `adb shell input` report
+/// non-text keys without a scan code, so Flutter puts the Android keycode in
+/// its Android plane instead of a USB HID usage (`LogicalKeyboardKey.androidPlane`
+/// + `scanCode`, `0x1100000000` when the scan code is 0). [physicalKeyToVtKey]
+/// cannot map those, while the logical key still names the key.
+///
+/// Text keys are not in [logicalKeyToVtKey]: their key depends on the layout,
+/// so their `character` and the platform text input stay in charge (tested).
+/// Never exported.
+VtKey vtKeyForEvent(KeyEvent event) =>
+    physicalKeyToVtKey[event.physicalKey] ??
+    logicalKeyToVtKey[event.logicalKey] ??
+    VtKey.unidentified;
+
+/// The non-text logical keys behind [vtKeyForEvent]'s fallback.
+///
+/// Every key here is layout independent (Backspace, Delete, the arrows,
+/// Enter, Escape, Tab and the function keys), so a virtual keyboard can send
+/// it without a scan code. Never exported.
+final Map<LogicalKeyboardKey, VtKey> logicalKeyToVtKey = Map.unmodifiable({
+  LogicalKeyboardKey.backspace: VtKey.backspace,
+  LogicalKeyboardKey.delete: VtKey.delete,
+  LogicalKeyboardKey.insert: VtKey.insert,
+  LogicalKeyboardKey.home: VtKey.home,
+  LogicalKeyboardKey.end: VtKey.end,
+  LogicalKeyboardKey.pageUp: VtKey.pageUp,
+  LogicalKeyboardKey.pageDown: VtKey.pageDown,
+  LogicalKeyboardKey.arrowUp: VtKey.arrowUp,
+  LogicalKeyboardKey.arrowDown: VtKey.arrowDown,
+  LogicalKeyboardKey.arrowLeft: VtKey.arrowLeft,
+  LogicalKeyboardKey.arrowRight: VtKey.arrowRight,
+  LogicalKeyboardKey.escape: VtKey.escape,
+  LogicalKeyboardKey.tab: VtKey.tab,
+  LogicalKeyboardKey.enter: VtKey.enter,
+  LogicalKeyboardKey.numpadEnter: VtKey.numpadEnter,
+  LogicalKeyboardKey.f1: VtKey.f1,
+  LogicalKeyboardKey.f2: VtKey.f2,
+  LogicalKeyboardKey.f3: VtKey.f3,
+  LogicalKeyboardKey.f4: VtKey.f4,
+  LogicalKeyboardKey.f5: VtKey.f5,
+  LogicalKeyboardKey.f6: VtKey.f6,
+  LogicalKeyboardKey.f7: VtKey.f7,
+  LogicalKeyboardKey.f8: VtKey.f8,
+  LogicalKeyboardKey.f9: VtKey.f9,
+  LogicalKeyboardKey.f10: VtKey.f10,
+  LogicalKeyboardKey.f11: VtKey.f11,
+  LogicalKeyboardKey.f12: VtKey.f12,
+  LogicalKeyboardKey.f13: VtKey.f13,
+  LogicalKeyboardKey.f14: VtKey.f14,
+  LogicalKeyboardKey.f15: VtKey.f15,
+  LogicalKeyboardKey.f16: VtKey.f16,
+  LogicalKeyboardKey.f17: VtKey.f17,
+  LogicalKeyboardKey.f18: VtKey.f18,
+  LogicalKeyboardKey.f19: VtKey.f19,
+  LogicalKeyboardKey.f20: VtKey.f20,
+  LogicalKeyboardKey.f21: VtKey.f21,
+  LogicalKeyboardKey.f22: VtKey.f22,
+  LogicalKeyboardKey.f23: VtKey.f23,
+  LogicalKeyboardKey.f24: VtKey.f24,
+});
+
+/// The libghostty-vt key for [key] when the physical key has no USB HID
+/// usage, else `null`. Never exported.
+VtKey? vtKeyForLogicalKey(LogicalKeyboardKey key) => logicalKeyToVtKey[key];

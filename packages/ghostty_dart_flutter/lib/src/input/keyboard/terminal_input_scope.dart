@@ -744,7 +744,7 @@ class TerminalInputScopeState extends State<TerminalInputScope>
     if (!_acceptsInput) return KeyEventResult.ignored;
 
     final physical = event.physicalKey;
-    final key = vtKeyForPhysicalKey(physical);
+    final key = vtKeyForEvent(event);
     final isModifier = modifierVtKeys.contains(key);
     final mapper = KeyEventMapper(
       keyboard: HardwareKeyboard.instance,
